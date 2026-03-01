@@ -90,15 +90,6 @@ func SetDefaultsCluster(obj *Cluster) {
 	if obj.Networking.KubeProxyMode == "" {
 		obj.Networking.KubeProxyMode = IPTablesProxyMode
 	}
-	// Default all addons to enabled (safety net for library usage where
-	// conversion may not have run).
-	if !obj.Addons.MetalLB && !obj.Addons.EnvoyGateway && !obj.Addons.MetricsServer && !obj.Addons.CoreDNSTuning && !obj.Addons.Dashboard {
-		obj.Addons.MetalLB = true
-		obj.Addons.EnvoyGateway = true
-		obj.Addons.MetricsServer = true
-		obj.Addons.CoreDNSTuning = true
-		obj.Addons.Dashboard = true
-	}
 }
 
 // SetDefaultsNode sets uninitialized fields to their default value.

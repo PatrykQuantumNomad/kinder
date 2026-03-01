@@ -284,10 +284,6 @@ func fixupOptions(opts *ClusterOptions) error {
 		}
 	}
 
-	// default config fields (important for usage as a library, where the config
-	// may be constructed in memory rather than from disk)
-	config.SetDefaultsCluster(opts.Config)
-
 	return nil
 }
 
