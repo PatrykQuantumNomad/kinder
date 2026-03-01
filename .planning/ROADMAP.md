@@ -114,7 +114,7 @@ Plans:
   5. The Headlamp dashboard is accessible using the printed token and port-forward command
 **Plans**: 2 plans
 Plans:
-- [ ] 07-01-PLAN.md — TDD: Extract CoreDNS patchCorefile function and write table-driven unit tests for all transforms and guard checks
+- [x] 07-01-PLAN.md — TDD: Extract CoreDNS patchCorefile function and write table-driven unit tests for all transforms and guard checks
 - [ ] 07-02-PLAN.md — Unit tests for create.go addon summary/platform warning + live-cluster integration verification script
 
 ## Progress
@@ -132,4 +132,4 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 1/1 | Complete | 2026-03-01 |
-| 7. Integration Testing | 0/2 | Not started | - |
+| 7. Integration Testing | 1/2 | In progress | - |

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 6 — Dashboard
+**Current focus:** Phase 7 — Integration Testing
 
 ## Current Position
 
-Phase: 6 of 7 (Dashboard) — COMPLETE
-Plan: 1 of 1 in current phase (phase complete)
-Status: Phase 6 complete, ready for Phase 7
-Last activity: 2026-03-01 — Completed 06-01: Headlamp v0.40.1 installed via embedded manifest with cluster-admin RBAC, long-lived service account token decoded in Go, token and port-forward command printed to stdout.
+Phase: 7 of 7 (Integration Testing) — IN PROGRESS
+Plan: 1 of 2 in current phase
+Status: Plan 07-01 complete, ready for 07-02
+Last activity: 2026-03-01 — Completed 07-01: Extracted patchCorefile from Execute() with 9 table-driven unit tests covering all 3 DNS transforms and guard-check error paths.
 
-Progress: [████████░░] 85%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 1.75 minutes
-- Total execution time: 0.12 hours
+- Total plans completed: 9
+- Average duration: 2 minutes
+- Total execution time: 0.3 hours
 
 **By Phase:**
 
@@ -34,8 +34,10 @@ Progress: [████████░░] 85%
 | 05-envoy-gateway | 1 | 3 min | 3 min |
 | 06-dashboard | 1 | 1 min | 1 min |
 
+| 07-integration-testing | 1 | 2 min | 2 min |
+
 **Recent Trend:**
-- Last 5 plans: 02-02 (1m), 03-01 (1m), 04-01 (2m), 05-01 (3m), 06-01 (1m)
+- Last 5 plans: 03-01 (1m), 04-01 (2m), 05-01 (3m), 06-01 (1m), 07-01 (2m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -77,6 +79,9 @@ Recent decisions affecting current work:
 - [06-01]: base64 decoded in Go not shell — avoids cross-platform base64 flag differences (GNU vs BSD -d vs -D)
 - [06-01]: ctx.Status.End(true) called before Logger output — spinner must end before multi-line token print
 - [06-01]: Long-lived token via kubernetes.io/service-account-token Secret — survives pod restarts, no TTL
+- [07-01]: Extracted patchCorefile as package-level function returning (string, error) for hermetic unit testing without a live cluster
+- [07-01]: Guard check error messages preserved exactly from Execute() to maintain identical runtime behavior
+- [07-01]: Test uses realistic kind Corefile constant rather than minimal input for higher confidence
 
 ### Pending Todos
 
@@ -89,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 06-01-PLAN.md — Headlamp v0.40.1 installed via embedded manifest with cluster-admin RBAC, long-lived token decoded in Go, token and port-forward command printed to stdout. Phase 6 complete.
+Stopped at: Completed 07-01-PLAN.md — Extracted patchCorefile from Execute() with 9 table-driven unit tests covering all 3 DNS transforms and guard-check error paths. Ready for 07-02.
 Resume file: None
