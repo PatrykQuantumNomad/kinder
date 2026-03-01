@@ -42,7 +42,10 @@ Forked kind into kinder with 5 default addons (MetalLB, Envoy Gateway, Metrics S
   2. Pushing a change to `kinder-site/**` triggers the GitHub Actions deploy workflow and the live site updates
   3. Pushing a Go code change does NOT trigger the site deploy workflow
   4. The built `dist/` directory contains `CNAME`, `.nojekyll`, and `assets/` (not `_astro/`) confirming pitfall mitigations are in place
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 09-01-PLAN.md -- Scaffold Astro/Starlight project and create GitHub Actions deploy workflow
+- [ ] 09-02-PLAN.md -- Configure DNS, GitHub Pages, and verify live site
 
 ### Phase 10: Dark Theme
 **Goal**: The entire site renders with a dark terminal aesthetic and never flashes white on load or page navigation
@@ -104,7 +107,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-8. v1.0 Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
-| 9. Scaffold and Deploy Pipeline | v1.1 | 0/TBD | Not started | - |
+| 9. Scaffold and Deploy Pipeline | v1.1 | 0/2 | Planned | - |
 | 10. Dark Theme | v1.1 | 0/TBD | Not started | - |
 | 11. Documentation Content | v1.1 | 0/TBD | Not started | - |
 | 12. Landing Page | v1.1 | 0/TBD | Not started | - |
