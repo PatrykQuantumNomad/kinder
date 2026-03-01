@@ -76,24 +76,11 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 	corefileStr := corefile.String()
 
-	// Step 3: Guard checks — ensure expected strings are present before patching
-	if !strings.Contains(corefileStr, "pods insecure") {
-		return errors.New("CoreDNS Corefile does not contain 'pods insecure'; cannot patch safely")
+	// Step 3+4: Guard checks and string transforms (extracted for testability)
+	corefileStr, err = patchCorefile(corefileStr)
+	if err != nil {
+		return err
 	}
-	if !strings.Contains(corefileStr, "cache 30") {
-		return errors.New("CoreDNS Corefile does not contain 'cache 30'; cannot patch safely")
-	}
-	if !strings.Contains(corefileStr, "kubernetes cluster.local") {
-		return errors.New("CoreDNS Corefile does not contain 'kubernetes cluster.local'; cannot patch safely")
-	}
-
-	// Step 4: Apply three string transforms
-	// DNS-02: pods insecure -> pods verified
-	corefileStr = strings.ReplaceAll(corefileStr, "pods insecure", "pods verified")
-	// DNS-01: insert autopath @kubernetes before kubernetes cluster.local
-	corefileStr = strings.ReplaceAll(corefileStr, "    kubernetes cluster.local", "    autopath @kubernetes\n    kubernetes cluster.local")
-	// DNS-03: cache 30 -> cache 60
-	corefileStr = strings.ReplaceAll(corefileStr, "cache 30", "cache 60")
 
 	// Step 5: Write-back via ConfigMap YAML envelope
 	configMapYAML := fmt.Sprintf(configMapTemplate, indentCorefile(corefileStr))
@@ -125,6 +112,35 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	ctx.Status.End(true)
 	return nil
+}
+
+// patchCorefile applies kinder's CoreDNS tuning to a raw Corefile string.
+// It performs three transforms:
+//   - DNS-02: "pods insecure" -> "pods verified"
+//   - DNS-01: inserts "autopath @kubernetes" before the kubernetes block
+//   - DNS-03: "cache 30" -> "cache 60"
+//
+// Returns error if required markers (pods insecure, cache 30, kubernetes cluster.local) are absent.
+func patchCorefile(raw string) (string, error) {
+	// Guard checks — ensure expected strings are present before patching
+	if !strings.Contains(raw, "pods insecure") {
+		return "", errors.New("CoreDNS Corefile does not contain 'pods insecure'; cannot patch safely")
+	}
+	if !strings.Contains(raw, "cache 30") {
+		return "", errors.New("CoreDNS Corefile does not contain 'cache 30'; cannot patch safely")
+	}
+	if !strings.Contains(raw, "kubernetes cluster.local") {
+		return "", errors.New("CoreDNS Corefile does not contain 'kubernetes cluster.local'; cannot patch safely")
+	}
+
+	// DNS-02: pods insecure -> pods verified
+	raw = strings.ReplaceAll(raw, "pods insecure", "pods verified")
+	// DNS-01: insert autopath @kubernetes before kubernetes cluster.local
+	raw = strings.ReplaceAll(raw, "    kubernetes cluster.local", "    autopath @kubernetes\n    kubernetes cluster.local")
+	// DNS-03: cache 30 -> cache 60
+	raw = strings.ReplaceAll(raw, "cache 30", "cache 60")
+
+	return raw, nil
 }
 
 // indentCorefile prepends four spaces to each non-empty line of the Corefile
