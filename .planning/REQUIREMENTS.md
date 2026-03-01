@@ -45,11 +45,11 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### CoreDNS Tuning
 
-- [ ] **DNS-01**: CoreDNS Corefile is patched (not replaced) with `autopath @kubernetes` plugin
-- [ ] **DNS-02**: CoreDNS `pods insecure` is changed to `pods verified` (required for autopath)
-- [ ] **DNS-03**: Cache TTL is increased from 30s to 60s for external queries
-- [ ] **DNS-04**: Existing in-cluster DNS resolution continues to work after patching
-- [ ] **DNS-05**: User can disable CoreDNS tuning via `addons.coreDNSTuning: false` in cluster config
+- [x] **DNS-01**: CoreDNS Corefile is patched (not replaced) with `autopath @kubernetes` plugin
+- [x] **DNS-02**: CoreDNS `pods insecure` is changed to `pods verified` (required for autopath)
+- [x] **DNS-03**: Cache TTL is increased from 30s to 60s for external queries
+- [x] **DNS-04**: Existing in-cluster DNS resolution continues to work after patching
+- [x] **DNS-05**: User can disable CoreDNS tuning via `addons.coreDNSTuning: false` in cluster config
 
 ### Dashboard (Headlamp)
 
@@ -120,11 +120,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MET-03 | Phase 3 | Complete |
 | MET-04 | Phase 3 | Complete |
 | MET-05 | Phase 3 | Complete |
-| DNS-01 | Phase 4 | Pending |
-| DNS-02 | Phase 4 | Pending |
-| DNS-03 | Phase 4 | Pending |
-| DNS-04 | Phase 4 | Pending |
-| DNS-05 | Phase 4 | Pending |
+| DNS-01 | Phase 4 | Complete |
+| DNS-02 | Phase 4 | Complete |
+| DNS-03 | Phase 4 | Complete |
+| DNS-04 | Phase 4 | Complete |
+| DNS-05 | Phase 4 | Complete |
 | EGW-01 | Phase 5 | Pending |
 | EGW-02 | Phase 5 | Pending |
 | EGW-03 | Phase 5 | Pending |
@@ -145,4 +145,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after roadmap creation — all 34 requirements mapped*
+*Last updated: 2026-03-01 after 04-01 completion — DNS-01 through DNS-05 marked complete*

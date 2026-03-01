@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 3 — Metrics Server
+**Current focus:** Phase 4 — CoreDNS Tuning
 
 ## Current Position
 
-Phase: 3 of 7 (Metrics Server) — COMPLETE
+Phase: 4 of 7 (CoreDNS Tuning) — COMPLETE
 Plan: 1 of 1 in current phase (phase complete)
-Status: Phase 3 complete, ready for Phase 4
-Last activity: 2026-03-01 — Completed 03-01: Metrics Server action with embedded v0.8.1 manifest and deployment readiness wait.
+Status: Phase 4 complete, ready for Phase 5
+Last activity: 2026-03-01 — Completed 04-01: CoreDNS Corefile patched with autopath @kubernetes, pods verified, cache 60 via read-modify-write cycle with guard checks and rollout restart.
 
-Progress: [█████░░░░░] 43%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -30,9 +30,10 @@ Progress: [█████░░░░░] 43%
 | 01-foundation | 2 | 4 min | 2 min |
 | 02-metallb | 2 | 3 min | 1.5 min |
 | 03-metrics-server | 1 | 1 min | 1 min |
+| 04-coredns-tuning | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2m), 01-02 (2m), 02-01 (2m), 02-02 (1m), 03-01 (1m)
+- Last 5 plans: 01-02 (2m), 02-01 (2m), 02-02 (1m), 03-01 (1m), 04-01 (2m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -62,6 +63,10 @@ Recent decisions affecting current work:
 - [03-01]: Metrics Server manifest embedded at build time via go:embed — pinned to v0.8.1, no network required at cluster creation
 - [03-01]: --kubelet-insecure-tls pre-patched into manifest — mandatory because kind kubelets serve self-signed TLS certificates
 - [03-01]: Namespace is kube-system (not a dedicated namespace); no webhook wait or CR application needed
+- [04-01]: CoreDNS Corefile patched via in-memory read-modify-write: kubectl get with jsonpath, three string transforms, kubectl apply -f - with YAML envelope
+- [04-01]: Guard checks (pods insecure, cache 30, kubernetes cluster.local) added to fail safely if Corefile format changes upstream
+- [04-01]: indentCorefile helper prepends 4 spaces to each non-empty line for valid YAML literal block scalar embedding
+- [04-01]: No go:embed needed — Corefile read live from cluster at action time, not embedded at build time
 
 ### Pending Todos
 
@@ -69,7 +74,6 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 4]: CoreDNS Corefile merge-patch strategy needs validation — string blob in ConfigMap, not structured YAML
 - [Phase 5]: Confirm standard vs. experimental Gateway API CRD channel; measure binary size of ~3,000-line Envoy Gateway manifest
 - [Phase 6]: Headlamp v0.40.1 static manifest URLs need verification before embedding
 - [Phase 2]: Podman rootless MetalLB viability (L2 speaker + raw sockets) needs testing during implementation
@@ -77,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 03-01-PLAN.md — Metrics Server action with embedded v0.8.1 manifest, --kubelet-insecure-tls pre-patched, deployment readiness wait in kube-system. Phase 3 complete.
+Stopped at: Completed 04-01-PLAN.md — CoreDNS Corefile patched with autopath @kubernetes, pods verified, cache 60 via read-modify-write with guard checks and rollout restart. Phase 4 complete.
 Resume file: None
