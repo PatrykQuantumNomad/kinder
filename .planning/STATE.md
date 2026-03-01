@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 8 of 8 (Gap Closure) — COMPLETE
 Plan: 2 of 2 in current phase (phase complete)
 Status: Phase 8 complete, all phases complete -- v1 milestone reached and hardened
-Last activity: 2026-03-01 — Completed 08-02: Added kubectl context targeting to integration script; context switch inside success branch using kind-${CLUSTER_NAME} convention.
+Last activity: 2026-03-01 — Completed 08-01: Removed all-false addon guard from SetDefaultsCluster and redundant SetDefaultsCluster call from fixupOptions; added unit tests proving fix. Both 08-01 and 08-02 complete.
 
 Progress: [██████████] 100%
 
@@ -86,6 +86,8 @@ Recent decisions affecting current work:
 - [07-02]: Platform-aware assertion in TestLogMetalLBPlatformWarning uses runtime.GOOS to branch expected output (darwin vs linux)
 - [07-02]: Integration script uses set -uo pipefail without set -e so all checks run regardless of earlier failures
 - [07-02]: SC-2 curl runs inside the cluster via kubectl run because MetalLB IPs are unreachable on macOS/Windows hosts
+- [08-01]: All-false addon guard removed from SetDefaultsCluster — encoding.Load('') path is the single correct defaulting point for library usage
+- [08-01]: Redundant SetDefaultsCluster call removed from fixupOptions in create.go — opts.Config is already defaulted via encoding.Load('') for nil configs
 - [08-02]: kubectl context switch placed inside success branch only — avoids secondary error when cluster creation fails
 - [08-02]: Context name uses kind- prefix (kind-${CLUSTER_NAME}) matching kind's automatic kubectl context naming convention
 
@@ -100,5 +102,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-02-PLAN.md — kubectl context targeting added to integration script. All 8 phases complete. v1 milestone hardened.
+Stopped at: Completed 08-01-PLAN.md — all-false addon guard removed, unit tests added. Both gap closure plans complete. All 8 phases complete. v1 milestone fully hardened.
 Resume file: None
