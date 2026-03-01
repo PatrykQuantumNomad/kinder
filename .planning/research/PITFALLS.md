@@ -1,587 +1,405 @@
-# Domain Pitfalls: Adding Addons to kind
+# Pitfalls Research: Kinder Website
 
-**Domain:** Kubernetes-in-Docker cluster tool addon integration
+**Domain:** Astro static site on GitHub Pages with custom domain, dark theme, and developer-tool aesthetic — added to an existing Go CLI monorepo
 **Researched:** 2026-03-01
-**Scope:** MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Kubernetes Dashboard — all in a kind fork targeting Docker/Podman/Nerdctl providers
+**Confidence:** HIGH (official Astro docs + GitHub Pages docs + verified community issues)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause silent failures, full rewrites, or "works on my machine but not CI" syndrome.
+Mistakes that cause the site to not load at all, custom domain to silently reset, or assets to 404 in production.
 
 ---
 
-### Pitfall C1: MetalLB — macOS/Windows LoadBalancer IPs Are Unreachable from Host
+### Pitfall C1: Jekyll Strips the `_astro` Assets Folder
 
-**What goes wrong:** MetalLB assigns an external IP to a LoadBalancer service (e.g., `172.18.0.200`), `kubectl get svc` shows `EXTERNAL-IP` populated, but `curl` to that IP hangs forever on macOS and Windows. The cluster appears fully functional. The failure is silent.
-
-**Why it happens:** On macOS and Windows, Docker runs containers inside a Linux VM (HyperKit / WSL2). The Docker bridge network — and MetalLB's L2 ARP announcements — are confined to that VM. The host OS has no route to the `172.18.x.x` Docker bridge subnet. ARP replies from MetalLB's speaker pod never reach the macOS host network stack.
-
-**Consequences:** Any user on macOS or Windows who installs kinder, creates a cluster, deploys a LoadBalancer service, gets an IP, and tries to `curl` it will be broken. This is the most user-visible failure and will generate the most bug reports.
-
-**Prevention:**
-- Detect the host OS at cluster creation time (or surface this in documentation prominently)
-- On Linux: MetalLB L2 mode works as-is
-- On macOS/Windows: Recommend `cloud-provider-kind` (the official alternative) or document that users must use `kubectl port-forward` instead
-- Document in the kinder README that MetalLB IP reachability is Linux-only
-- Consider adding a warning message printed to stderr when running on macOS/Windows during addon installation
-
-**Detection (warning signs):**
-- `EXTERNAL-IP` is assigned but `curl <ip>` hangs
-- Host is macOS or Windows Docker Desktop
-- `docker network inspect kind` shows subnet, but host has no route table entry for it
-- `ping <external-ip>` from macOS: 100% packet loss
-
-**Sources:** [kind issue #3556](https://github.com/kubernetes-sigs/kind/issues/3556), [Kind + MetalLB on macOS guide](https://medium.com/@jehadnasser/setting-up-metallb-with-kind-cluster-on-linux-but-not-on-macos-e47f83c2718d)
-
----
-
-### Pitfall C2: MetalLB — `node.kubernetes.io/exclude-from-external-load-balancers` Blocks Single-Node Clusters
-
-**What goes wrong:** MetalLB speaker pod is running and healthy, IPAddressPool and L2Advertisement are configured correctly, but services never get an external IP (stay `<pending>`). Affects all single-node kind clusters.
-
-**Why it happens:** kubeadm adds the label `node.kubernetes.io/exclude-from-external-load-balancers` to control-plane nodes. MetalLB honors this label and refuses to announce services from labeled nodes. In a single-node kind cluster, the only node is the control plane, so MetalLB has no eligible nodes to announce from. The kinder codebase already removes this label in `kubeadminit/init.go` (line 161-168) — but only for `len(allNodes) == 1`. If the addon installer runs before this label removal completes, MetalLB may start with the label still present.
-
-**Consequences:** MetalLB appears installed and healthy, but LoadBalancer services never get IPs. Users see `<pending>` permanently. The `MetalLB speaker` logs contain no obvious error.
-
-**Prevention:**
-- Verify the label removal in `kubeadminit/init.go` runs before MetalLB addon action
-- Consider adding `--ignore-exclude-lb` flag to MetalLB speaker via kustomize patch for robustness
-- Add a post-install check: confirm at least one node is MetalLB-eligible before reporting addon as ready
-
-**Detection:**
-- `kubectl get svc` shows `EXTERNAL-IP: <pending>` for MetalLB-managed services
-- `kubectl describe svc` shows MetalLB events mentioning "no nodes available"
-- `kubectl get nodes --show-labels | grep exclude-from-external-load-balancers`
-
-**Sources:** [MetalLB troubleshooting docs](https://metallb.universe.tf/troubleshooting/), [exclude-from-external-load-balancers issue](https://soc.meschbach.com/posts/2024/03/23-metallb-kubernetes-and-node.kubernetes.io/exclude-from-external-load-balancers/)
-
----
-
-### Pitfall C3: MetalLB — IPAddressPool Uses Wrong Subnet (Collides with Node IPs or Uses Unreachable Range)
-
-**What goes wrong:** MetalLB is assigned an IP pool from the wrong subnet — either the Kubernetes pod CIDR, the service CIDR, or a hardcoded range that doesn't match the actual Docker `kind` network subnet. Services get IPs that are either unreachable or collide with existing node IPs.
-
-**Why it happens:** The Docker `kind` network subnet is dynamic — it's generated based on the cluster name using a hash. A hardcoded pool like `172.18.0.200-172.18.0.250` works on one machine, fails on another where the kind network allocated `192.168.207.0/24`. The subnet must be discovered at runtime by querying the Docker (or Podman/Nerdctl) network.
-
-**The correct approach:**
-```bash
-# Docker
-docker network inspect kind --format '{{ (index .IPAM.Config 0).Subnet }}'
-
-# Nerdctl
-nerdctl network inspect kind --format '{{ (index .IPAM.Config 0).Subnet }}'
-
-# Podman — different JSON structure
-podman network inspect kind --format '{{range .Subnets}}{{.Subnet}}{{end}}'
-```
-Then allocate a /27 sub-range from that subnet (e.g., IPs `.200` to `.250` within the discovered /24) to avoid colliding with node IPs at the low end of the range.
-
-**Consequences:** Services get IPs outside the routable Docker subnet (unreachable), or IPs that collide with kind node container IPs (routing chaos).
-
-**Prevention:**
-- Implement runtime subnet discovery in the addon action using the provider-specific network inspect command
-- Use a stable sub-range: take the discovered /24 and allocate a /27 at the upper end (e.g., `.200-.250`)
-- Each provider has a different `network inspect` output format — test all three
-- Set `avoidBuggyIPs: true` on the IPAddressPool to skip `.0` and `.255` addresses
-
-**Detection:**
-- External IP is assigned but unreachable
-- `ip route` on a kind node doesn't show a route for the assigned IP
-- Node IPs and service IPs are in the same range
-
-**Sources:** [Automatically set MetalLB IP addresses with kind](https://michaelheap.com/metallb-ip-address-pool/), [MetalLB IPAddressPool advanced config](https://metallb.universe.tf/configuration/_advanced_ipaddresspool_configuration/)
-
----
-
-### Pitfall C4: Envoy Gateway — CRDs Must Be Installed Before the Controller, and Channel Conflicts Break Upgrades
-
-**What goes wrong:** Envoy Gateway controller is deployed before Gateway API CRDs exist, causing the controller to start and crash-loop with `no matches for kind "GatewayClass"`. Alternatively, another Gateway implementation (or a previous Envoy Gateway install) installed standard-channel CRDs, and Envoy Gateway's Helm chart tries to overwrite them with experimental-channel CRDs — blocked by a Validating Admission Policy (VAP).
+**What goes wrong:**
+The site builds locally and the Astro dev server works perfectly. After deploying to GitHub Pages via a branch push, the site loads but has no styles, no JavaScript, and all images are broken. The 404 errors point to paths under `/_astro/...`.
 
 **Why it happens:**
-- Envoy Gateway's Helm chart defaults to installing Gateway API CRDs from the **experimental channel** (includes TCPRoute, BackendTLSPolicy, etc.)
-- Gateway API has a VAP that prevents applying experimental-channel CRDs over standard-channel CRDs
-- If any other Gateway API implementation is already installed, CRD ownership conflicts arise
-- If the controller pod starts before the CRD installation is Established (not just created), it may crash immediately
+GitHub Pages runs all content through Jekyll by default. Jekyll ignores any file or directory whose name starts with an underscore — treating them as Jekyll internals. Astro outputs all compiled JS, CSS, and image hashes into `dist/_astro/` by default. Jekyll silently drops the entire folder. The site HTML loads (it does not start with an underscore) but every asset reference 404s.
 
-**Consequences:**
-- Controller pod crash-loops with CRD-not-found errors
-- HTTPRoute resources fail to apply with "no matches for kind" errors
-- Silent failure: controller reports ready but cannot reconcile Gateway resources
+**How to avoid:**
+Two complementary fixes — apply both:
 
-**Prevention:**
-- Install Gateway API CRDs first, wait for `kubectl wait --for=condition=Established` on each CRD before applying Envoy Gateway controller
-- Apply CRDs using `kubectl apply` (not Helm), then apply the Envoy Gateway controller separately
-- For kinder: apply CRDs as a separate step before the main Envoy Gateway manifest, with a readiness wait between them
-- Prefer explicit CRD management over relying on Helm's CRD folder behavior
+1. Add an empty `.nojekyll` file to the Astro `public/` directory. Astro copies `public/` verbatim to `dist/`, so `.nojekyll` ends up at the root of the deploy artifact and tells GitHub Pages to skip Jekyll entirely.
 
-**Detection:**
-- `kubectl get gatewayclass` returns "No resources found" after Envoy Gateway install
-- Envoy Gateway controller pod logs show `no matches for kind "GatewayClass" in version "gateway.networking.k8s.io/v1"`
-- `kubectl get crd | grep gateway` shows CRDs in `Terminating` or absent
+2. Change the assets directory name in `astro.config.mjs`:
+```js
+export default defineConfig({
+  build: {
+    assets: 'assets',  // replaces default '_astro'
+  },
+});
+```
+Fix 1 alone is sufficient if using GitHub Actions deployment (which is recommended). Fix 2 is belt-and-suspenders and protects against future GitHub Pages policy changes around underscores.
 
-**Sources:** [Envoy Gateway install with Helm](https://gateway.envoyproxy.io/docs/install/install-helm/), [Gateway API CRD management](https://gateway-api.sigs.k8s.io/guides/crd-management/), [Envoy Gateway CRD channel issue #7238](https://github.com/envoyproxy/gateway/issues/7238)
+**Warning signs:**
+- CSS/JS 404s after deploy; works in `astro dev` and `astro preview`
+- Browser network tab shows requests to `/_astro/*.js` returning 404
+- GitHub Pages deploy log shows no Jekyll errors (Jekyll silently drops the folder)
 
----
-
-### Pitfall C5: Envoy Gateway — GatewayClass Has No LoadBalancer IP (Stays `Unknown`)
-
-**What goes wrong:** Envoy Gateway installs successfully, GatewayClass is `Accepted`, but the Gateway resource stays in `Unknown` status with no address assigned. HTTPRoutes created against this Gateway never receive traffic.
-
-**Why it happens:** Envoy Gateway provisions a LoadBalancer service for each Gateway. In kind without a LoadBalancer implementation, this service stays `<pending>` indefinitely. The Gateway's status reflects its assigned address — if the LoadBalancer service has no IP, the Gateway has no address, and traffic cannot flow.
-
-**The dependency:** MetalLB (or cloud-provider-kind) must be installed and operational *before* Envoy Gateway creates any Gateway resources. The install ordering is:
-1. MetalLB (with working IPAddressPool)
-2. Envoy Gateway controller + CRDs
-3. Gateway resource creation
-
-**Consequences:** Gateway stays `Unknown`, all HTTPRoutes report `Accepted: False`, all traffic returns connection refused or DNS failure.
-
-**Prevention:**
-- Install MetalLB addon action before Envoy Gateway addon action in the kinder action pipeline
-- Add a readiness check after MetalLB installation that verifies the IPAddressPool can assign IPs (e.g., create a test LoadBalancer service, verify IP is assigned, then delete it)
-- On macOS/Windows where MetalLB IPs are unreachable, note that Gateway address will be assigned but unreachable (same root cause as C1)
-
-**Detection:**
-- `kubectl get gateway -A` shows status `Unknown` or no addresses
-- Envoy Gateway provisioned LoadBalancer service shows `EXTERNAL-IP: <pending>`
-- `kubectl describe gateway` shows reason `AddressNotAssigned`
-
-**Sources:** [Gateway Address docs](https://gateway.envoyproxy.io/docs/tasks/traffic/gateway-address/), [Envoy Gateway issue #5012](https://github.com/envoyproxy/gateway/issues/5012)
+**Phase to address:** Phase 1 (repo scaffolding and initial deploy) — must be done before the first production deploy
 
 ---
 
-### Pitfall C6: Metrics Server — Self-Signed Kubelet TLS Certificates Cause Perpetual CrashLoop
+### Pitfall C2: Custom Domain Resets to `username.github.io` on Every Deploy
 
-**What goes wrong:** Metrics Server deploys but stays in `CrashLoopBackOff` or reports "no metrics available". `kubectl top nodes` returns "Error from server (ServiceUnavailable): the server is currently unable to handle the request". HPA cannot function.
+**What goes wrong:**
+Custom domain `kinder.patrykgolabek.dev` is configured in GitHub Pages settings. It works. Then a new commit is pushed and the deploy workflow runs. After the deploy, the custom domain field in repository Settings → Pages is blank, and the site reverts to the default `username.github.io` URL. This happens silently on every push.
 
-**Why it happens:** In kind, kubelet uses self-signed TLS certificates. The default Metrics Server configuration attempts to verify the Kubelet's serving certificate, which fails because the CA that signed it is not in Metrics Server's trust store. The server-side TLS handshake fails before any metrics are collected.
+**Why it happens:**
+GitHub Pages stores the custom domain setting as a `CNAME` file in the root of the deployment artifact. When deploying from a branch, if the branch does not include a `CNAME` file, the deploy overwrites the existing one with nothing. The GitHub UI setting writes the CNAME file, but if the build pipeline replaces the branch contents, the file is gone.
 
-**The required patch:**
-```yaml
-# kustomize patch applied after base metrics-server manifest
-- op: add
-  path: /spec/template/spec/containers/0/args/-
-  value: --kubelet-insecure-tls
+When deploying via GitHub Actions (the recommended method for Astro), the CNAME file is handled differently: the `actions/deploy-pages` action does not read the CNAME from the branch — it reads it from the Pages settings API. This means the CNAME file in the repo source controls the domain, and if it is missing from the build output, the domain resets.
+
+**How to avoid:**
+Create `public/CNAME` in the Astro project with a single line containing the custom domain:
+```
+kinder.patrykgolabek.dev
+```
+Astro copies `public/` verbatim to `dist/`. The CNAME file will be in the deploy artifact on every build. This is the one permanent fix — commit it once and never touch it again.
+
+Also set `site` in `astro.config.mjs` to match:
+```js
+export default defineConfig({
+  site: 'https://kinder.patrykgolabek.dev',
+});
 ```
 
-Additionally, set `--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname` to prevent metrics-server from attempting hostname-based connections (which fail inside kind).
+**Warning signs:**
+- Site URL reverts to `patrykgolabek.github.io/kinder` after a push
+- GitHub Settings → Pages shows blank "Custom domain" field
+- HTTPS certificate is revoked and re-issued after every deploy
 
-**Version-specific trap (metrics-server v0.8.0):** Version 0.8.0 introduced `appProtocol: https` on the Service object. This field causes the kube-apiserver's aggregation layer to route traffic incorrectly in some configurations, breaking metrics even with `--kubelet-insecure-tls`. If using v0.8.0+, verify the Service does not have `appProtocol: https` or remove it via patch.
-
-**Consequences:** No `kubectl top` output, HPA cannot scale workloads, cluster appears functional but monitoring is broken.
-
-**Prevention:**
-- Always apply `--kubelet-insecure-tls` and `--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname` as patches when installing in kind
-- Pin to a known-good version or test the Service manifest for the `appProtocol` field before applying
-- After installation, verify with `kubectl top nodes` before reporting addon ready
-
-**Detection:**
-- `kubectl top nodes` returns ServiceUnavailable
-- Metrics Server pod logs: `x509: certificate signed by unknown authority`
-- `kubectl get apiservice v1beta1.metrics.k8s.io -o yaml` shows `status: False`
-
-**Sources:** [Metrics Server README](https://github.com/kubernetes-sigs/metrics-server), [Kind metrics-server gist](https://gist.github.com/sanketsudake/a089e691286bf2189bfedf295222bd43), [metrics-server issue #1695](https://github.com/kubernetes-sigs/metrics-server/issues/1695)
+**Phase to address:** Phase 1 (initial site scaffolding) — prevents an entire class of silent deploy regressions
 
 ---
 
-### Pitfall C7: CoreDNS — DNS Forwarding Loop When Host Uses systemd-resolved
+### Pitfall C3: `base` Config Set When Using a Custom Domain (Breaks All Links)
 
-**What goes wrong:** CoreDNS pods start but repeatedly crash with `Loop ... detected for zone "."`. Or CoreDNS runs but all DNS resolution inside the cluster fails intermittently. The cluster appears ready but service discovery is broken.
+**What goes wrong:**
+Developer follows GitHub Pages tutorials that say "set `base: '/repo-name'`" and does so in `astro.config.mjs`. The site deploys to the custom domain `kinder.patrykgolabek.dev` but all internal links resolve as `kinder.patrykgolabek.dev/kinder/docs/...` (double prefix), navigation fails, and CSS/JS paths break.
 
-**Why it happens:** On Ubuntu/Debian hosts (including many CI environments and developer machines), `systemd-resolved` listens on `127.0.0.53`. This address appears in `/etc/resolv.conf`, which kind nodes inherit. CoreDNS's `forward . /etc/resolv.conf` directive forwards upstream queries to `127.0.0.53`, which resolves back to the CoreDNS pod — creating an infinite loop detected by the `loop` plugin.
+**Why it happens:**
+The `base` config option is only needed when deploying to a subdirectory path (e.g., `username.github.io/kinder/`). When using a custom domain at the root (`kinder.patrykgolabek.dev`), the site is served from `/`, and `base` must not be set (or set to `'/'`). Many tutorials conflate the two cases because most tutorial authors deploy to the default `*.github.io` URL.
 
-**Consequences:** CoreDNS crash-loops or DNS resolution fails intermittently. Pods can't resolve service names. The cluster is non-functional despite all other components reporting healthy.
+**How to avoid:**
+- When using a custom domain: set `site` only, omit `base` (or explicitly set `base: '/'`)
+- When using `username.github.io/kinder` (no custom domain): set both `site` and `base: '/kinder'`
+- Never hardcode absolute paths in components; use Astro's built-in `<a href="/">` and image imports which respect the `base` setting automatically
 
-**Prevention:**
-- When modifying CoreDNS ConfigMap, replace `forward . /etc/resolv.conf` with an explicit upstream: `forward . 8.8.8.8 1.1.1.1` or use `/run/systemd/resolve/resolv.conf` (the non-loopback resolv.conf) as the forward target
-- Do NOT simply add entries to the existing Corefile without auditing the `forward` directive first
-- After ConfigMap changes, restart CoreDNS pods and verify no loop errors in logs
-- Test DNS resolution inside the cluster after any CoreDNS modification: `kubectl run -it --rm debug --image=busybox -- nslookup kubernetes`
-
-**Detection:**
-- CoreDNS pod logs: `Loop (127.0.0.1:53 -> :53) detected for zone "."`
-- CoreDNS pods repeatedly restarting (CrashLoopBackOff)
-- All cluster-internal DNS lookups fail or time out
-- Host has `nameserver 127.0.0.53` in `/etc/resolv.conf`
-
-**Sources:** [CoreDNS loop plugin docs](https://coredns.io/plugins/loop/), [CoreDNS loop issue #2354](https://github.com/coredns/coredns/issues/2354)
-
----
-
-### Pitfall C8: Kubernetes Dashboard v3 — Architecture Break from v2 (Kong Proxy Required)
-
-**What goes wrong:** The v3 dashboard Helm chart installs successfully but the Dashboard UI is unreachable, shows TLS errors, or the login page CSRF token call returns HTTP 200 with an unparseable body (presenting as an "Unknown error (200)" in the UI).
-
-**Why it happens:** Dashboard v3 (Helm chart v7+) fundamentally changed architecture. The Dashboard now runs behind an internal Kong proxy. Direct HTTP access is intentionally blocked — the Kong proxy always serves HTTPS. If you access via `kubectl proxy` (which serves HTTP), the CSRF token endpoint fails with a parse error because the response is HTML rather than JSON. Port-forward to the Kong proxy service (`kubernetes-dashboard-kong-proxy`) over HTTPS is the correct access method.
-
-Additionally:
-- `--enable-skip-login` was removed in v3. Bearer token login is the only supported method.
-- Tokens must be manually created since Kubernetes 1.24 (no longer auto-generated)
-- The Dashboard requires `cert-manager` for TLS. If cert-manager is absent, the Kong proxy fails to start.
-
-**Consequences:** Dashboard installs but is inaccessible or shows confusing errors. Users cannot log in.
-
-**Prevention:**
-- Use Helm chart with `cert-manager.enabled=true` (default) — cert-manager is now a hard dependency
-- Access via `kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard-kong-proxy 8443:443`
-- Create a dedicated service account and generate a token: `kubectl -n kubernetes-dashboard create token <sa-name>`
-- In kinder, either include cert-manager as a prerequisite addon, or use an alternative dashboard version (see Alternatives Considered below)
-- Document HTTPS-only access in user-facing output
-
-**Detection:**
-- Dashboard pod logs: Kong failing to start due to missing certificates
-- Browser shows TLS cert error when accessing Dashboard
-- Login page shows "Unknown error (200)" — this is the CSRF over HTTP failure
-- `kubectl get pods -n kubernetes-dashboard` shows `cert-manager` related pods missing/failing
-
-**Sources:** [Dashboard v3 architecture](https://spacelift.io/blog/kubernetes-dashboard), [CSRF issue #8829](https://github.com/kubernetes/dashboard/issues/8829), [Dashboard v7.x Unknown error (200)](https://medium.com/@tinhtq97/kubernetes-dashboard-7-x-unknown-error-200-a5be156db23f)
-
----
-
-## Moderate Pitfalls
-
-### Pitfall M1: MetalLB — L2Advertisement Missing or Misconfigured
-
-**What goes wrong:** MetalLB is installed, IPAddressPool is configured, but services still get no IP. The IPAddressPool alone does not cause MetalLB to advertise.
-
-**Prevention:** Always create an `L2Advertisement` resource alongside the `IPAddressPool`. The L2Advertisement must either reference the IPAddressPool explicitly or use an empty `ipAddressPools` list to match all pools. If you want to restrict which nodes announce, configure `nodeSelectors` — but be careful: if the selector matches no nodes (due to label absence), no announcements occur.
-
-```yaml
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: default
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-  - default-pool  # must match IPAddressPool name
+Correct config for this project:
+```js
+export default defineConfig({
+  site: 'https://kinder.patrykgolabek.dev',
+  // base: NOT set — custom domain serves from root
+});
 ```
 
-**Sources:** [MetalLB configuration docs](https://metallb.universe.tf/configuration/)
+**Warning signs:**
+- `console.log(import.meta.env.BASE_URL)` returns `/kinder/` instead of `/`
+- Navigation links point to `/kinder/docs` instead of `/docs`
+- Canonical URLs in `<head>` include the repo name twice
+
+**Phase to address:** Phase 1 (initial Astro configuration)
 
 ---
 
-### Pitfall M2: MetalLB — Speaker Pods Require `hostNetwork: true` — Fails in Some Rootless Podman Configurations
+### Pitfall C4: `astro.config.mjs` `site` Mismatch Breaks Sitemap and Canonical URLs
 
-**What goes wrong:** MetalLB speaker pods fail to start or start but cannot send ARP replies when using kind with rootless Podman. The speaker needs host-network access to send layer-2 packets.
+**What goes wrong:**
+Sitemap entries and canonical `<link>` tags reference the wrong domain — either the old `username.github.io` URL or `localhost:4321` from development — causing duplicate content signals to search engines and social preview cards pointing to the wrong URL.
 
-**Why it happens:** In rootless Podman mode, kind nodes run in user namespaces. Pods requesting `hostNetwork: true` may not get full host-network access depending on Podman version and system configuration. MetalLB's L2 speaker relies on raw socket access for ARP — which is restricted in rootless environments.
+**Why it happens:**
+`site` in `astro.config.mjs` is the canonical source of truth for sitemaps, canonical links, OG URLs, and `Astro.site`. If left unset during development, `Astro.site` is `undefined` and the sitemap integration skips generation entirely. If set to the wrong URL (e.g., copied from a tutorial), every canonical tag points elsewhere.
 
-**Prevention:**
-- Test MetalLB speaker pod status after installation in all three providers (Docker, Podman, Nerdctl)
-- For rootless Podman: document that MetalLB L2 mode may not work; consider disabling MetalLB or switching to `cloud-provider-kind` on rootless setups
-- Check speaker pod logs for `permission denied` or socket errors
+**How to avoid:**
+Set `site` immediately when scaffolding the project, before writing any page content:
+```js
+site: 'https://kinder.patrykgolabek.dev',
+```
+The `@astrojs/sitemap` integration reads this value at build time. Verify by checking `dist/sitemap-index.xml` after `astro build` — every URL must start with `https://kinder.patrykgolabek.dev`.
 
-**Sources:** [kind rootless docs](https://kind.sigs.k8s.io/docs/user/rootless/)
+**Warning signs:**
+- Sitemap not generated at all (`dist/sitemap-index.xml` missing)
+- OG image preview URLs contain `localhost` or `github.io`
+- Google Search Console shows canonical pointing to wrong URL
 
----
-
-### Pitfall M3: Envoy Gateway — OOM from Disabled CPU Limits and Default Resource Settings
-
-**What goes wrong:** Envoy Gateway or its provisioned EnvoyProxy pods run out of memory in resource-constrained kind nodes, causing pod eviction or node pressure.
-
-**Why it happens:** Envoy Gateway v1.2.0 removed the default CPU limit to eliminate CPU throttling. Without CPU limits, a misconfigured Gateway can consume all CPU. The EnvoyProxy sidecar and the gateway-controller each require non-trivial memory baseline.
-
-**Prevention:**
-- Apply resource requests/limits via `EnvoyProxy` custom resource for kind environments
-- kind nodes are Docker containers — ensure the Docker daemon has enough memory (at least 4GB for a cluster with all addons)
-- Monitor node memory pressure: `kubectl describe node | grep -A 5 "Conditions"`
+**Phase to address:** Phase 1 (initial Astro configuration)
 
 ---
 
-### Pitfall M4: CoreDNS — ConfigMap Patch Overwrites Entire Corefile (No Strategic Merge)
+### Pitfall C5: Dark Mode FOUC — Page Flashes White Before Script Applies Dark Theme
 
-**What goes wrong:** A `kubectl apply` with a full Corefile replacement breaks existing DNS plugins that kind relies on (e.g., the `kubernetes` plugin for service discovery). The cluster DNS stops working for service resolution.
+**What goes wrong:**
+On every page load or navigation, the page briefly renders in white/light mode before snapping to dark. On slow connections or fast machines with visible repaints, this produces a jarring flash. Using `prefers-color-scheme` alone does not eliminate it because the browser must still parse CSS and run JavaScript before applying the correct class.
 
-**Why it happens:** CoreDNS uses a ConfigMap with a key named `Corefile`. Unlike Kubernetes Deployment specs, the Corefile content has no strategic merge path — applying a new ConfigMap with `kubectl apply` replaces the entire value. Any plugins present in the original Corefile but absent from the replacement are silently dropped.
+**Why it happens:**
+Astro sends HTML from the server with no knowledge of the user's theme preference stored in `localStorage`. The browser renders the HTML with default (light) styles first, then client-side JavaScript reads `localStorage`, applies the `dark` class to `<html>`, and Tailwind's `dark:` variants kick in. The visible interval between initial paint and script execution is the FOUC.
 
-**Prevention:**
-- Use `kubectl patch configmap coredns -n kube-system --patch-merge-key` or read-modify-write via `kubectl get / kubectl apply`
-- Always include the full set of plugins in any modified Corefile, especially `kubernetes cluster.local in-addr.arpa ip6.arpa`
-- Test DNS for both external hosts and internal service names after any CoreDNS change
-- Prefer additive changes (adding a `rewrite` rule or `hosts` block) over full replacements
+This is compounded by Astro's View Transitions: navigating between pages triggers a new page load, resetting the document before the `astro:after-swap` event fires. Without explicit handling, theme flickers on every View Transition navigation even if the initial load is fine.
 
-**Detection:**
-- `nslookup kubernetes.default.svc.cluster.local` fails from inside a pod
-- CoreDNS pod logs show `plugin/kubernetes: No kubernetes server defined`
+**How to avoid:**
+Inject a blocking inline script in the `<head>` — before any CSS or body content — that reads `localStorage` and applies the dark class synchronously:
 
----
+```html
+<!-- In your base layout's <head>, with is:inline to prevent bundling -->
+<script is:inline>
+  (function() {
+    const stored = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (stored === 'dark' || (!stored && prefersDark)) {
+      document.documentElement.classList.add('dark');
+    }
+  })();
+</script>
+```
 
-### Pitfall M5: Metrics Server — APIService Registration Fails if kube-apiserver Aggregation Layer Is Disabled
+For View Transitions, also listen to `astro:after-swap`:
+```js
+document.addEventListener('astro:after-swap', () => {
+  const stored = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (stored === 'dark' || (!stored && prefersDark)) {
+    document.documentElement.classList.add('dark');
+  }
+});
+```
 
-**What goes wrong:** Metrics Server installs and runs, but `kubectl top` returns "Metrics API not available". The APIService registration fails.
+The `is:inline` directive is critical: Astro normally bundles and defers scripts, which delays execution until after paint. `is:inline` forces the script to remain in the `<head>` and execute synchronously before the body renders.
 
-**Why it happens:** Metrics Server registers itself as an aggregated API (`v1beta1.metrics.k8s.io`). This requires the kube-apiserver's aggregation layer to be enabled via `--enable-aggregator-routing`. In kind clusters, this is enabled by default via kubeadm. However, if the kinder fork modifies kubeadm config, it must not disable this flag.
+**Warning signs:**
+- Page visibly flashes light on load in dark mode
+- Flash is reproducible with browser DevTools throttled to "Slow 3G"
+- Flash occurs on every page navigation when View Transitions are enabled
+- `document.documentElement.classList` does not contain `dark` during `DOMContentLoaded`
 
-**Prevention:**
-- Do not modify the kube-apiserver aggregation flags in kubeadm configuration
-- After installation, verify: `kubectl get apiservice v1beta1.metrics.k8s.io -o jsonpath='{.status.conditions[0].status}'` should return `True`
-
----
-
-### Pitfall M6: Kubernetes Dashboard — RBAC Insufficient for Default Service Account
-
-**What goes wrong:** Dashboard logs in successfully with a service account token, but shows "Forbidden" or empty resource lists in the UI.
-
-**Why it happens:** The Dashboard's default ServiceAccount has minimal permissions. Displaying nodes, pods, and other cluster resources requires explicit RBAC grants.
-
-**Prevention:**
-- Create a dedicated service account with a ClusterRoleBinding to `cluster-admin` for development use (document the security implication)
-- Never bind the `kubernetes-dashboard` ServiceAccount itself to cluster-admin — create a separate admin SA
-- Generate the token explicitly: `kubectl -n kubernetes-dashboard create token admin-user --duration=24h`
-
----
-
-### Pitfall M7: Addon Installation Timing — CRD Not Established Before CR Application
-
-**What goes wrong:** Installing a CRD and its custom resources in the same `kubectl apply` call fails with "no matches for kind" even though the CRD is in the manifest.
-
-**Why it happens:** Kubernetes must process and establish a CRD before CRs using it can be accepted. The API server's in-memory cache updates asynchronously. Applying CRDs and CRs in a single call races this propagation.
-
-**Prevention:**
-- For Envoy Gateway: apply Gateway API CRDs, wait for `kubectl wait --for=condition=Established crd/gateways.gateway.networking.k8s.io --timeout=60s`, then apply the controller manifest
-- For MetalLB: apply the operator manifest, wait for controller to be Running, then apply IPAddressPool and L2Advertisement
-- The kinder action pipeline naturally serializes these steps — use explicit readiness waits between each addon phase
+**Phase to address:** Phase 2 (dark theme implementation) — must be baked in from the start, not patched later
 
 ---
 
-## Minor Pitfalls
+### Pitfall C6: GitHub Actions Workflow Lacks Required `pages: write` and `id-token: write` Permissions
 
-### Pitfall N1: MetalLB FRR Mode Speaker Init Container CrashLoop
+**What goes wrong:**
+The GitHub Actions workflow runs, Astro builds successfully, but the deploy step fails with: `Error: HttpError: Resource not accessible by integration` or `RequestError: Deployment not created`. The site is never published.
 
-**What goes wrong:** MetalLB deployed with the `metallb-frr.yaml` manifest (BGP/FRR mode) has speaker init containers crash-looping. L2 mode (`metallb-native.yaml`) works fine.
+**Why it happens:**
+Deploying to GitHub Pages via `actions/deploy-pages` requires two non-default permissions: `pages: write` (to create a Pages deployment) and `id-token: write` (to request an OIDC JWT token for authentication). The default `GITHUB_TOKEN` in a new workflow does not have either. Additionally, the repository Pages setting must be configured to use "GitHub Actions" as the deployment source — using "Deploy from a branch" disables the Actions-based deploy API.
 
-**Prevention:** For kind clusters, use L2 mode (native manifest). FRR mode is for BGP environments with physical routers. Don't deploy FRR manifests in kind.
+**How to avoid:**
+The workflow must explicitly declare:
+```yaml
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+```
 
----
+And the repository Pages setting (Settings → Pages → Source) must be set to "GitHub Actions", not "Deploy from a branch".
 
-### Pitfall N2: Envoy Gateway — `direct_response` 500s Due to Missing Backend Service
+Also required: the deploy job must reference the `github-pages` environment:
+```yaml
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
+```
 
-**What goes wrong:** HTTPRoute is `Accepted` but all requests return HTTP 500 with no visible error on the client. Envoy logs show `response_code_details: direct_response`.
+**Warning signs:**
+- Astro build step passes, deploy step fails with HTTP 403 or resource error
+- Deployment shows in Actions but no corresponding Pages deployment appears in Settings → Pages
+- The `pages-build-deployment` workflow is not triggered after the custom workflow runs
 
-**Prevention:** When a backend service referenced in an HTTPRoute does not exist, Envoy Gateway assigns a `direct_response` rule (which returns 500) to that route. Check `kubectl describe httproute` for `ResolvedRefs: False` before assuming routing is configured correctly.
-
----
-
-### Pitfall N3: kind `extraPortMappings` Required for NodePort Dashboard Access
-
-**What goes wrong:** Dashboard NodePort service is created (e.g., port 32443), but `localhost:32443` is not accessible from the host.
-
-**Why it happens:** kind nodes are Docker containers. NodePort on port 32443 is accessible at the *container's* IP, not `localhost`, unless `extraPortMappings` is configured in the kind cluster config.
-
-**Prevention:** Either configure `extraPortMappings` in the cluster config before cluster creation, or access Dashboard via `kubectl port-forward`. Since kinder cannot add `extraPortMappings` after cluster creation, port-forward is the simpler path.
-
----
-
-### Pitfall N4: Nerdctl Provider — MTU Mismatch Causes Packet Fragmentation
-
-**What goes wrong:** Cluster comes up, pods communicate, but MetalLB LoadBalancer services drop large packets. HTTP works for small responses but fails for large transfers.
-
-**Why it happens:** Nerdctl does not support `ip_masquerade` option for networks (as noted in the kinder source code comment at `/pkg/cluster/internal/providers/nerdctl/network.go` line 121). MTU mismatches between the kind network and the outer interface can cause packet fragmentation that only manifests with larger payloads.
-
-**Prevention:** Set MTU explicitly on the kind network to match the host's default interface MTU. Verify with `ping -M do -s 1400 <service-ip>` after MetalLB is configured.
+**Phase to address:** Phase 1 (CI/CD pipeline setup)
 
 ---
 
-### Pitfall N5: Dashboard Token Expiry — 1-Hour Default
+### Pitfall C7: Workflow Triggers Without Path Filtering — Every Go Code Change Triggers Site Rebuild
 
-**What goes wrong:** Dashboard works on first access, then shows "Unauthorized" an hour later with no apparent change.
+**What goes wrong:**
+The site deploy workflow runs on every push to `main`, including Go source changes that have nothing to do with the website. This wastes CI minutes, causes unnecessary deploys, and adds noise to the deployment history.
 
-**Prevention:** `kubectl create token` issues tokens with a default 1-hour expiry. For development clusters, use `--duration=8760h` (1 year) or create a `Secret` of type `kubernetes.io/service-account-token` which persists indefinitely (and works across Dashboard restarts).
+**Why it happens:**
+GitHub Actions workflows trigger on `push` to the specified branch by default, with no file-path filtering. Without path filtering, a change to `pkg/cluster/create.go` triggers a full Astro build and Pages deploy.
+
+The inverse problem also exists: Go CI workflows (which already use `paths-ignore: ['site/**']`) correctly skip site changes, but the new site workflow must similarly ignore Go source changes.
+
+**How to avoid:**
+Scope the site deploy workflow to run only on changes under `kinder-site/`:
+```yaml
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kinder-site/**'
+  workflow_dispatch:
+```
+
+The `withastro/action` action supports a `path` input for projects not at the repo root:
+```yaml
+- uses: withastro/action@v3
+  with:
+    path: kinder-site/
+```
+
+Also ensure all existing Go CI workflows include `kinder-site/**` in their `paths-ignore` (the existing workflows already use `site/**` for the Hugo site — update this to cover `kinder-site/**`).
+
+**Warning signs:**
+- GitHub Actions → Deployments shows tens of deploys per week from unrelated commits
+- Site rebuild takes several minutes on every Go code change
+- Actions bill shows unexpected usage
+
+**Phase to address:** Phase 1 (CI/CD pipeline setup)
 
 ---
 
 ## Technical Debt Patterns
 
-These patterns don't break immediately but create compounding problems over time.
+Shortcuts that seem fine during initial build but create rework.
 
-### TD1: Hardcoded Addon Manifest Versions
-
-**Pattern:** Embedding specific manifest URLs with pinned versions (e.g., `metallb/v0.14.3/...`) in the kinder binary.
-
-**Why it becomes debt:** Each Kubernetes minor release may require updated addon versions for compatibility. A hardcoded version works today but may fail with newer Kubernetes node images. Users upgrading their cluster Kubernetes version will get the old addon version.
-
-**Better approach:** Make addon versions configurable (env var or config field), with sensible defaults, so users can override without recompiling.
-
----
-
-### TD2: No Addon Health Verification After Installation
-
-**Pattern:** Apply manifests, move on. Report cluster as ready.
-
-**Why it becomes debt:** Many of the pitfalls above (C1 through C6) produce a cluster that appears ready but has non-functional addons. Without a post-installation health check, kinder will report "cluster ready" and users will discover broken addons only when they try to use them.
-
-**Better approach:** Each addon action should include a readiness probe after installation (e.g., `kubectl wait --for=condition=Available deployment/metrics-server -n kube-system --timeout=120s`).
-
----
-
-### TD3: Provider-Specific Network Inspection Duplicated Across Addons
-
-**Pattern:** Each addon that needs the cluster network subnet (MetalLB needs it, potentially others) implements its own provider-specific network inspection.
-
-**Why it becomes debt:** Each provider (Docker, Podman, Nerdctl) has different `network inspect` output format. Duplicating this logic creates three places to break and maintain.
-
-**Better approach:** Implement a shared `GetClusterNetworkSubnet(providerName, clusterName string) (string, error)` utility function used by all addons that need subnet information.
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Hardcode absolute image paths in Markdown (`/images/hero.png`) instead of using Astro imports | Simpler docs writing | Breaks if `base` is ever set; images never optimized by Astro | Never — use `public/` for images that must be absolute, or import for optimization |
+| Use `theme="dark"` class fixed in HTML rather than system-preference detection | No FOUC | Users with light-mode preference see dark forcibly; no toggle possible | Only if explicitly building a "dark only" site with no toggle |
+| Deploy by pushing build output to `gh-pages` branch instead of GitHub Actions | Simpler initial setup | CNAME reset on every push; no build cache; leaks build artifacts into repo history | Never — use GitHub Actions source |
+| Skip lockfile commit (`package-lock.json` or `pnpm-lock.yaml`) | Fewer git changes | `withastro/action` cannot detect package manager; falls back to npm which may conflict; Dependabot cannot pin deps | Never — commit the lockfile |
+| Use `@astrojs/starlight` for docs instead of hand-built pages | Faster docs setup | Hard to match a fully custom dark developer-tool aesthetic; Starlight has opinionated CSS hard to override | Acceptable if design flexibility is not needed; not appropriate for a custom visual identity |
+| Keep the Hugo `site/` directory alongside `kinder-site/` | Preserves kind upstream compat | Confusion about which site is authoritative; two build systems in one repo | Only during transition; remove Hugo `site/` once Astro site is live |
 
 ---
 
 ## Integration Gotchas
 
-Cross-addon interactions that are non-obvious.
+Common mistakes when connecting the Astro site to external services and the repo.
 
-### IG1: Envoy Gateway Depends on MetalLB — Install Order Matters
-
-Envoy Gateway creates a LoadBalancer service for the Gateway. If MetalLB isn't running when the Gateway resource is created, the LoadBalancer stays `<pending>`. The Gateway status reflects this as `Unknown`. **MetalLB must be ready before any Gateway resources are created.**
-
-In the kinder action pipeline: `MetalLB install → MetalLB ready check → Envoy Gateway install → Gateway resource creation`.
-
----
-
-### IG2: CoreDNS Tuning Must Not Break MetalLB or Envoy Gateway Service Discovery
-
-MetalLB and Envoy Gateway use Kubernetes service discovery (DNS) to find each other and their backends. If a CoreDNS ConfigMap change drops the `kubernetes` plugin, these components lose the ability to resolve service names. Always validate that `kubernetes.default.svc.cluster.local` resolves after CoreDNS changes.
-
----
-
-### IG3: Dashboard Depends on Metrics Server for Resource Usage Display
-
-Dashboard's resource usage graphs (CPU/memory per pod) require Metrics Server. Dashboard will install and display fine without it, but the resource graphs will show "metrics not available". Install Metrics Server before Dashboard, or accept degraded Dashboard functionality if Metrics Server fails.
-
----
-
-### IG4: cert-manager (Dashboard Dependency) May Conflict With Existing cert-manager
-
-Dashboard v3's Helm chart installs cert-manager by default. If a user has cert-manager already installed in their cluster (common in company-wide dev clusters), the Dashboard Helm chart will conflict during CRD installation.
-
-**Mitigation:** Detect existing cert-manager and use `--set cert-manager.enabled=false` when applying the Dashboard chart.
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| GitHub Pages custom domain | Configuring domain only in GitHub UI settings | Add `public/CNAME` to the Astro project so CNAME persists through every deploy |
+| GitHub Pages HTTPS enforcement | Trying to enable "Enforce HTTPS" immediately after adding the domain | Wait up to 1 hour for GitHub to provision the Let's Encrypt certificate; HTTPS checkbox is greyed out until cert is issued |
+| DNS for `kinder.patrykgolabek.dev` (subdomain) | Adding an A record (apex-only) | Add a `CNAME` record for `kinder` pointing to `patrykgolabek.github.io` — subdomains use CNAME, not A records |
+| DNS propagation and HTTPS cert | Expecting HTTPS to work immediately after DNS change | DNS propagation takes up to 24 hours; GitHub cert provisioning takes an additional hour after DNS resolves correctly; plan 2+ hours between DNS change and testing HTTPS |
+| `withastro/action` with `kinder-site/` subdirectory | Pointing workflow at repo root | Use `path: kinder-site/` input; ensure `out-dir` matches Astro's `outDir` config (default `dist`) |
+| Go CI existing workflows | Forgetting to update `paths-ignore` | Add `kinder-site/**` to `paths-ignore` in all four existing Go CI workflow files (`docker.yaml`, `nerdctl.yaml`, `podman.yml`, `vm.yaml`) |
+| `netlify.toml` conflict | Netlify config exists at repo root pointing to `site/` (Hugo); GitHub Pages picks different source | `netlify.toml` does not affect GitHub Pages; the file is inert but can confuse contributors — add a comment clarifying that Netlify is for the old kind upstream Hugo site, not the kinder Astro site |
+| Dark mode and `prefers-color-scheme` on initial deploy | Assuming the CSS media query eliminates FOUC without JavaScript | The media query controls CSS only; without the blocking inline script, the JS-managed `dark` class causes flicker regardless |
 
 ---
 
 ## Performance Traps
 
-### PT1: All Addons Installed Sequentially With No Parallelism
+Patterns that build fast but degrade the experience.
 
-**Trap:** Installing MetalLB, then waiting for it, then Envoy Gateway, then waiting, etc. makes cluster creation feel slow (2-4 minutes just for addon setup).
-
-**Better:** MetalLB and Metrics Server have no dependency on each other. CoreDNS tuning and Dashboard also have no dependency on each other. Group non-dependent addon installations to run concurrently, then serialize the dependent ones.
-
----
-
-### PT2: Envoy Gateway's EnvoyProxy Sidecar Memory Overhead
-
-**Trap:** Each Gateway resource provisions a separate Envoy proxy deployment. In a small kind cluster with 2GB RAM allocated to Docker, a single Gateway + Envoy Gateway controller + MetalLB + Dashboard can exhaust memory.
-
-**Mitigation:** Set conservative resource limits on the EnvoyProxy custom resource for kind environments. Document minimum Docker memory requirements (recommend 4GB).
-
----
-
-### PT3: CoreDNS Cache TTL Tuning Can Cause Stale DNS During Addon Roll-out
-
-**Trap:** Increasing CoreDNS cache TTL (a common "tuning" for performance) means that if a service IP changes or an addon restarts with a new ClusterIP during installation, old DNS responses are served for up to the cache TTL.
-
-**Mitigation:** Apply CoreDNS tuning *after* all addons are installed and stable, not during the installation sequence.
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Unoptimized images in `public/` | Slow LCP; hero images over 500 KB | Use Astro's `<Image>` component with `src/assets/` imports for images that need optimization; reserve `public/` for favicons and icons | Immediately on Lighthouse audit |
+| All docs in a single long Markdown file | Content loads fast initially; no granular caching | Structure docs as individual `.md` files in a content collection; each gets its own URL and CDN cache entry | When docs grow beyond 5–10 sections |
+| No `astro:prefetch` on navigation links | Each docs page feels slow on click | Add `<link rel="prefetch">` via Astro's prefetch integration or enable `prefetch: true` in Astro config | Any page with navigation to multiple docs |
+| Code blocks without syntax highlighting lazy loading | Long TTFB on first code block render | Use Astro's built-in Shiki syntax highlighter (zero JS to client); configure in `astro.config.mjs` with `shikiConfig` | First page with a code block |
+| No `concurrency` group in deploy workflow | Rapid pushes queue multiple simultaneous Pages deployments; GitHub Pages rejects all but one | Add `concurrency: { group: "pages", cancel-in-progress: false }` to the deploy workflow | After the second rapid push to main |
 
 ---
 
 ## Security Mistakes
 
-### SM1: Dashboard Service Account with Cluster-Admin in a Long-Running Cluster
+Domain-specific security issues for a static developer-tool site.
 
-**Mistake:** Creating a `cluster-admin` service account for Dashboard and leaving the cluster running as a shared dev environment.
-
-**Consequence:** Anyone with access to the kinder cluster (or who can port-forward to the Dashboard service) can execute any cluster operation.
-
-**Mitigation for kinder:** Document clearly that the cluster-admin token is for local single-user development only. Consider scoping the token to read-only resources by default, with a flag to enable full admin access.
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Storing API keys or tokens in Astro env vars committed to repo | Credential leak in public repo | Static sites have no server — any secret in the build is in the HTML; use only `PUBLIC_` prefixed vars, which are expected to be public |
+| Not enforcing HTTPS on the custom domain | Traffic to `http://kinder.patrykgolabek.dev` is unencrypted | Enable "Enforce HTTPS" in Settings → Pages as soon as the cert is provisioned |
+| CAA DNS record blocking Let's Encrypt | GitHub Pages cannot provision TLS certificate | If the DNS zone has CAA records, add `0 issue "letsencrypt.org"` or the HTTPS certificate issuance fails silently |
+| Wide RBAC token printed in docs | If docs show an example token, bots scrape it | Use obviously-fake placeholder tokens in documentation examples (`<your-token-here>`, never real base64 JWT fragments) |
 
 ---
 
-### SM2: MetalLB IP Pool Overlapping with Host Network
+## UX Pitfalls
 
-**Mistake:** The MetalLB IP pool overlaps with IP addresses used by other services on the host network (e.g., `192.168.1.100-200` when the host is on `192.168.1.0/24`).
+Common mistakes in developer-tool site design.
 
-**Consequence:** MetalLB "steals" ARP responses for those IPs on the host network, causing intermittent connectivity failures for other hosts on the same subnet (only on Linux where MetalLB L2 works).
-
-**Mitigation:** Always allocate MetalLB pools from the Docker `kind` network subnet, not from the host LAN subnet.
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Light-mode-only design | Alienates developers who use dark terminals and IDEs; kinder's target audience (DevOps/platform engineers) skews strongly toward dark mode | Implement dark mode as the default; offer a toggle for light mode; test both |
+| Missing "copy to clipboard" on code blocks | Users manually select and copy CLI commands; frequent source of copy errors with trailing newlines | Add copy button to every `<pre>` code block; Astro + Shiki make this straightforward with a small client-side script |
+| Navigation with no active state | Users cannot tell which docs page they are on | Use `Astro.url.pathname` to compare against nav link `href` and apply an active class |
+| Docs page with no table of contents | Long docs pages feel unmapped | Generate ToC from heading anchors; Astro's `remark-toc` plugin or a custom component using `getHeadings()` |
+| Hero section with no immediate CLI command | Landing page is abstract; developers want to see the install command immediately | Put `brew install / go install` command front and center on the landing page, before feature list |
+| OG image is the default GitHub social card | Social previews look unprofessional when shared on Slack or Twitter/X | Create a custom OG image (`og-image.png` in `public/`) and reference it in the base layout's `<meta property="og:image">` tag |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-This is the list of states that indicate successful installation but actually indicate broken addons.
+Things that appear complete in local dev but are missing or broken in production.
 
-### MetalLB
-- [ ] MetalLB pods are Running (`kubectl get pods -n metallb-system`) — does NOT mean LoadBalancer IPs are reachable
-- [ ] A LoadBalancer service has `EXTERNAL-IP` assigned — does NOT mean the IP is reachable from the host on macOS/Windows
-- [ ] L2Advertisement exists — does NOT mean it's associated with any IPAddressPool (check `ipAddressPools` field)
-- [ ] Speaker pods are Running — does NOT mean they can announce (check `exclude-from-external-load-balancers` label)
-
-**True verification:** Create a test Deployment + LoadBalancer Service, wait for IP assignment, then `curl <external-ip>:<port>` from the host. On Linux only.
-
-### Envoy Gateway
-- [ ] Envoy Gateway controller pod is Running — does NOT mean GatewayClass is accepted
-- [ ] GatewayClass shows `Accepted: True` — does NOT mean the Gateway has an address
-- [ ] Gateway shows an address — does NOT mean HTTPRoutes are routing correctly
-
-**True verification:** Deploy a test pod + Service + HTTPRoute, verify `curl <gateway-ip>/test-path` returns a response from the pod.
-
-### Metrics Server
-- [ ] Metrics Server pod is Running — does NOT mean metrics are being collected
-- [ ] No crash-loop — does NOT mean TLS verification is succeeding
-
-**True verification:** `kubectl top nodes` returns actual CPU/memory numbers (not an error). Wait 60 seconds after pod starts for initial scrape cycle.
-
-### CoreDNS Tuning
-- [ ] CoreDNS pods are Running after ConfigMap change — does NOT mean DNS is working
-- [ ] No crash-loops — does NOT mean the forwarding loop wasn't silently swallowed
-
-**True verification:** From a test pod: `nslookup kubernetes.default.svc.cluster.local` AND `nslookup google.com` — both must succeed.
-
-### Kubernetes Dashboard
-- [ ] Dashboard pod is Running — does NOT mean the UI is accessible
-- [ ] Port-forward is established — does NOT mean login will succeed (CSRF failure on HTTP)
-- [ ] Token was generated — does NOT mean the token has sufficient permissions
-
-**True verification:** `kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard-kong-proxy 8443:443`, open `https://localhost:8443`, log in with the token, verify node list loads.
+- [ ] **Custom domain:** Verify `public/CNAME` exists and contains `kinder.patrykgolabek.dev` — open `dist/CNAME` after `astro build`
+- [ ] **Jekyll bypass:** Verify `public/.nojekyll` exists — open `dist/.nojekyll` after `astro build`
+- [ ] **Assets directory:** Confirm `dist/assets/` exists (not `dist/_astro/`) after build if `build.assets` was set
+- [ ] **HTTPS enforced:** After first deploy, check Settings → Pages → "Enforce HTTPS" is checked (not greyed out)
+- [ ] **Dark mode on first load:** Open the site in a fresh private window with `prefers-color-scheme: dark` (Chrome DevTools → Rendering → Emulate CSS media) and confirm no white flash
+- [ ] **Dark mode after navigation:** Navigate between two pages and confirm the theme does not flicker during View Transition
+- [ ] **Sitemap correct domain:** Check `https://kinder.patrykgolabek.dev/sitemap-index.xml` — every URL starts with the custom domain, not `localhost` or `github.io`
+- [ ] **OG tags correct:** Paste the URL into Twitter Card Validator or opengraph.xyz — confirm image, title, and description appear correctly
+- [ ] **Code blocks copyable:** Every code block on landing page and docs has a copy button
+- [ ] **404 page styled:** Visit `https://kinder.patrykgolabek.dev/nonexistent` — confirm the 404 page uses the site's dark theme and has a navigation link back home (GitHub Pages serves `404.html` from the deploy root)
+- [ ] **Workflow path filter correct:** Push a Go source change and confirm the site deploy workflow does NOT trigger
+- [ ] **Go CI unaffected:** Push a site-only change and confirm Go CI workflows do NOT trigger
 
 ---
 
-## Phase-Specific Warnings
+## Recovery Strategies
 
-| Implementation Phase | Likely Pitfall | Mitigation |
-|---------------------|---------------|------------|
-| Addon action scaffolding | No readiness waiting between addons causes race conditions (C4, M7) | Add `kubectl wait` calls after each manifest apply |
-| MetalLB integration | Wrong subnet for IPAddressPool (C3), single-node label (C2), macOS silent failure (C1) | Runtime subnet detection, verify label removal in kubeadminit runs first |
-| Envoy Gateway integration | CRD-before-controller ordering (C4), pending Gateway when MetalLB absent (C5) | Strict install ordering with readiness checks |
-| Metrics Server integration | TLS failure without insecure flag (C6), v0.8.0 appProtocol trap | Apply kustomize patch with insecure-tls; post-install `kubectl top nodes` check |
-| CoreDNS tuning | Loop when systemd-resolved present (C7), full ConfigMap overwrite breaking kubernetes plugin (M4) | Read-modify-write ConfigMap, explicit forwarding upstreams |
-| Dashboard integration | v3 architecture requires Kong+cert-manager (C8), RBAC insufficient (M6) | Use port-forward over HTTPS, create explicit admin service account |
-| Cross-provider testing | MetalLB ARP in rootless Podman (M2), MTU in Nerdctl (N4) | Test each provider; document known limitations |
-| "Looks done" validation | All above pitfalls have states that appear successful | Implement per-addon functional smoke test before reporting cluster ready |
+When pitfalls occur despite prevention.
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Custom domain reset | LOW | Re-enter domain in Settings → Pages; add `public/CNAME` before next push; wait for DNS + cert reprovisioning |
+| Jekyll stripping `_astro/` | LOW | Add `public/.nojekyll` and redeploy; or switch to GitHub Actions deployment source |
+| HTTPS cert not issued | MEDIUM | Check DNS records with `dig kinder.patrykgolabek.dev CNAME`; check for conflicting A records; check for CAA records blocking letsencrypt.org; remove and re-add the custom domain to force cert re-request |
+| Dark mode FOUC in production | LOW | Add `is:inline` blocking script to `<head>` in base layout; redeploy |
+| `base` config set incorrectly — all links broken | MEDIUM | Remove `base` from config; grep codebase for hardcoded base path prefixes; update any `href="/kinder/..."` to `href="/..."`; rebuild and redeploy |
+| Go CI workflows now triggering on site changes | LOW | Add `kinder-site/**` to `paths-ignore` in all four existing Go CI workflow YAML files |
+| Concurrent deploys queued and failing | LOW | Add concurrency group to workflow; re-run the failed workflow manually via `workflow_dispatch` |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+How roadmap phases should address these pitfalls.
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Jekyll strips `_astro/` (C1) | Phase 1: scaffolding + initial deploy | `dist/.nojekyll` exists; `dist/assets/` exists (not `dist/_astro/`) |
+| Custom domain resets on deploy (C2) | Phase 1: scaffolding + initial deploy | `dist/CNAME` exists with correct domain after every build |
+| Wrong `base` config breaks links (C3) | Phase 1: initial Astro configuration | `import.meta.env.BASE_URL` is `/`; all nav links go to correct paths |
+| `site` mismatch in sitemap/canonical (C4) | Phase 1: initial Astro configuration | `dist/sitemap-index.xml` contains only `https://kinder.patrykgolabek.dev` URLs |
+| Dark mode FOUC (C5) | Phase 2: dark theme implementation | No white flash in private window with dark system preference; no flash during page navigation |
+| Workflow missing permissions (C6) | Phase 1: CI/CD pipeline setup | Deploy workflow succeeds end-to-end; pages deployment visible in Settings → Pages |
+| No path filtering — Go changes trigger site rebuild (C7) | Phase 1: CI/CD pipeline setup | Push Go change → site workflow does not appear in Actions |
+| No concurrency group — overlapping deploys | Phase 1: CI/CD pipeline setup | Rapid pushes do not queue multiple conflicting deployments |
+| DNS + HTTPS timing issues | Phase 1: custom domain setup | HTTPS enforced; site loads at `https://kinder.patrykgolabek.dev` |
+| Missing OG image and social meta | Phase 3: landing page | Twitter Card Validator shows correct preview for the domain |
+| Prose not dark-mode-styled (Tailwind Typography) | Phase 2: dark theme + Phase 4: docs | `prose dark:prose-invert` applied to all Markdown-rendered content |
 
 ---
 
 ## Sources
 
-- [MetalLB Troubleshooting](https://metallb.universe.tf/troubleshooting/) — L2 mode specifics, exclude-from-external-load-balancers, ARP verification
-- [MetalLB Configuration](https://metallb.universe.tf/configuration/) — IPAddressPool, L2Advertisement requirements
-- [MetalLB Advanced IPAddressPool Config](https://metallb.universe.tf/configuration/_advanced_ipaddresspool_configuration/) — avoidBuggyIPs, pool selection
-- [kind issue #3556: bridge network not working for MetalLB](https://github.com/kubernetes-sigs/kind/issues/3556) — macOS platform limitation confirmed
-- [Automatically set MetalLB IP addresses with kind](https://michaelheap.com/metallb-ip-address-pool/) — runtime subnet detection approach
-- [MetalLB + kind on macOS](https://medium.com/@jehadnasser/setting-up-metallb-with-kind-cluster-on-linux-but-not-on-macos-e47f83c2718d) — platform-specific behavior
-- [exclude-from-external-load-balancers + MetalLB](https://soc.meschbach.com/posts/2024/03/23-metallb-kubernetes-and-node.kubernetes.io/exclude-from-external-load-balancers/) — single-node workarounds
-- [Envoy Gateway Install with Helm](https://gateway.envoyproxy.io/docs/install/install-helm/) — CRD installation ordering
-- [Envoy Gateway Configuration Issues](https://gateway.envoyproxy.io/docs/troubleshooting/configuration/) — status field debugging
-- [Envoy Gateway CRD Channel Issue #7238](https://github.com/envoyproxy/gateway/issues/7238) — experimental vs standard channel conflict
-- [Gateway API CRD Management](https://gateway-api.sigs.k8s.io/guides/crd-management/) — Validating Admission Policy blocking upgrades
-- [Envoy Gateway Gateway Address docs](https://gateway.envoyproxy.io/docs/tasks/traffic/gateway-address/) — LoadBalancer IP dependency
-- [metrics-server issue #1695: appProtocol: https](https://github.com/kubernetes-sigs/metrics-server/issues/1695) — v0.8.0-specific breakage
-- [Metrics Server on Kind gist](https://gist.github.com/sanketsudake/a089e691286bf2189bfedf295222bd43) — required patches
-- [CoreDNS loop plugin docs](https://coredns.io/plugins/loop/) — loop detection and resolution
-- [CoreDNS loop issue #2354: systemd-resolved](https://github.com/coredns/coredns/issues/2354) — forwarding loop root cause
-- [Kubernetes Dashboard v3 architecture](https://spacelift.io/blog/kubernetes-dashboard) — Kong proxy and cert-manager dependencies
-- [Dashboard CSRF issue #8829](https://github.com/kubernetes/dashboard/issues/8829) — HTTP vs HTTPS CSRF failure
-- [Dashboard v7.x Unknown error (200)](https://medium.com/@tinhtq97/kubernetes-dashboard-7-x-unknown-error-200-a5be156db23f) — concrete error description and fix
-- [kind rootless docs](https://kind.sigs.k8s.io/docs/user/rootless/) — Podman networking limitations
-- [kind LoadBalancer docs](https://kind.sigs.k8s.io/docs/user/loadbalancer/) — cloud-provider-kind as alternative
+- [Astro GitHub Pages deploy guide](https://docs.astro.build/en/guides/deploy/github/) — official source for `site`, `base`, CNAME, and workflow permissions
+- [withastro/action GitHub README](https://github.com/withastro/action) — `path` input for subdirectory projects; `cache` option; lockfile detection
+- [Astro issue #14247: `_astro` folder ignored by GitHub Pages](https://github.com/withastro/astro/issues/14247) — confirmed Jekyll underscore-stripping behavior
+- [Starlight issue #3339: Add .nojekyll File](https://github.com/withastro/starlight/issues/3339) — community confirmation + fix
+- [GitHub community: Custom Domain Field Clears Every Deploy](https://github.com/orgs/community/discussions/48422) — CNAME reset root cause
+- [GitHub community: Custom domain deleted after workflow deploy](https://github.com/orgs/community/discussions/159544) — confirms CNAME must be in build artifact
+- [GitHub Pages DNS troubleshooting docs](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/troubleshooting-custom-domains-and-github-pages) — CAA records, HTTPS timing, DNS propagation
+- [Astro dark mode flicker — simonporter.co.uk](https://www.simonporter.co.uk/posts/what-the-fouc-astro-transitions-and-tailwind/) — `is:inline` blocking script pattern; `astro:after-swap` handling
+- [Astro dark mode flicker — danielnewton.dev](https://www.danielnewton.dev/blog/dark-mode-astro-tailwind-fouc/) — Tailwind + localStorage pattern
+- [Astro issue #8711: Flicker with ViewTransition and dark mode](https://github.com/withastro/astro/issues/8711) — confirmed FOUC during View Transitions
+- [GitHub community: concurrency group for Pages](https://github.com/orgs/community/discussions/67961) — overlapping deploy behavior
+- [GitHub Actions concurrency docs](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) — `cancel-in-progress: false` for Pages deploys
+- [Tailwind CSS Typography dark mode](https://tailwindcss.com/blog/tailwindcss-typography-v0-5) — `prose-invert` class for dark mode prose styling
+- [Medium: GitHub Pages for Astro — Branch vs GitHub Actions](https://medium.com/vlead-tech/github-pages-for-astro-project-deploying-from-branch-vs-using-github-actions-af1f909322ee) — exhaustive comparison of both deploy methods and their trade-offs
+
+---
+*Pitfalls research for: Kinder website — Astro + GitHub Pages + custom domain + dark theme*
+*Researched: 2026-03-01*

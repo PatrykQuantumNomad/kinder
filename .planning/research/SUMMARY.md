@@ -1,270 +1,279 @@
 # Project Research Summary
 
-**Project:** kinder — batteries-included kind fork with default addons
-**Domain:** Kubernetes-in-Docker cluster tooling — addon integration into creation pipeline
+**Project:** kinder website — landing page + docs at kinder.patrykgolabek.dev
+**Domain:** CLI tool documentation site + marketing landing page (static, GitHub Pages)
 **Researched:** 2026-03-01
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Kinder is a fork of the upstream `sigs.k8s.io/kind` tool that adds five default addons to every cluster: MetalLB (LoadBalancer IPs), Envoy Gateway (Gateway API), Metrics Server (kubectl top / HPA), CoreDNS tuning, and a web dashboard. The research establishes that all five addons have well-understood installation patterns, version-pinned manifests, and a clear integration point in kind's existing sequential action pipeline — new addon actions slot in after `waitforready`, following the same `Action` interface every existing kind action uses. The key architectural principle is embed-over-fetch: all manifests are embedded at build time using `//go:embed`, ensuring offline-capable cluster creation without external tool dependencies, consistent with kind's existing CNI and storage manifest patterns.
+The kinder website (v1.1 milestone) is a static developer-tool site consisting of a marketing landing page and structured documentation for a batteries-included kind fork. Research across all four areas converges on a single clear approach: Astro 5 with the Starlight theme, deployed to GitHub Pages via GitHub Actions, with a custom domain at `kinder.patrykgolabek.dev`. This stack is purpose-built for exactly this use case — Starlight provides search, sidebar navigation, dark mode, syntax highlighting, and MDX out of the box with a single install. The site lives in a new `kinder-site/` subdirectory, fully decoupled from the existing Go CLI codebase with no shared tooling or build system. Do not modify the existing Hugo `site/` directory, which belongs to the upstream kind project.
 
-The highest-risk area in the stack is the web dashboard choice. The official `kubernetes/dashboard` project was archived on January 21, 2026 with no further security patches. FEATURES.md recommends switching to **Headlamp** (the official Kubernetes SIG UI successor, v0.40.1), while STACK.md and ARCHITECTURE.md were written assuming Dashboard v3 (Helm chart 7.14.0) or Dashboard v2.7.0. This conflict must be resolved before implementation: Headlamp is the safe choice for a new project, but requires different embedded manifests. The decision affects one action package (`installdashboard`) and does not alter the overall architecture.
+The recommended build order is: scaffold the Astro/Starlight project, establish the deployment pipeline, validate the live URL, then write all content. This front-loads infrastructure risk and means content work is never blocked by a broken deploy. The dark terminal aesthetic requires only CSS custom property overrides (`--sl-*` variables) — no Tailwind, no component overrides, no additional libraries. Feature scope for launch is well-defined: hero landing page with addon grid, installation guide, quickstart, configuration reference, and five addon doc pages.
 
-The critical operational risk is MetalLB's macOS and Windows incompatibility: MetalLB assigns external IPs successfully but those IPs are unreachable from the host on non-Linux platforms because Docker runs inside a VM. This is a known, documented limitation that affects the majority of developer laptops. Kinder must print a clear warning on non-Linux hosts and document that LoadBalancer IP reachability is Linux-only. A secondary risk is the strict install ordering required: MetalLB must be fully ready with a functioning IPAddressPool before any Envoy Gateway resources are created, and Gateway API CRDs must be Established before the Envoy Gateway controller starts. Violating either ordering produces confusing silent failures.
+The primary risks are all deployment-related, not content-related: Jekyll silently stripping Astro's `_astro/` assets folder, custom domain resetting on every deploy without a committed `CNAME` file, incorrect `base` config breaking all internal links, and missing GitHub Actions permissions blocking the deploy step entirely. Every one of these fails silently in local dev and only manifests in production. All are prevented by doing Phase 1 correctly — address them once during scaffolding and they never recur.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-All addon versions are pinned to their latest stable releases as of March 2026. The install method for each is kubectl apply from embedded manifests (no Helm, no Kustomize, no external tool dependencies at runtime). Envoy Gateway is the only addon requiring `--server-side` apply due to manifest size. Dashboard v3 requires Helm at install time, making it incompatible with kinder's no-external-dependency constraint — this is the strongest argument for adopting Headlamp instead.
+Astro 5 (currently 5.17) with `@astrojs/starlight` (0.37.x) is the correct choice for this project. The Starlight template installs Astro, TypeScript, Expressive Code (syntax highlighting), and Pagefind (full-text search) in a single command — covering all documentation infrastructure needs without additional packages. Node.js 22 LTS is required (Astro 5.8+ dropped Node 18). Do not add Tailwind: the `@astrojs/starlight-tailwind` integration has an open Tailwind v4 compatibility issue as of March 2026 and Starlight's `--sl-*` CSS variable system is sufficient for all theming needs.
 
 **Core technologies:**
-- MetalLB v0.15.3 — LoadBalancer IP assignment via Layer 2 ARP — only viable LB option for kind's Docker bridge network; BGP mode impossible without a BGP router
-- Envoy Gateway v1.7.0 — Gateway API implementation — CNCF-incubating reference implementation; bundles Gateway API CRDs v1.4.1; requires `--server-side` apply
-- Metrics Server v0.8.1 — kubectl top / HPA metrics — requires `--kubelet-insecure-tls` patch for kind's self-signed kubelet certs; embed components.yaml pre-patched
-- CoreDNS tuning — ConfigMap patch only (no new install) — increase cache TTL to 300s; add `health { lameduck 5s }`; patch-in-place, never replace full ConfigMap
-- **Dashboard: Headlamp v0.40.1 (RECOMMENDED) over kubernetes/dashboard** — Headlamp is the official SIG UI successor; provides static manifests; kubernetes/dashboard archived January 2026 with no security updates; Dashboard v3 has hard Helm+cert-manager dependency incompatible with kinder's design constraints
+- **Astro 5.17**: Site framework — zero-JS-by-default output; Starlight built on it; GitHub Pages adapter
+- **@astrojs/starlight 0.37.x**: Docs theme — built-in search, sidebar, dark mode, MDX, syntax highlighting; single install covers all doc needs
+- **Node.js 22 LTS**: Runtime — required by Astro 5.8+; `withastro/action@v5` defaults to Node 22
+- **withastro/action@v5**: GitHub Actions build — detects npm from lockfile; supports `path:` for subdirectory projects
+- **Self-hosted Inter Variable font**: Body typography — `@fontsource-variable/inter`; avoids Google Fonts GDPR exposure
+- **CSS custom properties only**: Dark theme — override `--sl-*` variables in `custom.css`; no Tailwind needed
 
-**Mandatory install order:**
-1. MetalLB manifests + wait for controller Running
-2. MetalLB IPAddressPool + L2Advertisement CRs (must wait for webhook)
-3. CoreDNS ConfigMap patch + rollout restart
-4. Metrics Server manifest + insecure-TLS patch
-5. Gateway API CRDs (server-side apply)
-6. Envoy Gateway controller + wait for Available
-7. Dashboard (Headlamp) + RBAC + print token
+**Explicit exclusions:**
+- No Tailwind (`@astrojs/starlight-tailwind` has unresolved Tailwind v4 compatibility as of March 2026)
+- No Hugo modifications (existing `site/` belongs to upstream kind; leave it alone)
+- No Next.js, Docusaurus, or Jekyll (overkill, wrong fit, or 2010s-era DX)
 
 ### Expected Features
 
-See full feature analysis in `.planning/research/FEATURES.md`.
+Research analyzed Bun, Deno, Astro, kind, Headlamp, k9s, and DevSpace sites directly. The audience is developers who know Kubernetes and have used kind — they need to understand kinder's value over kind in under 10 seconds.
 
 **Must have (table stakes):**
-- LoadBalancer services get an EXTERNAL-IP within seconds — without MetalLB every LoadBalancer service hangs pending; this is the most visible failure
-- kubectl top nodes/pods works immediately after cluster creation — requires `--kubelet-insecure-tls` pre-applied
-- HTTPRoute traffic actually routable through Envoy Gateway — depends on MetalLB assigning gateway an IP; end-to-end smoke test required
-- Cluster DNS has no regression after CoreDNS tuning — patch must preserve the `kubernetes` plugin and `forward` directive exactly
-- Dashboard is reachable with a printed token — zero-friction first login; port-forward command printed at cluster creation end
+- One-line install command in hero — developers copy-paste before reading anything else
+- Copy-to-clipboard on all code blocks — Starlight provides this for doc pages; hero needs manual implementation
+- Dark mode as default — developer audience; Starlight provides toggle; dark must be the default
+- Installation guide doc page — deeplinked from GitHub README, blog posts, Stack Overflow answers
+- Configuration reference doc page — full `kinder.dev/v1alpha4` schema with all addon fields and defaults
+- Five addon doc pages (MetalLB, Envoy Gateway, Metrics Server, CoreDNS Tuning, Headlamp)
+- Quickstart page — 5-step path from zero to working cluster
+- GitHub link in nav — source visibility is a trust signal
+- Favicon + og:image — site identity and social share previews
+- Custom 404 page — avoids GitHub's default 404 breaking the experience
 
-**Should have (competitive differentiators):**
-- Deterministic IP range auto-carved from Docker/Podman/Nerdctl network subnet — users never configure IP pools manually
-- MetalLB supports all three providers (Docker, Podman, Nerdctl) — subnet inspection command differs per provider; implement `switch` on `ctx.Provider.String()`
-- Envoy Gateway GatewayClass created automatically — users can deploy HTTPRoutes without understanding GatewayClass controller names
-- CoreDNS cache TTL increased to 300s — reduces repeated upstream lookups in long dev sessions
-- All addons opt-out via cluster config `addons.disableX: true` — power users can skip any addon without forking kinder
+**Should have (competitive advantage):**
+- Addon card grid on landing page — the 5 addons are the product differentiator; visual cards make the value concrete with links to each doc page
+- Before/after comparison block — "kind gives you a bare cluster, kinder gives you a cluster with these 5 addons" is the fastest conversion pitch
+- Cluster config YAML example on landing page — opt-out config is a key DX feature; showing it early sets expectations
+- Animated terminal demo in hero — CSS animation preferred over asciinema; shows real `kinder create cluster` output
 
-**Defer to v1.1+:**
-- cert-manager integration for TLS — document manual cert path instead
-- Headlamp HTTPRoute via Envoy Gateway for dashboard URL — port-forward covers MVP
-- NodeLocal DNSCache — invasive node-level DaemonSet change
-- Prometheus + Grafana monitoring stack — separate milestone
-- CoreDNS `autopath @kubernetes` with `pods verified` — note: FEATURES.md recommends this; STACK.md recommends simpler `cache 300` only; start with simpler approach
-- VPA (Vertical Pod Autoscaler)
+**Defer (v2+):**
+- Blog section — requires ongoing content cadence; stale blog signals dead project
+- Versioned docs — overhead not justified until a breaking change exists between versions
+- Interactive playground — kinder requires Docker; browser sandbox is not feasible
 
 ### Architecture Approach
 
-The new addon actions integrate into kind's existing sequential action pipeline by appending after `waitforready` in `pkg/cluster/internal/create/create.go`. Each addon is a separate Go package under `pkg/cluster/internal/create/actions/` implementing the `actions.Action` interface, identical to existing actions like `installstorage`. The `ActionContext` already provides everything needed: `ctx.Nodes()` for the control-plane node, `ctx.Config` for addon opt-out flags, `ctx.Provider` for Docker/Podman/Nerdctl branching, and `ctx.Status` for progress display.
+The website is a fully self-contained Node project in `kinder-site/` at the repo root, completely decoupled from Go tooling, `go.mod`, and the existing Hugo `site/` directory. There is intentionally no runtime coupling between the CLI and the website — version numbers and addon details are hard-coded in MDX frontmatter and updated manually at release time. The landing page (`src/pages/index.astro`) overrides Starlight's root page to provide a full-width marketing layout without a sidebar; all documentation routes use Starlight's standard layout with sidebar, search, and breadcrumbs.
 
 **Major components:**
-1. `installmetallb` — Embeds metallb-native.yaml; detects Docker/Podman/Nerdctl network subnet at runtime; generates IPAddressPool + L2Advertisement in-memory; waits for controller rollout before applying CRs
-2. `installgatewayapi` — Embeds standard-install.yaml from Gateway API release; server-side apply; waits for CRD Established condition before returning
-3. `installenvoygw` — Embeds Envoy Gateway install.yaml; server-side apply; waits for envoy-gateway deployment Available
-4. `installmetricsserver` — Embeds pre-patched components.yaml (with `--kubelet-insecure-tls` baked in); waits for metrics-server deployment Available
-5. `installcorednstuning` — No embedded manifest; patches existing CoreDNS ConfigMap in-place; rolling restart; waits for coredns rollout
-6. `installdashboard` — Embeds Headlamp static manifests; creates kinder-dashboard ServiceAccount + cluster-admin ClusterRoleBinding; prints token and port-forward command to stdout
-
-**Config schema extension:** Add `Addons` struct to both internal `pkg/internal/apis/config/types.go` and public `pkg/apis/config/v1alpha4/types.go`. All fields are bool with `omitempty`, defaulting to `false` (all addons enabled). Regenerate `zz_generated.deepcopy.go` for both. The backward-compatible design means existing kind cluster configs that omit `addons:` continue to work unchanged.
-
-**Four implementation patterns (from ARCHITECTURE.md):**
-- Pattern 1: Embedded manifest — `//go:embed manifests/*.yaml` piped to `kubectl apply -f -` (all addons except CoreDNS)
-- Pattern 2: Dynamic manifest — generate YAML in Go after runtime subnet detection (MetalLB IPAddressPool only)
-- Pattern 3: Rollout wait — `kubectl rollout status --timeout=120s` after every workload apply
-- Pattern 4: Opt-out guard — `if !opts.Config.Addons.DisableX { actionsToRun = append(...) }` wrapping each action in `create.go`
+1. `kinder-site/` — entire Astro project; self-contained with own `package.json` and `package-lock.json`
+2. `src/content/docs/` — all documentation as Markdown/MDX; Starlight auto-generates sidebar, search index, and prev/next navigation
+3. `src/pages/index.astro` — custom landing page with Hero, FeatureGrid, AddonCard, QuickStart components; no sidebar
+4. `public/CNAME` — custom domain declaration; must be present in the build artifact on every deploy
+5. `public/.nojekyll` — prevents Jekyll from stripping the `_astro/` assets directory on GitHub Pages
+6. `.github/workflows/deploy-site.yml` — path-filtered workflow triggering only on `kinder-site/**` changes
 
 ### Critical Pitfalls
 
-Full details in `.planning/research/PITFALLS.md`. Top issues that will cause build rework or user-visible failures if ignored:
+Full details in `.planning/research/PITFALLS.md`. Top issues that cause silent production failures:
 
-1. **MetalLB IPs unreachable on macOS/Windows (C1)** — Docker's bridge network is inside a Linux VM on non-Linux hosts; MetalLB assigns IPs but they are unroutable from the host. Prevention: detect OS at startup, print warning on macOS/Windows, document Linux-only reachability prominently in README.
+1. **Jekyll strips the `_astro/` assets folder (C1)** — GitHub Pages runs Jekyll by default; Jekyll ignores directories starting with `_`; Astro outputs compiled assets to `dist/_astro/`. The site loads but has no styles, no JS, and broken images in production while working perfectly locally. Fix: add `public/.nojekyll` AND set `build: { assets: 'assets' }` in `astro.config.mjs`. Apply in Phase 1.
 
-2. **MetalLB IPAddressPool uses wrong subnet (C3)** — Docker `kind` network subnet is dynamic and hash-derived; hardcoding `172.18.x.x` fails on many machines. Prevention: always detect subnet at runtime via `docker/podman/nerdctl network inspect kind`; allocate the upper /28 of the detected subnet (e.g., `.200-.250`).
+2. **Custom domain resets on every deploy (C2)** — GitHub Pages stores the domain in a `CNAME` file in the deploy artifact. If absent, the domain clears silently after every push. Fix: commit `public/CNAME` containing `kinder.patrykgolabek.dev`; it copies to `dist/` on every build. Apply in Phase 1.
 
-3. **Envoy Gateway crash-loops when Gateway API CRDs are absent or not yet Established (C4)** — CRD must be Established (not just created) before the controller starts. Prevention: separate `installgatewayapi` action with `kubectl wait --for=condition=Established` before `installenvoygw` runs.
+3. **Wrong `base` config breaks all internal links (C3)** — Setting `base: '/kinder'` is correct for `username.github.io/kinder` sub-paths but wrong for a custom domain. Fix: set only `site: 'https://kinder.patrykgolabek.dev'`; omit `base`. Apply in Phase 1.
 
-4. **Metrics Server CrashLoop due to self-signed kubelet TLS (C6)** — Default metrics-server fails TLS verification against kind's self-signed kubelet certs. Prevention: embed components.yaml with `--kubelet-insecure-tls` and `--kubelet-preferred-address-types=InternalIP` pre-applied; verify with `kubectl top nodes` post-install.
+4. **Missing GitHub Actions permissions block deploy (C6)** — `actions/deploy-pages` requires `pages: write` and `id-token: write` explicitly declared; repository Pages setting must be "GitHub Actions" source. Apply in Phase 1.
 
-5. **CoreDNS forwarding loop on systemd-resolved hosts (C7)** — Ubuntu/Debian hosts expose `127.0.0.53` in `/etc/resolv.conf`; CoreDNS `forward . /etc/resolv.conf` loops back to itself. Prevention: use explicit upstream IPs (`8.8.8.8 1.1.1.1`) or `/run/systemd/resolve/resolv.conf` in the forward directive, or at minimum document and detect this condition.
+5. **Dark mode FOUC — page flashes white on load (C5)** — Browser renders light styles before the JS-managed `dark` class is applied. Fix: inject a blocking `is:inline` script in `<head>` that reads `localStorage` synchronously before first paint; also handle `astro:after-swap` for View Transitions. Apply in Phase 2.
 
-6. **Dashboard choice: kubernetes/dashboard is archived (C8 + FEATURES.md finding)** — Dashboard v3 requires cert-manager and Helm at runtime; Dashboard v2.7.0 is end-of-life. Prevention: use Headlamp instead; static manifests available, no Helm dependency, actively maintained.
-
-7. **CRD-before-CR timing race (M7)** — Applying CRDs and CRs in the same kubectl call races CRD propagation. Prevention: the kinder action pipeline serializes steps naturally; add explicit `kubectl wait --for=condition=Established` between CRD apply and any CR apply (particularly MetalLB: wait for webhook ready before IPAddressPool/L2Advertisement).
+---
 
 ## Implications for Roadmap
 
-Based on combined research, the natural implementation structure follows the addon dependency graph and the config schema change that must precede all action work.
+The architecture document's 6-phase build order is validated by both the feature dependencies and the pitfall-to-phase mapping. The order is non-negotiable: scaffold and deploy pipeline first, then theme, then documentation, then landing page, then assets, then polish. This sequence ensures deployment infrastructure is validated before any content is written.
 
-### Phase 1: Config Schema and Action Scaffolding
+### Phase 1: Scaffold and Deploy Pipeline
 
-**Rationale:** Every subsequent phase depends on the `Addons` struct existing in both the internal and public config types, and on the action pipeline entry points existing in `create.go`. This is pure scaffolding with no risk — it does not install anything. All eight modified files (types.go x2, convert.go, default.go, validate.go, deepcopy.go x2, create.go) must be updated before any action code can compile. This phase is the unblocking dependency for all other phases.
+**Rationale:** All 7 critical pitfalls except FOUC map to Phase 1. Infrastructure risk must be front-loaded. Getting a placeholder site live at `kinder.patrykgolabek.dev` before writing a word of content validates DNS, CNAME, GitHub Pages permissions, path filtering, and the `withastro/action` subdirectory setup simultaneously.
 
-**Delivers:** Compilable project with `addons:` YAML key support; opt-out flags functional (no-op since no addon actions yet); deep-copy regenerated; backward-compatible with existing cluster configs.
+**Delivers:** Working `kinder.patrykgolabek.dev` URL with Starlight default content; GitHub Actions deploy pipeline; DNS + HTTPS configured.
 
-**Addresses:** Config opt-out feature from FEATURES.md; ARCHITECTURE.md config schema spec.
+**Addresses:**
+- Bootstrap `kinder-site/` with `npm create astro@latest -- --template starlight`
+- Configure `astro.config.mjs`: `site`, sidebar structure, social links, `build: { assets: 'assets' }`
+- Add `public/CNAME` (`kinder.patrykgolabek.dev`), `public/.nojekyll`
+- Add `.github/workflows/deploy-site.yml` with path filtering (`kinder-site/**`) and correct permissions
+- Configure GitHub Pages: source = GitHub Actions; custom domain
+- Configure DNS: CNAME record `kinder -> patrykgolabek.github.io`
+- Update existing Go CI workflows: add `kinder-site/**` to `paths-ignore` in all four Go workflow files
 
-**Avoids:** The anti-pattern of embedding addon logic in create.go directly rather than using the action pattern (ARCHITECTURE.md Anti-Pattern discussion).
+**Avoids:** C1 (Jekyll asset stripping), C2 (CNAME reset), C3 (base config), C4 (site URL mismatch), C6 (workflow permissions), C7 (path filtering)
 
-**Research flag:** Standard patterns — no deeper research needed. Kind's existing code is the template.
+**Research flag:** SKIP — all patterns are well-documented in official Astro and GitHub Pages docs.
 
-### Phase 2: MetalLB Addon Action
+---
 
-**Rationale:** MetalLB is the load-balancer foundation that Envoy Gateway depends on. It must be implemented and verified before Envoy Gateway can be tested end-to-end. It also has the most complex runtime logic (subnet detection, IP range calculation, multi-provider branching) and the most pitfalls, making it the highest-risk single action — address it early when it is easiest to iterate.
+### Phase 2: Dark Theme
 
-**Delivers:** `installmetallb` package; embedded metallb-native.yaml; runtime Docker/Podman/Nerdctl subnet detection; IPAddressPool + L2Advertisement applied post-webhook-ready; `kubectl get svc` shows EXTERNAL-IP after cluster creation on Linux.
+**Rationale:** Theme must be established before content is written so all pages render correctly from the start. FOUC prevention requires a layout-level change that is cheap to add once and expensive to retrofit.
 
-**Uses:** MetalLB v0.15.3 manifest; Docker/Podman/Nerdctl network inspect; IPAddressPool v1beta1 CRDs.
+**Delivers:** Dark terminal aesthetic across the entire Starlight site; no white flash on load or page navigation.
 
-**Implements:** Pattern 1 (embedded manifest) + Pattern 2 (dynamic manifest for pool config) + Pattern 3 (rollout wait).
+**Addresses:**
+- Install `@fontsource-variable/inter`
+- Add `src/styles/custom.css` with `--sl-*` CSS variable overrides (near-black background, cyan accent)
+- Override `--sl-font` to Inter Variable; `--sl-font-mono` to Geist Mono or system monospace
+- Add blocking `is:inline` script in base layout `<head>` for FOUC prevention
+- Handle `astro:after-swap` for View Transitions dark mode persistence
 
-**Avoids:** C2 (single-node exclude label — verify kubeadminit removes it first), C3 (wrong subnet — runtime detection required), C1 (macOS warning printed to stderr).
+**Avoids:** C5 (dark mode FOUC)
 
-**Research flag:** Standard patterns — MetalLB + kind is extremely well-documented. No additional research phase needed.
+**Research flag:** SKIP — CSS variable overrides are a documented Starlight public API; inline script pattern is well-documented.
 
-### Phase 3: Metrics Server Addon Action
+---
 
-**Rationale:** Metrics Server has zero dependencies on other addons, is the simplest action to implement (single manifest + one patch), and its verification (`kubectl top nodes`) is the fastest smoke test. Implementing it immediately after MetalLB gives a working end-to-end addon to validate the action scaffolding against before tackling the more complex Envoy Gateway.
+### Phase 3: Documentation Content
 
-**Delivers:** `installmetricsserver` package; pre-patched components.yaml embedded; `kubectl top nodes` and `kubectl top pods` functional within 60 seconds of cluster creation.
+**Rationale:** Documentation pages are structurally simple (MDX files in `src/content/docs/`) and unblock the landing page's addon card grid. The `kinder.dev/v1alpha4` schema from v1.0 is already finalized, unblocking the config reference immediately.
 
-**Uses:** Metrics Server v0.8.1 with `--kubelet-insecure-tls` and `--kubelet-preferred-address-types=InternalIP` pre-applied.
+**Delivers:** Complete documentation set: installation guide, quickstart, configuration reference, and 5 addon pages — all reachable via Starlight sidebar and Pagefind search.
 
-**Implements:** Pattern 1 (embedded pre-patched manifest) + Pattern 3 (rollout wait).
+**Addresses (all P1 from FEATURES.md):**
+- `getting-started/installation.mdx` — Linux/macOS/Windows; go install + binary download
+- `getting-started/quick-start.mdx` — 5-step flow: prerequisites, install, create cluster, verify
+- `configuration.mdx` — full `kinder.dev/v1alpha4` schema with all addon fields, defaults, and examples
+- `addons/metallb.mdx`, `addons/envoy-gateway.mdx`, `addons/metrics-server.mdx`, `addons/coredns.mdx`, `addons/headlamp.mdx` — what each installs, what you get, how to disable, known constraints
 
-**Avoids:** C6 (TLS crash-loop — insecure-tls must be baked in, not applied as a separate patch step); M5 (apiserver aggregation — do not modify kubeadm config).
+**Feature dependency note:** Config and addon docs are immediately unblocked by v1.0 work. Installation guide depends on confirming the binary distribution method (see Gaps).
 
-**Research flag:** Standard patterns — the insecure-tls fix is universally documented. No additional research needed.
+**Research flag:** SKIP for structure — file-based routing is well-documented. FLAG for content: confirm binary distribution method before finalizing the installation guide page.
 
-### Phase 4: CoreDNS Tuning Action
+---
 
-**Rationale:** CoreDNS tuning has no dependencies on other addons and affects all pods from the moment it is applied. Implementing it after Metrics Server but before Envoy Gateway means all subsequent addon pods benefit from improved cache settings. It is also the action with the most nuanced implementation (patch-in-place, not apply) and the highest risk of inadvertently breaking cluster DNS if done wrong — better to isolate it as its own phase with focused testing.
+### Phase 4: Landing Page
 
-**Delivers:** `installcorednstuning` package; CoreDNS cache TTL increased to 300s; `lameduck 5s` added; ConfigMap patched in-place preserving all existing plugins; rollout restart confirmed.
+**Rationale:** The landing page requires all doc pages to exist first (addon cards link to them). Custom components live in `src/components/` using Starlight's CSS variables but with their own layout CSS.
 
-**Uses:** ConfigMap patch (no embedded manifest); `kubectl patch` + `kubectl rollout restart`.
+**Delivers:** Full marketing landing page at `/` with hero, addon grid, and quickstart section. Distinguishes kinder from kind visually and communicates value in under 10 seconds.
 
-**Implements:** Pattern 3 (rollout wait); explicit read-modify-write to avoid full ConfigMap overwrite.
+**Addresses (P1 + selected P2 from FEATURES.md):**
+- Hero: headline, value proposition, one-line install command with copy-to-clipboard
+- Addon card grid: 5 cards with icon, name, one-liner, link to doc page
+- Before/after comparison block: kind bare cluster vs kinder with addons (P2 but low cost, high value)
+- Cluster config YAML example showing opt-out addon flags
+- Quickstart code block (`kinder create cluster`)
+- Version badge and GitHub link in nav
 
-**Avoids:** C7 (systemd-resolved forwarding loop — audit forward directive before patching); M4 (full ConfigMap overwrite — use merge patch, always include complete Corefile preserving kubernetes plugin).
+**Implementation note:** Use `src/pages/index.astro` overriding Starlight's root. Wrap with `<StarlightPage frontmatter={{ template: 'splash' }}>` for full-width no-sidebar layout while keeping Starlight's nav and footer.
 
-**Research flag:** Needs validation during implementation — the exact merge-patch strategy for the Corefile (which is a string blob, not structured YAML) requires testing against actual kind clusters with and without systemd-resolved. Consider making the upstream forwarder configurable.
+**Research flag:** SKIP — splash template and `src/pages/index.astro` override pattern are documented in ARCHITECTURE.md with working code examples.
 
-### Phase 5: Envoy Gateway Addon Actions (Gateway API CRDs + Controller)
+---
 
-**Rationale:** Envoy Gateway comes after MetalLB (verified in Phase 2) because the Gateway proxy service requires a LoadBalancer IP from MetalLB. It is split into two actions (`installgatewayapi` then `installenvoygw`) matching the dependency: CRDs must be Established before the controller starts. This is the most architecturally complex addon because it involves large manifests (~3,000 lines), server-side apply, and a strict two-step ordering with a readiness wait in between.
+### Phase 5: Assets and Identity
 
-**Delivers:** `installgatewayapi` + `installenvoygw` packages; Gateway API CRDs (experimental channel) installed; Envoy Gateway controller running; GatewayClass `eg` available; Gateway proxy service gets an EXTERNAL-IP from MetalLB; HTTPRoute traffic routable end-to-end.
+**Rationale:** Favicon, og:image, and 404 page complete the site's identity. Deferred until after content so the og:image reflects the final headline and branding.
 
-**Uses:** Envoy Gateway v1.7.0 install.yaml (bundles Gateway API CRDs + controller); `kubectl apply --server-side`; `kubectl wait --for=condition=Established` on CRDs before controller deployment.
+**Delivers:** Complete site identity: favicon, custom og:image for social sharing previews, styled 404 page.
 
-**Implements:** Pattern 1 (embedded manifest, server-side) + Pattern 3 (rollout wait) + Pattern 4 (opt-out guard with nested DisableGatewayAPI gating DisableEnvoyGateway).
+**Addresses:**
+- `public/favicon.svg` — dark-friendly site icon
+- `public/og-image.png` (1200x630) — logo + tagline for Slack/Discord/Twitter card previews
+- `src/pages/404.astro` or `public/404.html` — styled 404 with link back to home
 
-**Avoids:** C4 (CRD-before-controller ordering — explicit Established wait between actions); C5 (Gateway stays Unknown — MetalLB must be ready first); N2 (direct_response 500s — verify backend services exist in smoke test).
+**Research flag:** SKIP — standard static site patterns.
 
-**Research flag:** May benefit from a research-phase pass during planning. The experimental vs. standard Gateway API CRD channel distinction (PITFALLS.md C4) and the large embedded manifest size (binary size implications) are areas that need implementation-time decisions. Specifically: should kinder embed the full experimental-channel CRDs, or only standard-channel? Verify binary size impact of embedding ~3,000-line install.yaml.
+---
 
-### Phase 6: Dashboard Addon Action (Headlamp)
+### Phase 6: Polish and Validation
 
-**Rationale:** Dashboard is cosmetic and has no hard dependencies on other addons (port-forward access works without Envoy Gateway). Placing it last allows the implementation to optionally create an HTTPRoute pointing to Headlamp if Envoy Gateway is also enabled, without making that a blocking dependency. It is also the addon with the sharpest research conflict (Headlamp vs kubernetes/dashboard) that requires a decision before implementation begins.
+**Rationale:** Final pre-launch verification against the PITFALLS.md "Looks Done But Isn't" checklist. Confirms nothing was missed in production that worked locally.
 
-**Delivers:** `installdashboard` package; Headlamp deployed in `kube-system` (or `headlamp` namespace); `kinder-dashboard` ServiceAccount with cluster-admin ClusterRoleBinding; long-lived token printed to stdout; port-forward command printed; optional HTTPRoute created if Envoy Gateway is enabled.
+**Delivers:** Confirmed production-ready site. All pitfall checklist items verified against the live URL.
 
-**Uses:** Headlamp v0.40.1 static manifests (embed directly — no Helm required); inline RBAC YAML; `kubectl create token` or static Secret for persistent token.
+**Addresses:**
+- Run full checklist from PITFALLS.md against `https://kinder.patrykgolabek.dev`
+- Confirm `dist/.nojekyll`, `dist/CNAME`, `dist/assets/` all exist after build
+- HTTPS enforced, no mixed content
+- OG tags: paste URL in opengraph.xyz — title, description, image all correct
+- Sitemap: all URLs start with `https://kinder.patrykgolabek.dev`
+- Mobile responsive: custom landing page components tested on small viewport
+- CI isolation: push Go change and confirm site deploy does NOT trigger; push site change and confirm Go CI does NOT trigger
 
-**Implements:** Pattern 1 (embedded manifest) + Pattern 3 (rollout wait) + token/access instructions printed via `ctx.Logger`.
+**Research flag:** SKIP — verification checklist is already fully specified in PITFALLS.md.
 
-**Avoids:** C8 (kubernetes/dashboard v3 Kong+cert-manager requirement — use Headlamp instead); M6 (RBAC insufficient — create explicit cluster-admin SA, not default SA); N5 (1-hour token expiry — use `--duration=8760h` or static Secret).
-
-**Research flag:** Needs focused research on Headlamp static manifests before implementation. The STACK.md and ARCHITECTURE.md were written assuming kubernetes/dashboard — Headlamp deployment manifests, service names, and access patterns are different and need to be verified against the Headlamp v0.40.1 release.
-
-### Phase 7: Integration Testing and Smoke Tests
-
-**Rationale:** PITFALLS.md documents a "Looks Done But Isn't" checklist for every addon — a pod Running does not mean the addon works. Each phase should include functional smoke tests, but the final phase consolidates end-to-end validation: a full `kinder create cluster` run that verifies all addons are functional before the cluster is reported ready.
-
-**Delivers:** Functional verification for each addon embedded in the action's `Execute()` method (not just rollout wait); cross-addon integration tests (e.g., MetalLB → Envoy Gateway → HTTPRoute end-to-end); CI test additions; documentation.
-
-**Implements:** Per-addon `kubectl wait --for=condition=Available`; post-install `kubectl top nodes` check; post-CoreDNS DNS resolution check from test pod; Gateway end-to-end curl test.
-
-**Avoids:** TD2 (no health verification after installation — the most common source of "works on my machine" bugs across all addons).
-
-**Research flag:** Standard patterns — verification commands are documented per-addon in PITFALLS.md. No additional research needed.
+---
 
 ### Phase Ordering Rationale
 
-- Config schema change is Phase 1 because it is a compile-time prerequisite for all action code; nothing can be written without it.
-- MetalLB is Phase 2 because Envoy Gateway has a hard runtime dependency on MetalLB (LoadBalancer IP assignment), and testing the most risk-laden addon early allows iteration while the codebase is small.
-- Metrics Server is Phase 3 because it is independent, simple, and provides an immediately verifiable outcome (`kubectl top nodes`) that validates the action scaffolding works correctly.
-- CoreDNS is Phase 4 because it affects all subsequent pods and has a subtle implementation risk (ConfigMap merge vs. replace) that is easier to isolate in its own phase.
-- Envoy Gateway is Phase 5, not Phase 3 or 4, because it requires MetalLB to be stable and tested first (Phase 2), and because its large manifest and two-step CRD ordering make it the most implementation-intensive action.
-- Dashboard is last because it is cosmetic, opt-outable without losing core functionality, and requires a research decision (Headlamp vs. archived kubernetes/dashboard) that should not block other phases.
-- Integration testing is its own phase because the per-addon smoke tests interact with the full cluster state and are best validated after all addons can coexist.
+- **Infrastructure before content (Phases 1-2 before 3-6):** Deployment pitfalls are silent in local dev and only appear in production. Discovering a broken deploy after writing 8 doc pages wastes time; discovering it with a placeholder site costs nothing.
+- **Theme before content (Phase 2 before Phase 3):** FOUC is a layout-level problem. Adding the blocking inline script after content is the same work, but the visual regression is harder to catch across many pages.
+- **Docs before landing page (Phase 3 before Phase 4):** Addon cards on the landing page link to addon doc pages. Content first means links resolve when the landing page is built.
+- **Content before identity (Phase 5 after Phase 4):** The og:image should reflect the final landing page headline and branding, which is only stable after the landing page is complete.
 
 ### Research Flags
 
 Phases needing deeper research during planning:
-- **Phase 4 (CoreDNS):** The merge-patch strategy for the Corefile blob (string value in a ConfigMap, not structured YAML) and the systemd-resolved detection/mitigation strategy need implementation-time research. Also reconcile the STACK.md recommendation (simple `cache 300`) against the FEATURES.md recommendation (`autopath @kubernetes` + `pods verified`) — these are different complexity levels.
-- **Phase 5 (Envoy Gateway):** Confirm standard vs. experimental Gateway API CRD channel decision; measure embedded manifest binary size impact; verify `kubectl wait --for=condition=Established` exact syntax for multiple CRDs.
-- **Phase 6 (Dashboard):** Headlamp v0.40.1 static manifest discovery — confirm deployment YAML is available without Helm; verify service names and port numbers differ from kubernetes/dashboard.
+- **Phase 3 (Documentation — content only):** Confirm binary distribution method before writing the installation guide. The install command in the hero depends on whether GitHub Releases binaries exist, whether `go install` is the supported path, or whether a Homebrew tap is planned. This is a product decision that unblocks the installation guide.
 
-Phases with standard patterns (skip research-phase):
-- **Phase 1 (Config schema):** Kind's own types.go and zz_generated.deepcopy.go are the template; pattern is clear.
-- **Phase 2 (MetalLB):** Extensively documented; subnet detection pattern validated by multiple community sources.
-- **Phase 3 (Metrics Server):** The insecure-TLS fix is universally documented; no ambiguity.
-- **Phase 7 (Integration testing):** Verification commands are fully specified in PITFALLS.md.
+Phases with standard patterns (no deeper research needed):
+- **Phase 1:** Official Astro + GitHub Pages docs are comprehensive. CNAME, `.nojekyll`, workflow permissions — all verified with sources.
+- **Phase 2:** Starlight CSS variable system is a documented public API. FOUC inline script is a known, sourced pattern.
+- **Phase 4:** Splash template and `src/pages/index.astro` override pattern are documented with working code examples in ARCHITECTURE.md.
+- **Phase 5:** Standard static site asset patterns.
+- **Phase 6:** Checklist already derived from PITFALLS.md research.
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Versions verified against GitHub releases and official docs as of March 2026; one conflict (Dashboard choice) flagged and resolved in favor of Headlamp |
-| Features | HIGH | Core features well-documented; FEATURES.md raises valid Headlamp recommendation backed by official archive notice |
-| Architecture | HIGH | Kind codebase read directly at commit 89ff06bd; action pattern is clear and consistent; one inconsistency (Dashboard version) noted |
-| Pitfalls | HIGH | 8 critical, 7 moderate, 5 minor pitfalls documented with sources; most are confirmed by official GitHub issues or docs |
+| Stack | HIGH | Versions verified against npm, GitHub releases, and official docs as of March 2026. Tailwind exclusion based on confirmed open issue. Node 22 requirement sourced to official Astro changelog. |
+| Features | HIGH | Based on direct analysis of 7 reference sites (Bun, Deno, Astro, kind, Headlamp, k9s, DevSpace) plus Evil Martians dev-tool landing page study. |
+| Architecture | HIGH | Official Astro and Starlight docs; existing kinder repo read directly. All code examples verified against working patterns. Anti-patterns sourced to confirmed GitHub issues and community discussions. |
+| Pitfalls | HIGH | Each pitfall sourced to official GitHub Actions docs, confirmed GitHub community discussions, or open Astro/Starlight issues with confirmed reproduction steps. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Dashboard implementation choice:** The three research files disagree — FEATURES.md recommends Headlamp, STACK.md recommends kubernetes/dashboard Helm chart 7.14.0, ARCHITECTURE.md references kubernetes/dashboard v2.7.0. This must be resolved before Phase 6 begins. Recommendation: adopt Headlamp (FEATURES.md position is most current and technically sound given the January 2026 archive). Requires a focused research pass on Headlamp v0.40.1 static manifests.
+- **Binary distribution method:** The install command on the landing page and in the installation guide depends on this. Options: `go install github.com/patrykgolabek/kinder@latest` (simplest, requires Go), direct binary download from GitHub Releases (broader audience), Homebrew tap (easiest UX, most setup). Confirm before Phase 3.
 
-- **CoreDNS Corefile merge strategy:** ConfigMap values are string blobs — standard `kubectl patch --type=merge` merges ConfigMap `.data` keys but does not merge the string value within a key. The implementation must read the existing Corefile string, modify it programmatically in Go, and write it back. This is not documented in ARCHITECTURE.md and needs an implementation decision.
+- **v1.1 release timing vs. site launch:** If the site goes live before a tagged release exists, the install command must reference an existing tag or commit. Coordinate site launch with a tagged release.
 
-- **Binary size impact of embedded manifests:** Envoy Gateway install.yaml is ~3,000 lines; metallb-native.yaml is significant; the pre-rendered Dashboard manifests add more. Total binary size increase should be measured and, if excessive, the Envoy Gateway manifest should be compressed before embedding using `compress/gzip` + `//go:embed`.
+- **Logo asset:** Research assumes a `logo.svg` will be created for `src/assets/logo.svg`. No logo design is scoped in this research. If no logo exists, the Starlight site title text serves as a placeholder until Phase 5.
 
-- **macOS/Windows mitigation strategy:** Research confirms MetalLB IPs are unreachable on macOS/Windows but does not specify the exact warning mechanism in kinder. This should be a stderr warning printed by `installmetallb` when `runtime.GOOS != "linux"`, before attempting installation. Whether to skip MetalLB entirely on macOS/Windows (different user experience) is a product decision not resolved by the research.
+- **GitHub repo ownership:** ARCHITECTURE.md and STACK.md reference both `patrykgolabek/kinder` and `patrykattc/kinder` as the GitHub URL. Confirm the correct GitHub username before writing any docs or config files that include the install command or GitHub link.
 
-- **Podman rootless MetalLB viability:** PITFALLS.md M2 flags that MetalLB L2 speaker may not work in rootless Podman due to host-network and raw socket restrictions. No definitive resolution is documented. This needs testing against the Podman provider during Phase 2.
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Kind codebase at `/Users/patrykattc/work/git/kinder` (commit 89ff06bd) — action pipeline, provider interface, config types
-- MetalLB official docs (metallb.universe.tf) — v0.15.3 installation, IPAddressPool, L2Advertisement, L2 mode concepts, troubleshooting
-- Envoy Gateway official docs (gateway.envoyproxy.io) — v1.7.0 install YAML, compatibility matrix, quickstart
-- Metrics Server GitHub (kubernetes-sigs/metrics-server) — v0.8.1 release, kind-specific TLS requirement
-- Kubernetes official docs (kubernetes.io) — CoreDNS customization, resource metrics pipeline, DNS custom nameservers
-- CoreDNS official docs (coredns.io) — loop plugin, autopath plugin
-- Headlamp GitHub (kubernetes-sigs/headlamp) — v0.40.1 releases, official SIG UI successor status
-- kubernetes-retired/dashboard GitHub — official archive confirmation, January 2026
+- Astro 5.17 official docs: https://astro.build/
+- @astrojs/starlight@0.37.6 official docs: https://starlight.astro.build/
+- Starlight configuration reference: https://starlight.astro.build/reference/configuration/
+- Starlight CSS and theming guide: https://starlight.astro.build/guides/css-and-tailwind/
+- Astro GitHub Pages deployment guide: https://docs.astro.build/en/guides/deploy/github/
+- withastro/action@v5.2.0: https://github.com/withastro/action
+- GitHub Pages custom domain docs: https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/
+- GitHub Actions concurrency docs: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
+- Astro issue #14247 (Jekyll `_astro` stripping): https://github.com/withastro/astro/issues/14247
+- Starlight issue #3339 (.nojekyll fix): https://github.com/withastro/starlight/issues/3339
+- starlight-tailwind Tailwind v4 issue (OPEN): https://github.com/withastro/starlight/issues/2862
+- GitHub community: CNAME reset on deploy: https://github.com/orgs/community/discussions/48422
+- Existing kinder repo read directly at `/Users/patrykattc/work/git/kinder`
 
 ### Secondary (MEDIUM confidence)
-- michaelheap.com — MetalLB + kind subnet detection pattern (verified technique)
-- MetalLB kind issue #3167 — Docker gateway IP conflict
-- kind issue #3556 — macOS bridge network limitation confirmed
-- CoreDNS loop issue #2354 — systemd-resolved root cause
-- metrics-server kind gist (sanketsudake) — insecure-TLS patch pattern
+- Bun, Deno, Astro, kind, Headlamp, k9s, DevSpace landing pages — direct analysis for feature research
+- Evil Martians: "We studied 100 dev tool landing pages" — partially paywalled; used for feature prioritization validation
+- Astro dark mode FOUC patterns: simonporter.co.uk, danielnewton.dev — community-confirmed inline script pattern
+- Astro issue #8711 (FOUC during View Transitions): https://github.com/withastro/astro/issues/8711
 
 ### Tertiary (LOW confidence)
-- Community blogs on Kubernetes Dashboard alternatives (2026) — useful ecosystem context; Headlamp recommendation independently verified against official sources
-- Gateway API in 2026 dev.to post — ecosystem overview; Envoy Gateway adoption claim supported by CNCF incubation status
+- Astro in 2026 (sitepins.com) — used only for Cloudflare acquisition context; not used for technical decisions
 
 ---
 *Research completed: 2026-03-01*

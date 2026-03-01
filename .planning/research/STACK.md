@@ -1,434 +1,314 @@
-# Technology Stack: Kinder Addons
+# Technology Stack: Kinder Website
 
-**Project:** kinder — batteries-included kind fork
-**Milestone:** v1.0 Addons (MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Kubernetes Dashboard)
+**Project:** kinder website — landing page + docs at kinder.patrykgolabek.dev
+**Milestone:** v1.1 Website (new work only — Go/kind stack unchanged)
 **Researched:** 2026-03-01
-**Overall confidence:** HIGH (versions verified against GitHub releases and official docs)
+**Confidence:** HIGH (versions verified against npm, GitHub releases, and official docs)
+
+---
+
+## Context: What This Stack Is For
+
+The existing kinder codebase is Go. The website is an entirely separate artifact in `kinder-site/` with no Go dependencies. This document covers only the website stack additions. Do not change Go build tooling, go.mod, or the existing `site/` directory (Hugo-based, kind's original site — leave it alone).
 
 ---
 
 ## Recommended Stack
 
-### Addon Versions and Manifests
+### Core Technologies
 
-| Addon | Version | Manifest / Install Method | Confidence |
-|-------|---------|--------------------------|------------|
-| MetalLB | v0.15.3 | `kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml` | HIGH |
-| Envoy Gateway | v1.7.0 | `kubectl apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.7.0/install.yaml` | HIGH |
-| Gateway API CRDs | v1.4.1 | Bundled inside Envoy Gateway v1.7.0 install.yaml (experimental channel) | HIGH |
-| Metrics Server | v0.8.1 | `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.8.1/components.yaml` + patch | HIGH |
-| CoreDNS tuning | N/A (ConfigMap edit) | `kubectl patch configmap/coredns -n kube-system --patch-file <embedded-patch>` | HIGH |
-| Kubernetes Dashboard | Helm chart 7.14.0 | Helm only — no static manifest available | HIGH |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Astro | 5.x (currently 5.17) | Site framework | Zero-JS-by-default content framework; 62% of sites with good Core Web Vitals use it. Static output with GitHub Pages adapter. Starlight is built on it. |
+| @astrojs/starlight | 0.37.x (currently 0.37.6) | Docs theme + site structure | Purpose-built docs framework: built-in search (Pagefind), sidebar nav, dark mode, MDX, syntax highlighting (Expressive Code), i18n. Single install covers all doc needs. |
+| TypeScript | bundled with Astro | Type safety | Astro ships `strict` tsconfig presets. Use `astro/tsconfigs/strict`. No separate install. |
+| Node.js | 22.x LTS | Runtime | Astro 5.8+ dropped Node 18. Node 22 is the current LTS. withastro/action@v5 defaults to Node 22. |
+
+### Supporting Libraries
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| @fontsource-variable/inter | ^5.x | Variable font, self-hosted | Use for body text. Self-hosting avoids Google Fonts GDPR exposure and improves load time. |
+| @fontsource/geist-mono | ^1.x | Monospace font, self-hosted | Use for code blocks. Matches the aesthetic of Bun/Deno/Linear developer sites. Only install if Expressive Code can't be themed to use system mono — for most cases, CSS `font-family` override in Starlight custom CSS is sufficient. |
+
+**Note on Tailwind:** Do NOT add Tailwind to the Starlight site. Starlight's Tailwind integration (`@astrojs/starlight-tailwind`) does not yet have stable Tailwind v4 support (the issue is open as of March 2026 and Tailwind changed its plugin architecture). Starlight has its own CSS custom property system (`--sl-*` variables) that is simpler and sufficient for the dark theme customization needed. Adding Tailwind introduces an unstable integration layer for no meaningful gain.
+
+### Dark Theme Approach
+
+Starlight ships with dark mode built in (toggle and `prefers-color-scheme` detection). The "modern dark developer tool" aesthetic (like Bun, Deno) requires only CSS custom property overrides in a custom CSS file — no additional library.
+
+Key `--sl-color-*` CSS variables to override for dark terminal aesthetic:
+
+```css
+/* src/styles/custom.css */
+:root[data-theme='dark'] {
+  --sl-color-accent:        #00e5ff;   /* cyan accent — links, active items */
+  --sl-color-accent-high:   #00b8cc;
+  --sl-color-accent-low:    #003a42;
+  --sl-color-bg:            #0d0f12;   /* near-black background */
+  --sl-color-bg-nav:        #0d0f12;
+  --sl-color-bg-sidebar:    #111318;
+  --sl-color-hairline:      #1e2128;
+  --sl-font:                'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono:           'Geist Mono', ui-monospace, 'Cascadia Code', monospace;
+}
+```
+
+Reference this file in `astro.config.mjs` via `customCss: ['./src/styles/custom.css']`.
+
+### Deployment and CI/CD
+
+| Tool | Version | Purpose | Why |
+|------|---------|---------|-----|
+| withastro/action | v5 (v5.2.0) | GitHub Actions — build Astro site | Official Astro action; detects package manager from lockfile; supports `path:` for subdirectory projects. |
+| actions/deploy-pages | v4 | GitHub Actions — publish to GitHub Pages | Pairs with withastro/action; handles Pages environment and URL output. |
+| actions/checkout | v4+ | GitHub Actions — checkout repo | Standard; use latest stable. |
+
+### Development Tools
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| npm | Package manager | Default; withastro/action auto-detects from `package-lock.json`. Do not use pnpm unless you commit `pnpm-lock.yaml` — the action detects the PM from the lockfile. npm is simpler for a small site with no workspace requirements. |
+| Expressive Code | Syntax highlighting | Bundled inside Starlight — no separate install. Default theme is Night Owl (dark+light pair). Override via `expressiveCode` in `astro.config.mjs` to use `github-dark` or `dracula`. |
+| Pagefind | Full-text search | Bundled inside Starlight — no separate install. Zero-config. Runs as part of the build, indexes all docs content. |
 
 ---
 
-## Per-Addon Detail
+## Installation
 
-### 1. MetalLB v0.15.3
+```bash
+# Bootstrap new Astro + Starlight project in kinder-site/
+npm create astro@latest kinder-site -- --template starlight
 
-**Why v0.15.3:** Latest stable release (December 4, 2024). v0.15.x adds IPAddressPool status counters and ServiceBGPStatus CRD. No breaking changes to L2 mode or IPAddressPool/L2Advertisement CRDs from v0.14.x.
+cd kinder-site
 
-**Manifest URL (pin this exactly):**
+# Self-hosted fonts (optional but recommended)
+npm install @fontsource-variable/inter
+
+# That's it — Astro, Starlight, TypeScript, Expressive Code, Pagefind
+# are all included in the create-astro template
 ```
-https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
+
+**What you get from the Starlight template (no additional installs):**
+- Astro 5.x
+- @astrojs/starlight latest
+- Expressive Code (syntax highlighting)
+- Pagefind (search)
+- TypeScript config (`astro/tsconfigs/strict`)
+- File-based routing (`src/content/docs/`)
+- Dark/light mode toggle
+
+---
+
+## GitHub Pages Configuration
+
+### `kinder-site/astro.config.mjs`
+
+```javascript
+import { defineConfig } from 'astro/config';
+import starlight from '@astrojs/starlight';
+
+export default defineConfig({
+  site: 'https://kinder.patrykgolabek.dev',
+  // No `base` needed — custom domain, not a github.io/repo-name path
+  integrations: [
+    starlight({
+      title: 'kinder',
+      description: 'Batteries-included local Kubernetes clusters',
+      customCss: ['./src/styles/custom.css'],
+      social: [
+        { label: 'GitHub', icon: 'github', href: 'https://github.com/patrykgolabek/kinder' },
+      ],
+      logo: {
+        src: './src/assets/logo.svg',
+      },
+      editLink: {
+        baseUrl: 'https://github.com/patrykgolabek/kinder/edit/main/kinder-site/',
+      },
+      sidebar: [
+        { label: 'Getting Started', items: [
+          { label: 'Installation', slug: 'getting-started/installation' },
+          { label: 'Quick Start', slug: 'getting-started/quick-start' },
+        ]},
+        { label: 'Configuration', autogenerate: { directory: 'configuration' }},
+        { label: 'Addons', autogenerate: { directory: 'addons' }},
+      ],
+    }),
+  ],
+});
 ```
 
-**What the manifest installs:**
-- Namespace `metallb-system`
-- Controller Deployment (IP allocation)
-- Speaker DaemonSet (ARP responder for L2 mode)
-- 7 CRDs under `metallb.io` group, all `v1beta1` (IPAddressPool, L2Advertisement, BGPPeer v1beta2, BGPAdvertisement, BFDProfile, Community, ConfigurationState)
-- RBAC, ValidatingWebhookConfiguration
+### `kinder-site/public/CNAME`
 
-**Post-install configuration required (two CRs):**
+```
+kinder.patrykgolabek.dev
+```
+
+This single file in `public/` is deployed to the root of the GitHub Pages site. GitHub reads it to serve the site at the custom domain. No other GitHub configuration file is needed.
+
+### DNS Record (at your domain registrar)
+
+```
+Type:  CNAME
+Host:  kinder
+Value: patrykgolabek.github.io
+TTL:   3600
+```
+
+**Note:** Add the custom domain in GitHub repo Settings > Pages > Custom domain BEFORE pushing the CNAME file, or GitHub will overwrite it. After DNS propagation (up to 24h), enable "Enforce HTTPS" in the same settings panel.
+
+### `.github/workflows/deploy-site.yml`
 
 ```yaml
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: kinder-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    - <DOCKER_SUBNET_UPPER_RANGE>
----
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: kinder-l2advert
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - kinder-pool
+name: Deploy kinder website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kinder-site/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and upload
+        uses: withastro/action@v5
+        with:
+          path: kinder-site/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 ```
 
-**Kind/Docker-specific: IP range detection.**
-The Docker network for kind is typically `172.18.0.0/16` but is not guaranteed. At action execution time, detect the subnet dynamically:
-
-```bash
-docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' kind
-```
-
-Allocate the upper /27 of that subnet (last 32 addresses) for MetalLB to avoid clashes with container IPs. Example: if subnet is `172.18.0.0/16`, pool is `172.18.255.200-172.18.255.250`.
-
-In Go, within the action, use `exec.Command("docker", "network", "inspect", ...)` on the provider name, then template the IPAddressPool CIDR before applying. Alternatively hard-code a subnet that does not overlap with Docker's default gateway assignments and document the assumption.
-
-**Why L2 mode (not BGP):** L2 mode requires no BGP router configuration. It works via ARP, which functions correctly within Docker's bridge network. BGP mode requires a BGP peer (like FRR) which does not exist in kind's network by default.
-
-**Wait condition:** Poll `kubectl get pods -n metallb-system` until controller and speaker pods are Running. Then apply the IPAddressPool and L2Advertisement CRs. CRs must be applied AFTER the webhook is ready (controller pod Running), otherwise the ValidatingWebhook will reject them.
-
----
-
-### 2. Envoy Gateway v1.7.0
-
-**Why v1.7.0:** Latest stable release (February 5, 2026). Bundles Gateway API v1.4.1 (verified via compatibility matrix). Supports Kubernetes v1.32–v1.35.
-
-**Install command:**
-```bash
-kubectl apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.7.0/install.yaml
-```
-
-The `--server-side` flag is required (official docs specify it). The install.yaml bundles:
-- Gateway API CRDs from the **experimental channel** (includes TCPRoute, BackendTLSPolicy, etc.)
-- Envoy Gateway CRDs
-- Envoy Gateway controller Deployment in namespace `envoy-gateway-system`
-
-**Alternative Helm install (for reference, NOT used in kinder):**
-```bash
-helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.7.0 -n envoy-gateway-system --create-namespace
-```
-
-**Kind/Docker-specific: Gateway service type.**
-Envoy Gateway creates Envoy Proxy services as `LoadBalancer` by default. In kind without MetalLB, this would cause the service to pend forever. Since MetalLB is installed first (see Installation Order below), LoadBalancer services receive IPs from the MetalLB pool — this works correctly.
-
-If MetalLB is disabled by the user, the Envoy service will stay Pending. The action should warn the user rather than hanging.
-
-**Post-install: no quickstart.yaml.** The `quickstart.yaml` distributed with v1.7.0 creates a GatewayClass, Gateway, HTTPRoute, and sample app. Do NOT apply this by default — it creates user-facing resources. Install only the controller.
-
-**Wait condition:** `kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available`
-
-**Ordering constraint:** CRDs from install.yaml must be committed to etcd before the Envoy Gateway controller starts. The `install.yaml` includes CRDs and the controller in a single file. Server-side apply handles the ordering, but add a brief readiness wait after apply to ensure webhooks are registered.
-
----
-
-### 3. Metrics Server v0.8.1
-
-**Why v0.8.1:** Latest stable release (January 29, 2026). v0.8.x requires Kubernetes v1.25+ (kind's default images are v1.30+, so no issue).
-
-**Base manifest URL:**
-```
-https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.8.1/components.yaml
-```
-
-**Kind-specific patch required.**
-Kind node images do not have proper TLS certificates for the kubelet. Without the patch, metrics-server fails to scrape kubelet metrics. The required flag is `--kubelet-insecure-tls`.
-
-In addition, `--kubelet-preferred-address-types=InternalIP` is required because kind nodes have hostnames that do not resolve inside the cluster; InternalIP is the only reachable address type.
-
-**Do NOT use raw Kustomize** (avoids Helm/Kustomize binary dependency). Instead, apply the manifest and then patch the Deployment with a JSON merge patch:
-
-```go
-// In the action: fetch components.yaml content, apply it, then patch deployment
-const metricsServerPatch = `
-{
-  "spec": {
-    "template": {
-      "spec": {
-        "containers": [{
-          "name": "metrics-server",
-          "args": [
-            "--cert-dir=/tmp",
-            "--secure-port=10250",
-            "--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname",
-            "--kubelet-use-node-status-port",
-            "--metric-resolution=15s",
-            "--kubelet-insecure-tls"
-          ]
-        }]
-      }
-    }
-  }
-}`
-```
-
-Apply via: `kubectl patch deployment metrics-server -n kube-system --type=merge -p '<patch>'`
-
-Or, more aligned with the existing kind pattern (embedded manifest), embed the full components.yaml with the extra arg pre-patched so no runtime patching is required. This is the cleaner approach since kind embeds CNI and storage manifests as Go string constants.
-
-**Why not Helm chart:** adds Helm as a runtime dependency, contradicts PROJECT.md constraint.
-
-**Wait condition:** `kubectl wait --timeout=3m -n kube-system deployment/metrics-server --for=condition=Available`
-
----
-
-### 4. CoreDNS Tuning
-
-**Why patch CoreDNS (not reinstall):** kind's kubeadm already installs CoreDNS. The version is determined by the node image (e.g., CoreDNS v1.11.x for Kubernetes v1.30+). We tune the existing deployment by patching its ConfigMap.
-
-**What to tune and why:**
-
-| Setting | Default | Kinder recommendation | Rationale |
-|---------|---------|----------------------|-----------|
-| `cache` TTL | 30 seconds | `cache 300` (5 minutes) | Reduces upstream DNS pressure for local dev; services don't change frequently |
-| `forward` | `/etc/resolv.conf` | unchanged | Host resolver is fine for local dev |
-| `health` | `health` | `health { lameduck 5s }` | Prevents in-flight requests from failing during restart |
-
-**The ConfigMap patch (Corefile):**
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns
-  namespace: kube-system
-data:
-  Corefile: |
-    .:53 {
-        errors
-        health {
-            lameduck 5s
-        }
-        ready
-        kubernetes cluster.local in-addr.arpa ip6.arpa {
-            pods insecure
-            fallthrough in-addr.arpa ip6.arpa
-            ttl 30
-        }
-        prometheus :9153
-        forward . /etc/resolv.conf {
-            max_concurrent 1000
-        }
-        cache 300
-        loop
-        reload
-        loadbalance
-    }
-```
-
-Key change from default: `cache 30` -> `cache 300`. Everything else is preserved from the kind default Corefile to avoid breaking cluster DNS.
-
-**Do NOT add ndots tuning here.** ndots is a per-pod setting (pod DNS policy), not a CoreDNS server setting. Do not modify it in the Corefile.
-
-**Apply method:**
-```bash
-kubectl apply -f - <<EOF
-<configmap yaml above>
-EOF
-```
-
-CoreDNS has a `reload` plugin that auto-detects ConfigMap changes within ~2 minutes (no pod restart needed). However, to guarantee immediate effect in a fresh cluster, optionally rolling-restart CoreDNS: `kubectl rollout restart deployment/coredns -n kube-system`.
-
-**Wait condition:** `kubectl rollout status deployment/coredns -n kube-system --timeout=2m`
-
----
-
-### 5. Kubernetes Dashboard Helm Chart 7.14.0
-
-**Why Helm chart 7.14.0:** This is the latest release (October 30, 2024). Dashboard v3 dropped all static manifest support starting with chart v7.0.0. There is no alternative to Helm for current versions.
-
-**IMPORTANT:** This means kinder needs a Helm binary available at cluster creation time, OR must embed/vendor the rendered manifests.
-
-**Recommended approach for kinder:** Pre-render Helm templates and embed them as static manifests. This avoids a runtime Helm dependency:
-
-```bash
-helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
-helm template kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
-  --version 7.14.0 \
-  --namespace kubernetes-dashboard \
-  --create-namespace \
-  --set nginx.enabled=false \
-  --set cert-manager.enabled=false \
-  --set app.ingress.enabled=false \
-  > embedded-dashboard-7.14.0.yaml
-```
-
-Embed this rendered YAML as a Go constant in the dashboard action. Update manually when chart version bumps.
-
-**Rationale for disabled flags:**
-- `nginx.enabled=false`: kind uses kindnet CNI, not nginx-ingress. Adding nginx-ingress bloats the cluster and conflicts with Envoy Gateway.
-- `cert-manager.enabled=false`: kind clusters use self-signed kubeadm certs. cert-manager adds complexity without benefit for local dev.
-- `app.ingress.enabled=false`: no Ingress resource created by default; users access via `kubectl port-forward` or through Envoy Gateway manually.
-
-**Access method (document for users):**
-```bash
-# Create admin ServiceAccount
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: admin-user
-  namespace: kubernetes-dashboard
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: admin-user
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-- kind: ServiceAccount
-  name: admin-user
-  namespace: kubernetes-dashboard
-EOF
-
-# Generate token
-kubectl create token admin-user -n kubernetes-dashboard
-
-# Port-forward
-kubectl port-forward svc/kubernetes-dashboard-kong-proxy 8443:443 -n kubernetes-dashboard
-```
-
-The service name `kubernetes-dashboard-kong-proxy` is the Dashboard v3 Kong-based proxy service — this is different from Dashboard v2's `kubernetes-dashboard` service. Verify service name against the rendered templates.
-
-**Wait condition:** `kubectl rollout status deployment/kubernetes-dashboard-api -n kubernetes-dashboard --timeout=3m`
-
----
-
-## Installation Order
-
-This order is mandatory due to hard dependencies:
-
-```
-1. MetalLB controller + speaker
-   Wait: MetalLB pods Running (webhook ready)
-
-2. MetalLB IPAddressPool + L2Advertisement CRs
-   Wait: CR created successfully (webhook validates)
-
-3. CoreDNS ConfigMap patch
-   Wait: coredns rollout complete
-
-4. Metrics Server (base manifest + args patch)
-   Wait: metrics-server deployment Available
-
-5. Envoy Gateway (install.yaml — CRDs + controller)
-   Wait: envoy-gateway deployment Available
-
-6. Kubernetes Dashboard (pre-rendered Helm manifests)
-   Wait: kubernetes-dashboard-api deployment Available
-```
-
-**Ordering rationale:**
-
-- MetalLB must be first because Envoy Gateway creates LoadBalancer services. If MetalLB is not ready when Envoy Gateway provisions its Gateway, the LoadBalancer service will get an external IP from MetalLB immediately. Reverse order causes the Envoy Gateway service to remain Pending until MetalLB catches up (which it eventually does, but it creates a confusing startup experience).
-
-- MetalLB webhook must be ready before IPAddressPool/L2Advertisement CRs are created. The ValidatingWebhookConfiguration rejects CRs if the webhook pod is not Running. This is a known stumbling block — add a readiness wait between manifest apply and CR creation.
-
-- CoreDNS tuning is independent and can run any time after kubeadminit. Placing it early (step 3) means all subsequent addon pods benefit from the improved cache settings from the start.
-
-- Metrics Server has no dependencies on other addons. Position is arbitrary; placing it mid-sequence is fine.
-
-- Envoy Gateway requires Gateway API CRDs (bundled in its install.yaml). It must come after MetalLB so its LoadBalancer service gets an IP. Install.yaml applies CRDs and controller in one shot.
-
-- Kubernetes Dashboard is last because it has no dependencies on other addons but benefits from having metrics-server available for the metrics scraper component.
+**Key details:**
+- `paths: ['kinder-site/**']` — only triggers on website changes, not Go code changes
+- `path: kinder-site/` in `withastro/action` — tells the action where the Astro project root is
+- `concurrency.cancel-in-progress: false` — prevents a partial deploy from leaving Pages broken
+- The action auto-detects `npm` from `package-lock.json` and uses Node 22 by default
 
 ---
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| LoadBalancer | MetalLB v0.15.3 | cloud-provider-kind | cloud-provider-kind runs as a separate binary on the host outside the cluster; cannot be installed as an in-cluster action in kind's pipeline |
-| LoadBalancer | MetalLB v0.15.3 | Cilium LB IPAM | Requires replacing kindnet CNI with Cilium — scope creep, breaks existing kind CNI action |
-| Gateway | Envoy Gateway v1.7.0 | Contour | Less active development; Envoy Gateway is the CNCF-incubating reference implementation backed by Envoy team |
-| Gateway | Envoy Gateway v1.7.0 | Istio Gateway | Istio adds service mesh complexity; 10x larger memory footprint; overkill for local dev |
-| Gateway | Envoy Gateway v1.7.0 | NGINX Gateway Fabric | Less ecosystem momentum in 2025-2026; Envoy Gateway has wider adoption |
-| Dashboard | Kubernetes Dashboard 7.14.0 | Headlamp | Headlamp requires separate binary install; Kubernetes Dashboard is the canonical upstream option |
-| Dashboard | Kubernetes Dashboard 7.14.0 | Lens/OpenLens | Desktop app, not cluster-embedded |
-| Dashboard (install) | Pre-rendered Helm | Runtime Helm | Runtime Helm requires `helm` binary present on the host; violates kinder's no-external-tool-dependency design |
-| Dashboard (install) | Pre-rendered Helm | Static YAML v2 | Dashboard v2 (raw YAML) was archived January 21, 2026; no security updates |
-| Metrics | metrics-server v0.8.1 | kube-state-metrics | Different purpose (object state vs. resource usage); not a replacement for `kubectl top` |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Astro + Starlight | Docusaurus (React) | Only if you need React component library compatibility across docs and app; Starlight is faster and simpler for a pure docs+landing use case |
+| Astro + Starlight | VitePress | If the project is entirely docs with no landing page; VitePress has less customization flexibility for a distinct landing page |
+| Astro + Starlight | Hugo (existing site/) | Hugo is already in the repo for kind's site. Do not reuse it — it's kind's identity, not kinder's. Fresh Astro start gives a distinct visual identity. |
+| Astro + Starlight | Next.js | If you need SSR, API routes, or React app features; pure marketing/docs site doesn't need this; adds unnecessary complexity |
+| CSS custom properties | Tailwind CSS | Only if the site grows to need a design system with many one-off utility classes; not needed for a docs site with Starlight's variable system |
+| npm | pnpm | If this site were part of a larger monorepo with shared packages; standalone kinder-site/ has no benefit from pnpm's disk deduplication |
+| Self-hosted fonts | Google Fonts | Never for GDPR-sensitive audiences; self-hosting via Fontsource is equivalent DX with zero privacy cost |
 
 ---
 
-## What NOT to Bundle
+## What NOT to Use
 
-| Item | Why Not |
-|------|---------|
-| Prometheus/Grafana stack | Too large for default install; not universally wanted; separate addon or user responsibility |
-| cert-manager | Not required by any default addon when Dashboard nginx is disabled; adds 3 CRDs and a controller |
-| nginx-ingress-controller | Conflicts with Envoy Gateway; users should use Gateway API, not Ingress |
-| Envoy Gateway quickstart.yaml | Creates user-facing GatewayClass/Gateway/HTTPRoute resources; not appropriate for default install |
-| MetalLB FRR mode | Requires BGP peering which doesn't exist in kind's Docker network; L2 mode is sufficient |
-| Dashboard admin ClusterRoleBinding | Should be user-created post-install; don't bake in full cluster-admin access by default |
-
----
-
-## Version Compatibility Matrix
-
-| Addon | Kubernetes | Notes |
-|-------|-----------|-------|
-| MetalLB v0.15.3 | v1.22+ | No explicit upper bound in docs; tested against current kind images (v1.30–v1.35) |
-| Envoy Gateway v1.7.0 | v1.32–v1.35 | Verified from official compatibility matrix |
-| Gateway API v1.4.1 | Bundled with EG v1.7.0 | Standard + experimental channel CRDs |
-| Metrics Server v0.8.1 | v1.25+ | Uses Kubernetes dependencies v0.33.7 |
-| CoreDNS | Any | Patch only; CoreDNS version is set by node image |
-| Dashboard Helm 7.14.0 | v1.21+ | Helm chart requirement from official docs |
-
-**Kind node image default as of 2026-03:** kind's default node image targets Kubernetes v1.32.x (verify with `kind version` before release). All addons are compatible with v1.32.
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| @astrojs/tailwind | Deprecated for Tailwind v4; replaced by @tailwindcss/vite | CSS custom properties (`--sl-*` variables) — sufficient for Starlight theming |
+| @astrojs/starlight-tailwind | Tailwind v4 support unresolved as of March 2026; unstable integration | Starlight's native `customCss` |
+| Gatsby | Framework sunset trajectory; build times slow; overkill for static docs | Astro |
+| Jekyll | No JSX/MDX support; GitHub Pages default but 2010s-era DX | Astro |
+| Netlify | Project already uses GitHub Pages per requirements; dual hosting adds complexity | GitHub Pages |
+| React (standalone) | Not needed — Astro's default output is zero-JS; adding React increases bundle size with no benefit for a static doc site | Astro's `.astro` components |
+| `withastro/action@v3` or lower | Older versions; v5.2.0 is current (February 2026) | withastro/action@v5 |
 
 ---
 
-## Go Implementation Pattern
+## Stack Patterns by Variant
 
-All addons follow the existing kind action pattern. Reference `installstorage` as the template:
+**For the landing page (index page with splash layout):**
+- Use Starlight's `template: splash` frontmatter option on `src/content/docs/index.mdx`
+- Override the `Hero` component via `components.Hero` in `astro.config.mjs` to add custom sections (feature grid, install command, addon showcase)
+- The splash template removes the sidebar; full-width layout suitable for marketing content
 
-```go
-// pkg/cluster/internal/create/actions/installmetallb/metallb.go
+**For documentation pages:**
+- Standard Starlight pages in `src/content/docs/` with Markdown or MDX
+- Use MDX when a page needs interactive components (e.g., a tabbed addon config example)
+- Use plain Markdown for everything else — simpler, faster to write
 
-package installmetallb
+**For code snippets (terminal commands):**
+- Expressive Code is bundled and active by default
+- Use `bash` language tag for shell commands; Expressive Code renders them with dark theme automatically
+- For the `kinder create cluster` hero command on the landing page, use a styled code block component — not a screenshot
 
-import (
-    "sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
-    "sigs.k8s.io/kind/pkg/cluster/nodeutils"
-)
+---
 
-type action struct{}
+## Version Compatibility
 
-func NewAction() actions.Action { return &action{} }
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| @astrojs/starlight@0.37.x | astro@5.x | Starlight 0.37.x requires Astro 5; the create-astro template installs compatible versions |
+| withastro/action@v5 | Node.js 22 | Default; also accepts 20.3.0 minimum |
+| Astro 5.17 | Node.js 20.3.0+ or 22.0.0+ | Node 18 support dropped in Astro 5.8 (May 2025) |
+| tailwindcss@4.x | @tailwindcss/vite (NOT @astrojs/tailwind) | @astrojs/tailwind is deprecated for Tailwind v4; NOT RECOMMENDED for this project |
 
-func (a *action) Execute(ctx *actions.ActionContext) error {
-    ctx.Status.Start("Installing MetalLB (LoadBalancer) ⚖️")
-    defer ctx.Status.End(false)
+---
 
-    controlPlanes, err := nodeutils.ControlPlaneNodes(ctx.Nodes())
-    // ... detect docker subnet, apply manifest, wait for pods, apply CRs
-    ctx.Status.End(true)
-    return nil
-}
+## Directory Structure
+
 ```
-
-**Embedded manifests** (Go string constants): MetalLB manifest, Metrics Server components.yaml (pre-patched), CoreDNS Corefile patch, Dashboard pre-rendered YAML, Envoy Gateway install.yaml.
-
-**Fetching at runtime vs embedding:** Embedding is strongly preferred. It:
-- Works offline / air-gapped
-- Guarantees version pinning
-- Avoids network call at cluster creation time
-- Follows the pattern of kind's existing CNI/storage manifests (read from node image or fallback constant)
-
-Envoy Gateway install.yaml is large (~3,000 lines). Embed it compressed or reference from a bundled file in the binary. Use Go's `embed` package.
+kinder/                          # repo root (Go project)
+├── kinder-site/                 # Astro project root
+│   ├── astro.config.mjs
+│   ├── package.json
+│   ├── package-lock.json        # required — withastro/action detects npm from this
+│   ├── tsconfig.json            # extends astro/tsconfigs/strict
+│   ├── public/
+│   │   └── CNAME                # kinder.patrykgolabek.dev
+│   └── src/
+│       ├── assets/              # logo, images
+│       ├── styles/
+│       │   └── custom.css       # --sl-* CSS variable overrides for dark theme
+│       └── content/
+│           └── docs/            # all documentation (file-based routing)
+│               ├── index.mdx    # landing page (template: splash)
+│               ├── getting-started/
+│               ├── configuration/
+│               └── addons/
+└── .github/
+    └── workflows/
+        └── deploy-site.yml      # GitHub Actions deployment
+```
 
 ---
 
 ## Sources
 
-- MetalLB v0.15.3 release: https://github.com/metallb/metallb/releases/tag/v0.15.3
-- MetalLB installation docs: https://metallb.universe.tf/installation/
-- MetalLB release notes: https://metallb.universe.tf/release-notes/
-- MetalLB kind Docker subnet detection pattern: https://michaelheap.com/metallb-ip-address-pool/
-- MetalLB kind issue (gateway IP conflict): https://github.com/kubernetes-sigs/kind/issues/3167
-- Envoy Gateway v1.7.0 release: https://github.com/envoyproxy/gateway/releases/tag/v1.7.0
-- Envoy Gateway install YAML docs: https://gateway.envoyproxy.io/docs/install/install-yaml/
-- Envoy Gateway quickstart: https://gateway.envoyproxy.io/docs/tasks/quickstart/
-- Envoy Gateway compatibility matrix: https://gateway.envoyproxy.io/news/releases/matrix/
-- Gateway API v1.5.0 release: https://github.com/kubernetes-sigs/gateway-api/releases/tag/v1.5.0
-- Metrics Server v0.8.1 release: https://github.com/kubernetes-sigs/metrics-server/releases/tag/v0.8.1
-- Metrics Server kind patch (gist): https://gist.github.com/sanketsudake/a089e691286bf2189bfedf295222bd43
-- Kubernetes Dashboard 7.14.0: https://github.com/kubernetes/dashboard/releases/tag/kubernetes-dashboard-7.14.0
-- Dashboard helm-only since v7: https://spacelift.io/blog/kubernetes-dashboard (confirmed)
-- Dashboard repo archived Jan 2026: https://github.com/kubernetes/dashboard (read-only)
-- CoreDNS cache tuning: https://oneuptime.com/blog/post/2026-02-09-coredns-cache-settings-high-qps/view
-- CoreDNS Kubernetes customization: https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/
-- kind action pipeline source: /Users/patrykattc/work/git/kinder/pkg/cluster/internal/create/create.go
+- Astro 5.17 release: https://astro.build/ (verified March 2026)
+- @astrojs/starlight@0.37.6: https://github.com/withastro/starlight/releases (latest as of March 2026)
+- Starlight getting started: https://starlight.astro.build/getting-started/
+- Starlight CSS and theming: https://starlight.astro.build/guides/css-and-tailwind/
+- Starlight configuration reference: https://starlight.astro.build/reference/configuration/
+- Astro GitHub Pages deploy guide: https://docs.astro.build/en/guides/deploy/github/
+- withastro/action@v5.2.0: https://github.com/withastro/action (released February 11, 2026)
+- Tailwind v4 + Astro setup: https://tailwindcss.com/docs/installation/framework-guides/astro
+- starlight-tailwind Tailwind v4 issue (OPEN): https://github.com/withastro/starlight/issues/2862
+- Astro Node.js requirements (5.8 dropped Node 18): https://alternativeto.net/news/2025/5/astro-5-8-raises-node-js-requirements-as-support-for-node-js-v18-ends/
+- GitHub Pages custom domain docs: https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site
+
+---
+*Stack research for: kinder website (v1.1 milestone)*
+*Researched: 2026-03-01*

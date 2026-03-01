@@ -1,440 +1,208 @@
-# Feature Landscape: Kinder Addons
+# Feature Research
 
-**Domain:** Batteries-included local Kubernetes (kind fork with 5 default addons)
+**Domain:** CLI tool website — landing page + documentation site (Astro, GitHub Pages)
 **Researched:** 2026-03-01
-**Milestone scope:** Adding MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, and Kubernetes Dashboard as default addons to kinder.
+**Confidence:** HIGH (based on direct analysis of Bun, Deno, Astro, Headlamp, k9s, kind, DevSpace sites + Evil Martians study of 100 dev tool landing pages)
 
 ---
 
-## Addon 1: MetalLB (LoadBalancer IPs)
+## Context
 
-MetalLB (v0.15.3 current) gives LoadBalancer services real IPs in clusters that have no cloud provider. For kind clusters, it draws an IP range from the Docker network subnet automatically.
+This research covers the **v1.1 website milestone** — not the CLI addons (v1.0 already shipped). kinder is a batteries-included kind fork. The website must explain what kinder is, why you'd use it over vanilla kind, how to install it, and how to configure its 5 addons. The audience is developers who know Kubernetes and have probably used kind before.
 
-### Table Stakes
+---
+
+## Feature Landscape
+
+### Table Stakes (Users Expect These)
+
+Features a dev tool site must have. Missing these makes the site feel broken or untrustworthy.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `LoadBalancer` services get an IP immediately | Users expect `kubectl get svc` to show an EXTERNAL-IP, not `<pending>` | Low | Without MetalLB, every LoadBalancer service hangs in pending — this is the core problem |
-| Layer 2 mode (ARP/NDP) by default | Simplest mode for local dev; no BGP router required | Low | Layer 2 is the only viable mode in kind — BGP requires a real routing infrastructure |
-| IP pool auto-detected from Docker network | Users should not need to look up subnets manually | Medium | `docker network inspect kind --format '{{ (index .IPAM.Config 0).Subnet }}'` gives the CIDR; carve a /27 from the upper range to avoid conflicts |
-| MetalLB ready before cluster reported ready | User runs `kinder create cluster` and gets a working cluster | Low | Apply manifests, wait for controller and speaker pods to be Running |
-| Works with Podman and Nerdctl networks | kinder supports 3 providers | Medium | Network inspection command differs per runtime; Podman uses `podman network inspect`, Nerdctl uses CNI config; subnet extraction logic must branch per provider |
+| One-line install command in hero | Developers copy-paste this before reading anything else; it's the first signal of quality | LOW | Platform-conditional: Linux/macOS curl, Homebrew, go install. Show the most universal first. |
+| Copy-to-clipboard on all code blocks | Standard expectation since 2020; not having it feels unfinished | LOW | Astro Starlight provides this for doc pages; hero page code block needs manual implementation |
+| Syntax-highlighted code blocks | Raw monospace code looks amateur; highlights communicate intent | LOW | Astro has Shiki built in; Starlight uses it by default |
+| Dark mode (default dark) | Developer audience expects dark mode; kinder targets dev-tool aesthetic explicitly | LOW | Starlight provides dark/light toggle; set dark as default to match project brief |
+| Mobile-responsive layout | Google rankings, people reading docs on phones | LOW | Starlight is responsive by default; landing page needs explicit responsive design |
+| Installation guide page | Deeplinked from hero, GitHub README, blog posts, Stack Overflow answers | LOW | Standalone `/docs/install/` page covering all platforms and methods |
+| Configuration reference page | Developers paste config and need to know what every field does | MEDIUM | Documents `kinder.dev/v1alpha4` config schema with all addon fields, defaults, examples |
+| Docs for each addon | Users need to know what each addon does, how to disable it, and what to expect | MEDIUM | One page per addon: MetalLB, Envoy Gateway, Metrics Server, CoreDNS Tuning, Headlamp |
+| GitHub link in nav | Developers distrust tools with no visible source; stars are social proof | LOW | Link to github.com/patrykg/kinder in top nav and footer |
+| Clear value proposition in hero | Visitors decide in under 10 seconds; "kind but with batteries" must be immediately obvious | LOW | Headline + subtitle must name the problem kind has (manual addon setup) and kinder's answer |
+| Working anchor links in docs | Navigation within long reference pages | LOW | Starlight generates these from headings automatically |
+| Page titles and meta descriptions | SEO, browser tabs, social share previews | LOW | Astro and Starlight handle this with frontmatter |
+| 404 page | GitHub Pages serves a 404; custom page keeps users in the site | LOW | Add `public/404.html` or configure Astro to generate it |
 
-### Differentiators
+### Differentiators (Competitive Advantage)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Deterministic IP range carved from runtime subnet | No manual config; no conflicts with node IPs | Medium | The auto-carve logic (take the subnet, replace last octet range to pick a safe /27 or /28) is what makes it truly zero-config |
-| Opt-out per cluster via config | Power users who bring their own LB can skip MetalLB | Low | Add `addons.metalLB: false` to the kinder cluster config |
-| Pre-configured `L2Advertisement` resource | Users do not need to know MetalLB CRD names | Low | Ship a ready-to-go `IPAddressPool` + `L2Advertisement` manifest pair |
-
-### Anti-Features
-
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| BGP mode | Requires FRR or external router; impossible to wire in kind without extra containers | Layer 2 only for v1 |
-| Exposing MetalLB UI or Helm | Project constraint: no Helm dependency | Apply manifests directly from embedded YAML |
-| Manual IP pool input from user | Defeats the batteries-included goal | Auto-detect from Docker/Podman/Nerdctl network |
-| MetalLB Operator | Additional CRD surface area, not needed for simple L2 | Plain manifests are sufficient |
-
-### User-Facing Behavior
-
-User runs `kinder create cluster`. After the cluster is ready, they run `kubectl apply -f my-service.yaml` with `type: LoadBalancer`. Within a few seconds `kubectl get svc` shows an EXTERNAL-IP in the `172.x.x.x` range (or equivalent Docker subnet). That IP is reachable from the host machine via the Docker network interface.
-
-### Required Configuration
-
-```yaml
-# kinder cluster config (example)
-kind: Cluster
-apiVersion: kinder.dev/v1alpha1
-addons:
-  metalLB: true   # default; set false to skip
-```
-
-MetalLB itself needs two CRs after installation:
-```yaml
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: kinder-pool
-  namespace: metallb-system
-spec:
-  addresses:
-  - <auto-detected-range>   # e.g. 172.19.0.200-172.19.0.250
----
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: kinder-l2adv
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-  - kinder-pool
-```
-
----
-
-## Addon 2: Envoy Gateway (Gateway API)
-
-Envoy Gateway (v1.7.0 current) implements the Kubernetes Gateway API standard, replacing the older Ingress API with richer routing semantics: HTTPRoute, TLSRoute, TCPRoute, GRPCRoute, and UDPRoute.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Gateway API CRDs installed | Without them Envoy Gateway cannot start; any Gateway API manifest the user applies will fail | Low | CRDs are bundled in the Envoy Gateway Helm chart as of v1.2+; apply them first in the action |
-| `GatewayClass` resource created | Required entry point — without it no Gateway resources are reconciled | Low | Helm chart creates this automatically with `controllerName: gateway.envoyproxy.io/gatewayclass-controller` |
-| Envoy Gateway controller running | Watches Gateway API CRDs and provisions Envoy proxy pods | Low | Wait for `envoy-gateway` deployment in `envoy-gateway-system` namespace to be Available |
-| `HTTPRoute` traffic actually routable | End-to-end test: create a Gateway + HTTPRoute + backend Service; curl the LoadBalancer IP | Medium | This only works when MetalLB is also installed; the Envoy proxy Service needs a real EXTERNAL-IP |
-| Gateway gets an IP (not stuck pending) | Same problem as any LoadBalancer service | Low | Envoy Gateway depends on MetalLB being up first; install MetalLB action must run before Envoy Gateway action |
-
-### Differentiators
+Features that set kinder's site apart from kind's plain Hugo site and generic tool docs. These are what make Bun, Deno, and Astro sites feel high quality.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| HTTP/HTTPS routing out of the box | Users can do `HTTPRoute` path-based and header-based routing immediately | Low | Gateway API HTTPRoute is the standard replacement for Ingress |
-| TLS termination support (via TLSRoute / HTTPRoute with cert) | Covers the HTTPS use case that developers encounter early | Medium | Requires cert-manager or manual secret; do not install cert-manager by default, document the manual path |
-| TCPRoute / UDPRoute for raw TCP/UDP | Covers database proxying and other non-HTTP workloads | Low | Supported out of the box in Envoy Gateway, just needs correct listener |
-| Envoy Gateway's `EnvoyProxy` CRD extensions | Users can customize the data plane (timeouts, circuit breakers) | Low | Available automatically; don't need to configure for default install |
+| Animated terminal demo in hero | Shows exactly what `kinder create cluster` output looks like; replaces abstract feature claims with reality | MEDIUM | Use asciinema embed or CSS-animated terminal component. Bun, k9s both do this effectively. Pure CSS animation is simpler and loads faster than asciinema. |
+| "What you get" addon grid on landing page | Five addons are the product differentiator; calling them out visually makes the value concrete | LOW | Card grid showing each addon with icon, name, and one-line description (e.g. "LoadBalancer IPs — MetalLB v0.15.3"). Link each to its doc page. |
+| Before/after comparison | Developers already know kind; "kind gives you X, kinder gives you X + these 5 things" is the fastest conversion pitch | LOW | Side-by-side comparison block: `kind create cluster` (bare cluster) vs `kinder create cluster` (what you get). No library needed, just styled HTML. |
+| Platform-specific install tabs | macOS / Linux / Windows tabs so users see exactly their command without reading all variations | LOW | Simple tab component; or code block with OS detection via JavaScript. Headlamp does this well. |
+| Version badge in hero or nav | Shows the project is active and tells users what they're installing | LOW | Static badge from shields.io or hardcoded version string (update on release) |
+| Quickstart page separate from full install guide | Developers want the path of least resistance first; don't bury it in a long install doc | LOW | Short page: prerequisites, one install command, `kinder create cluster`, `kubectl get nodes`. Maximum 5 steps. |
+| Inline feature showcase on landing page | Moves from "what it is" to "here's the actual output" within a single scroll | MEDIUM | Show terminal output for `kubectl top nodes`, `kubectl get svc` with EXTERNAL-IP populated, Headlamp screenshot |
+| Cluster config file example on landing page | Kinder's opt-out config is a key DX feature; showing it early sets expectations | LOW | A short YAML block showing addons section with comments explaining each field |
+| Favicon + og:image | Site identity; og:image appears in Slack/Discord/Twitter shares | LOW | Use kinder logo as favicon; create 1200x630 og:image with logo + tagline |
+| Breadcrumbs in docs | Navigation orientation within documentation hierarchy | LOW | Starlight provides breadcrumbs automatically |
 
-### Anti-Features
+### Anti-Features (Commonly Requested, Often Problematic)
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Defaulting to NodePort if MetalLB is absent | Silently broken behavior is worse than an explicit error | Enforce MetalLB-first install order; error clearly if MetalLB is disabled and Envoy Gateway is enabled |
-| Pinning to ClusterIP service type | Gateway never gets an address; HTTPRoutes unreachable from host | Always use LoadBalancer type, relying on MetalLB |
-| Installing cert-manager as a dependency | Scope creep, additional complexity | Document TLS as "bring your own cert"; v2 can add cert-manager addon |
-| Installing Istio or other service meshes alongside | Conflict risk with Envoy proxy ports | Envoy Gateway stands alone; no service mesh in v1 |
-
-### User-Facing Behavior
-
-User creates a `Gateway` resource and an `HTTPRoute`. The Gateway proxy pod comes up, gets an EXTERNAL-IP from MetalLB, and `curl http://<EXTERNAL-IP>/my-path` routes to the correct backend service. The user does not need to install Gateway API CRDs manually, does not run `helm install`, and does not configure a GatewayClass controller name.
-
-### Required Configuration
-
-```yaml
-# kinder cluster config
-addons:
-  envoyGateway: true   # default; requires metalLB: true
-```
-
-Minimal user resources after cluster creation:
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: my-gateway
-spec:
-  gatewayClassName: eg
-  listeners:
-  - name: http
-    port: 80
-    protocol: HTTP
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: my-route
-spec:
-  parentRefs:
-  - name: my-gateway
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: my-service
-      port: 8080
-```
-
----
-
-## Addon 3: Metrics Server (kubectl top / HPA)
-
-Metrics Server (v0.8.1, released January 2026) collects CPU and memory metrics from kubelets and exposes them via the Kubernetes Metrics API. It enables `kubectl top`, HPA, and VPA.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `kubectl top nodes` works | Basic cluster health check every developer runs | Low | Requires `--kubelet-insecure-tls` flag for kind clusters where kubelet certs are self-signed |
-| `kubectl top pods` works | Debugging resource usage is a daily developer task | Low | Same flag requirement |
-| HPA can read CPU/memory metrics | Users testing autoscaling need this; HPA silently fails without Metrics Server | Low | HPA controller polls the Metrics API; Metrics Server satisfies this API |
-| Metrics available within 60 seconds of cluster ready | User shouldn't have to wait long after creating the cluster | Low | Metrics Server starts quickly; first scrape takes ~15s by default |
-
-### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Sane default metric resolution (15s) | Balanced between freshness and kubelet load | Low | Default `--metric-resolution=15s` is appropriate for local dev |
-| Pre-patched for kind's self-signed certs | Users don't hit the common "failing to scrape" error | Low | The `--kubelet-insecure-tls` flag is the only kind-specific change; ship it as default |
-| Resource limits set conservatively | Keeps kind nodes from running out of memory | Low | 100m CPU / 200MiB memory is sufficient for clusters up to 100 nodes |
-
-### Anti-Features
-
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Prometheus / full monitoring stack | Completely different scope, much heavier | Metrics Server only; document Prometheus as "next step" in user docs |
-| Custom metrics adapter (Prometheus adapter) | Allows HPA on arbitrary metrics, but adds significant complexity | Out of scope for v1; standard CPU/memory metrics cover 90% of local dev use cases |
-| Vertical Pod Autoscaler (VPA) | Separate project, separate CRDs, rarely needed in local dev | Out of scope |
-| Skipping `--kubelet-insecure-tls` | Will fail with TLS errors in kind because kubelet certs aren't cluster-CA-signed | Always apply this flag for kind clusters |
-
-### User-Facing Behavior
-
-User runs `kubectl top nodes` immediately after `kinder create cluster` completes. Within about 30 seconds they see CPU and memory usage per node. When they create an HPA resource, it works without any additional setup.
-
-### Required Configuration
-
-The only kind-specific configuration is a patch to the standard Metrics Server manifest:
-```yaml
-# Patch to metrics-server Deployment
-containers:
-- name: metrics-server
-  args:
-  - --cert-dir=/tmp
-  - --secure-port=10250
-  - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
-  - --kubelet-use-node-status-port
-  - --metric-resolution=15s
-  - --kubelet-insecure-tls   # Required for kind — kubelet certs are self-signed
-```
-
-```yaml
-# kinder cluster config
-addons:
-  metricsServer: true   # default; no additional options needed
-```
-
----
-
-## Addon 4: CoreDNS Tuning
-
-kind already installs CoreDNS as part of the cluster. This addon is not about installing CoreDNS — it is about patching the default CoreDNS ConfigMap to apply settings that improve local development DNS behavior.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Cluster DNS works (no regression) | CoreDNS is already installed by kind; tuning must not break it | Low | Patch, don't replace — use `kubectl patch configmap coredns -n kube-system` |
-| External DNS queries succeed | Developers access external APIs from pods | Low | `forward . /etc/resolv.conf` must remain, pointing to the host's resolver |
-| In-cluster service names resolve | `svc.cluster.local` FQDN resolution is the core use case | Low | The `kubernetes` plugin handles this; do not remove or reorder it |
-
-### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| `autopath @kubernetes` plugin enabled | Reduces 5 DNS lookups per external query to 1-2 by doing server-side search path walking | Medium | Requires `pods verified` mode in the kubernetes plugin block; has a small CPU cost on CoreDNS pod |
-| `cache` TTL increased to 60s (from 30s) | Reduces repeated external lookups in long-running dev sessions | Low | External queries are cached longer; in-cluster TTL stays at 5s via kubernetes plugin |
-| `log` plugin enabled in development mode | Surfacing DNS query logs helps developers debug DNS issues | Low | Optional; consider making it opt-in since it adds verbosity |
-| NodeLocal DNSCache consideration | Node-local DNS caching reduces latency for pods on the same node | High | NodeLocal DNSCache is a node-level DaemonSet change; too invasive for v1 — document as future |
-
-### Anti-Features
-
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Reducing `ndots` globally | Changing ndots on CoreDNS affects all pods; breaks short-name resolution for service-to-service calls | If ndots reduction is needed, document per-pod `dnsConfig` as the right lever |
-| Replacing the CoreDNS Deployment | Risky; kind pins CoreDNS version and image | Patch only the ConfigMap |
-| Installing a second DNS server | Creates routing ambiguity | Single CoreDNS with patched config |
-| Enabling `autopath` without `pods verified` | Autopath requires knowing the source pod's namespace; `pods insecure` disables this | Always pair `autopath @kubernetes` with `pods verified` |
-
-### User-Facing Behavior
-
-Pods resolve external DNS names faster (fewer round-trips to upstream). Developers doing `nslookup` or `curl` to external services from inside pods see faster first responses. Short service names (`my-service`, not `my-service.default.svc.cluster.local`) still resolve correctly because autopath handles the search path on the server side.
-
-### Required Configuration
-
-Patched CoreDNS Corefile:
-```
-.:53 {
-    errors
-    health {
-        lameduck 5s
-    }
-    ready
-    kubernetes cluster.local in-addr.arpa ip6.arpa {
-        pods verified          # Changed from "insecure" — required for autopath
-        fallthrough in-addr.arpa ip6.arpa
-        ttl 30
-    }
-    autopath @kubernetes       # Added: server-side search path walking
-    prometheus :9153
-    forward . /etc/resolv.conf {
-        max_concurrent 1000
-    }
-    cache 60                   # Increased from 30 to 60 seconds
-    loop
-    reload
-    loadbalance
-}
-```
-
-```yaml
-# kinder cluster config
-addons:
-  coreDNSTuning: true   # default; applies the patched Corefile
-```
-
----
-
-## Addon 5: Kubernetes Dashboard (Web UI)
-
-**CRITICAL NOTE:** The official `kubernetes/dashboard` project was archived on January 21, 2026 and moved to `kubernetes-retired/dashboard`. It receives no further security patches or updates. The Kubernetes SIG UI group now officially recommends **Headlamp** (v0.40.1, February 2026) as the successor. This research recommends shipping Headlamp, not the retired Dashboard.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| A web UI is reachable after cluster creation | "Dashboard" is an expected feature of any "batteries-included" cluster | Low | Headlamp deploys via Helm chart into `kube-system`; must use static manifests per project constraint |
-| View pods, services, deployments | Core cluster state visibility — the minimum useful dashboard | Low | Headlamp provides this out of the box |
-| View logs from pods in the browser | Log tailing is the most common dashboard use case | Low | Headlamp supports this |
-| No security footgun for local dev | Default access must not be a blank-password admin | Medium | Headlamp requires a service account token; kinder should create a dedicated `kinder-dashboard` SA with cluster-admin role and print the token after cluster creation |
-| Access via `kubectl port-forward` or printed URL | User needs a clear path to open the dashboard | Low | Print the port-forward command and URL after cluster creation; alternatively ship an HTTPRoute via Envoy Gateway |
-
-### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Use Headlamp instead of archived Dashboard | Actively maintained, official Kubernetes sub-project, better UX | Low | Swap the Docker image and manifests; no architectural difference from the user's perspective |
-| Service account token printed on cluster create | Zero-friction first login | Low | Create SA + ClusterRoleBinding, generate token, print it at the end of `kinder create cluster` output |
-| Gateway API HTTPRoute for dashboard access | If Envoy Gateway is enabled, the dashboard gets a real URL on a LoadBalancer IP | Medium | Optional enhancement; fall back to port-forward instructions when Envoy Gateway is disabled |
-| Headlamp's Gateway API awareness (v0.40+) | Headlamp can display HTTPRoute resources in the UI | Low | Provides visibility into Envoy Gateway resources without any extra config |
-| Plugin extensibility | Headlamp supports plugins for Prometheus metrics, etc. | Low | Available but out of scope for v1; document as future capability |
-
-### Anti-Features
-
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Shipping `kubernetes/dashboard` (archived) | No security patches from Jan 2026 onward; bad default for a new project | Use Headlamp |
-| Creating a `cluster-admin` binding for the `default` SA | Classic security mistake; all pods in the namespace inherit cluster-admin | Create a dedicated `kinder-dashboard` service account instead |
-| OIDC/OAuth setup by default | The PROJECT.md explicitly lists this as out of scope for v1 | Token-based login only |
-| Exposing the dashboard on a NodePort without token | Unauthenticated cluster admin access on an open port | Always require token; always use port-forward or HTTPRoute (which requires token auth via Headlamp) |
-| Using `kubectl proxy` as the documented access method | Flaky, requires a running terminal, not beginner-friendly | Pre-create the HTTPRoute or print a port-forward command that users can run once |
-
-### User-Facing Behavior
-
-At the end of `kinder create cluster`, kinder prints:
-
-```
-Dashboard: http://localhost:8888 (run: kubectl port-forward -n kube-system svc/headlamp 8888:80)
-Token:     eyJhbGciOiJSUzI1NiIs...  (expires: never for local dev)
-```
-
-User pastes the token into Headlamp's login screen. They see their cluster's pods, services, deployments, and logs. If Envoy Gateway is also enabled, the dashboard is additionally reachable at the Gateway's LoadBalancer IP on a dedicated HTTPRoute.
-
-### Required Configuration
-
-```yaml
-# kinder cluster config
-addons:
-  dashboard: true   # default; set false to skip
-```
-
-Manifests to apply (static, no Helm):
-1. Headlamp Deployment + Service in `kube-system`
-2. ServiceAccount `kinder-dashboard` in `kube-system`
-3. ClusterRoleBinding: `kinder-dashboard` -> `cluster-admin` (local dev only; document clearly)
-4. Token Secret for the SA (long-lived for local dev)
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Blog section | Looks like a complete site; content marketing | Requires ongoing content creation; a stale blog (last post 3 months ago) signals a dead project; v1.1 scope is launch, not content | Add a blog only after cadence is established; link to GitHub releases for now |
+| Newsletter/email signup | Community building | No audience to justify the friction; adds GDPR complexity; creates expectation of emails that won't get sent | Link to GitHub for release notifications (`Watch > Releases`) |
+| Search bar on landing page | Seems useful | Redundant with browser find; landing page has no indexed content; complicates layout | Docs pages get search (Starlight Pagefind) automatically; landing page doesn't need it |
+| Version dropdown for docs | Enterprise docs pattern (React, Python) | kinder is pre-v2; maintaining versioned docs creates ongoing overhead immediately | Single version of docs; mention version compatibility in text where needed |
+| Interactive playground / sandbox | Conversion boost | kinder requires Docker; you can't spin up a real cluster in a browser sandbox; a fake demo breaks trust | Asciinema recording or animated terminal component showing real output |
+| Dark/light mode toggle in hero section | User preference | Adds implementation complexity; kinder targets a developer-tool aesthetic with dark default | Provide Starlight's built-in toggle in docs; keep landing page dark by default |
+| Changelog page separate from GitHub releases | Keeps users on site | Duplicates GitHub releases; creates maintenance burden (updating two places) | Link directly to GitHub releases page; possibly embed latest release info via static build step |
+| Comment system on docs | Community engagement | Docs pages aren't blog posts; comments add noise and spam risk | Link to GitHub Discussions or GitHub Issues for feedback |
+| Cookie consent banner | Legal compliance | Heavy-handed for a GitHub Pages static site with no analytics; breaks the clean aesthetic | Don't add analytics. If you do add analytics, use Plausible (privacy-preserving, no cookie banner needed) |
+| Auto-redirects based on OS detection | Personalization | JavaScript-dependent; degrades on curl/wget; confusing when not on expected OS | Show platform tabs that default to the most common platform (Linux/macOS) and let users click |
 
 ---
 
 ## Feature Dependencies
 
 ```
-MetalLB
-  └── (no addon dependencies; depends on Docker/Podman/Nerdctl network existing)
+Landing Page Hero
+    └──requires──> Install command finalized (can't show command before release binary exists)
+    └──requires──> Addon descriptions (for the addon grid)
+    └──enhances via──> Animated terminal demo (optional, adds significantly to conversion)
 
-Envoy Gateway
-  └── Requires: MetalLB (Gateway proxy Service needs a LoadBalancer IP)
-  └── Requires: Gateway API CRDs (installed as part of Envoy Gateway action)
+Docs: Installation Guide
+    └──requires──> Binary distribution method decided (GitHub Releases, Homebrew tap, go install)
+    └──requires──> Platform support matrix confirmed (Linux amd64, arm64, macOS, Windows?)
 
-Metrics Server
-  └── (no addon dependencies; reads from kubelet directly)
+Docs: Configuration Reference
+    └──requires──> v1alpha4 config schema finalized (already done in v1.0)
+    └──is required by──> Each addon doc page (config field for that addon lives here)
 
-CoreDNS Tuning
-  └── Requires: CoreDNS already running (kind installs this; always true)
-  └── Soft dependency: none
+Docs: Addon Pages (×5)
+    └──requires──> Configuration Reference (cross-reference config fields)
+    └──requires──> Installation Guide (prerequisite page in user journey)
 
-Dashboard (Headlamp)
-  └── Soft dependency on Envoy Gateway (optional HTTPRoute for URL access)
-  └── (no hard addon dependencies; port-forward access works without Envoy Gateway)
+GitHub Pages Deployment
+    └──requires──> CNAME file at public/CNAME with kinder.patrykgolabek.dev
+    └──requires──> DNS: CNAME record pointing to patrykattc.github.io
+    └──requires──> GitHub Actions workflow (.github/workflows/deploy.yml using withastro/action)
+    └──requires──> astro.config.mjs: site = "https://kinder.patrykgolabek.dev" (no base path)
+
+Starlight Docs Site
+    └──enhances──> Landing Page (search, nav, all doc pages)
+    └──requires──> Content in MDX/Markdown files under src/content/docs/
+
+Addon Grid (landing page)
+    └──enhances──> Docs: each addon page (click-through from cards)
 ```
 
-### Installation Order
+### Dependency Notes
 
-```
-1. kindnet CNI          (existing kind action — must come first)
-2. local-path-provisioner (existing kind action)
-3. MetalLB              (new action — must come before Envoy Gateway)
-4. Envoy Gateway        (new action — after MetalLB)
-5. Metrics Server       (new action — independent, parallel-possible)
-6. CoreDNS Tuning       (new action — after CoreDNS pod is ready)
-7. Dashboard (Headlamp) (new action — last; can create HTTPRoute only after Envoy Gateway ready)
-```
-
-Steps 5 and 6 are independent and could theoretically run in parallel, but sequential is simpler and safer given the existing kind action pipeline architecture.
+- **Install command requires binary distribution:** The landing page hero cannot finalize its install command until the release pipeline (GitHub Releases or Homebrew tap) is in place. If releasing via GitHub Releases, the install command is `curl ... | sh` or direct binary download link. If releasing via go install, that's simpler but requires users to have Go.
+- **Config reference requires schema finalized:** The v1.0 work already finalized the schema (`kinder.dev/v1alpha4` with addons section). This unblocks the config reference page immediately.
+- **Custom domain requires DNS config before site goes live:** The CNAME file deploys with the site but DNS propagation takes time. Set DNS before the first deployment.
 
 ---
 
 ## MVP Definition
 
-The v1.0 MVP is: all 5 addons installed by default, all opt-outable, all verified ready before cluster is reported ready.
+### Launch With (v1.1)
 
-### Must-Have for MVP
+The minimum site that replaces a blank GitHub Pages URL and gives users enough to evaluate and install kinder.
 
-1. **MetalLB**: Layer 2 mode, auto-detected IP pool, IPAddressPool + L2Advertisement applied.
-2. **Envoy Gateway**: Controller running, GatewayClass created, Gateway API CRDs installed.
-3. **Metrics Server**: Running with `--kubelet-insecure-tls`, `kubectl top` works within 60 seconds.
-4. **CoreDNS Tuning**: Patched Corefile with `autopath`, `pods verified`, `cache 60`.
-5. **Dashboard (Headlamp)**: Running, token printed, port-forward command printed.
+- [ ] Landing page with hero, value proposition, one-line install command, addon grid — essential for first impressions
+- [ ] Installation guide doc page (Linux/macOS/Windows, go install + binary download) — without this, users cannot install the tool
+- [ ] Configuration reference doc page (all v1alpha4 fields, addon flags, defaults) — without this, power users cannot self-serve
+- [ ] One doc page per addon ×5 (what it installs, what you get, how to disable, known constraints) — completes the documentation set for launched features
+- [ ] Quickstart page (5-step flow from zero to working cluster) — conversion funnel; users need an easy path
+- [ ] GitHub Actions deploy workflow to GitHub Pages with CNAME for kinder.patrykgolabek.dev — gets the site live
+- [ ] Favicon and og:image — site identity; og:image appears in every share
+- [ ] Custom 404 page — avoids GitHub's default 404 breaking the site experience
 
-### Defer to v1.1
+### Add After Validation (v1.x)
 
-| Feature | Reason to Defer |
-|---------|----------------|
-| cert-manager integration for TLS | Scope creep; document manual TLS path instead |
-| NodeLocal DNSCache | Invasive node-level change; high complexity |
-| Headlamp HTTPRoute via Envoy Gateway | Nice to have; port-forward covers MVP |
-| Custom addon plugin system | Explicitly out of scope in PROJECT.md |
-| VPA (Vertical Pod Autoscaler) | Separate project, not a standard local dev need |
-| Prometheus + Grafana stack | Full monitoring is a separate milestone |
+- [ ] Animated terminal demo in hero — add when basic conversion data suggests users aren't understanding the value proposition
+- [ ] Before/after comparison block — add if analytics show high bounce rate from landing page
+- [ ] Platform-specific install tabs (if multi-platform binary distribution is added) — add when Homebrew tap or additional platform binaries are released
+
+### Future Consideration (v2+)
+
+- [ ] Blog section — only after regular content cadence is established
+- [ ] Versioned docs — only when a breaking change between kinder versions requires it
+- [ ] Changelog page — only if GitHub releases become hard to discover
 
 ---
 
 ## Feature Prioritization Matrix
 
-| Addon | User Impact | Implementation Complexity | MVP Required | v1.1 |
-|-------|------------|--------------------------|-------------|-------|
-| MetalLB Layer 2 + auto IP pool | Critical (everything else depends on it) | Medium | Yes | — |
-| Metrics Server `kubectl top` | High (daily use) | Low | Yes | — |
-| Envoy Gateway HTTPRoute | High (replaces Ingress) | Medium | Yes | — |
-| CoreDNS `autopath` + cache | Medium (DX improvement) | Low | Yes | — |
-| Headlamp Dashboard + token | Medium (visual ops) | Low | Yes | — |
-| MetalLB Podman/Nerdctl subnet detection | Medium (multi-provider) | Medium | Yes | — |
-| Headlamp HTTPRoute (via Envoy GW) | Low (nice to have) | Low | No | Yes |
-| TLS termination in Envoy Gateway | Medium | Medium | No | Yes |
-| CoreDNS NodeLocal cache | Low | High | No | v2 |
-| Prometheus metrics | High | High | No | v2 |
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Landing page hero + install command | HIGH | LOW | P1 |
+| Addon grid on landing page | HIGH | LOW | P1 |
+| Installation guide doc page | HIGH | LOW | P1 |
+| Quickstart doc page | HIGH | LOW | P1 |
+| Configuration reference doc page | HIGH | MEDIUM | P1 |
+| Addon doc pages (×5) | HIGH | MEDIUM | P1 |
+| GitHub Actions deploy + CNAME | HIGH | LOW | P1 |
+| Dark mode (Starlight default) | MEDIUM | LOW | P1 (built in) |
+| Copy-to-clipboard code blocks | MEDIUM | LOW | P1 (built in) |
+| Favicon + og:image | MEDIUM | LOW | P1 |
+| Custom 404 page | LOW | LOW | P1 |
+| Before/after comparison block | MEDIUM | LOW | P2 |
+| Platform-specific install tabs | MEDIUM | LOW | P2 |
+| Animated terminal demo | HIGH | MEDIUM | P2 |
+| Version badge | LOW | LOW | P2 |
+| Blog section | LOW | MEDIUM | P3 |
+| Versioned docs | LOW | HIGH | P3 |
+
+**Priority key:**
+- P1: Must have for launch
+- P2: Should have, add when possible (v1.1.x)
+- P3: Nice to have, future consideration
+
+---
+
+## Competitor Feature Analysis
+
+Reference sites studied: Bun (bun.com), Deno (deno.com), Astro (astro.build), kind (kind.sigs.k8s.io), Headlamp (headlamp.dev), k9s (k9scli.io), DevSpace (devspace.sh).
+
+| Feature | Bun / Deno | kind (parent project) | Our Approach |
+|---------|------------|-----------------------|--------------|
+| Hero headline | Action-oriented, benefit-led ("A fast all-in-one JS runtime") | Descriptive only ("tool for running local Kubernetes clusters") | Benefit-led: "Local Kubernetes clusters, batteries included" or similar |
+| Install command in hero | Yes (prominent, copy-to-clipboard) | Yes (in body text, not hero) | Yes, in hero, copy-to-clipboard |
+| Performance benchmarks | Central to Bun/Deno pitch (10x faster) | N/A | Not applicable to kinder; kinder's value is DX, not speed |
+| Addon/feature grid | Feature cards | Bullet list in README-style | Visual card grid on landing page |
+| Dark mode | Yes | No (light only) | Yes, dark default |
+| Animated terminal / asciinema | Bun has code tabs; Deno has terminal-style output | No | Target: CSS-animated terminal block in landing page hero |
+| Documentation search | Yes (Bun uses Algolia; Deno has built-in search) | No search | Starlight Pagefind (built-in, no API key) |
+| Sidebar navigation in docs | Yes | Yes | Yes (Starlight auto-generates from file structure) |
+| Separate quickstart vs full docs | Yes (both) | Quick Start is one page | Yes, short quickstart + full reference separate |
+| Before/after comparison | Deno does this (Deno vs Node) | No | Yes (kinder vs kind) |
+| GitHub stars displayed | Bun: displayed prominently | No | Optional; add after star count is worth showing |
 
 ---
 
 ## Sources
 
-- [MetalLB Installation](https://metallb.universe.tf/installation/) — MEDIUM confidence (official docs)
-- [MetalLB Configuration: IPAddressPool and L2Advertisement](https://metallb.universe.tf/configuration/) — HIGH confidence (official docs)
-- [MetalLB v0.15.3 Helm on ArtifactHub](https://artifacthub.io/packages/helm/metallb/metallb) — MEDIUM confidence (package registry)
-- [Auto-detecting Docker subnet for MetalLB in kind](https://michaelheap.com/metallb-ip-address-pool/) — MEDIUM confidence (community blog, verified technique)
-- [MetalLB Layer 2 Concepts](https://metallb.universe.tf/concepts/layer2/) — HIGH confidence (official docs)
-- [Envoy Gateway Quickstart v1.7.0](https://gateway.envoyproxy.io/docs/tasks/quickstart/) — HIGH confidence (official docs)
-- [Envoy Gateway v1.7.0 Release Announcement](https://gateway.envoyproxy.io/news/releases/v1.7/) — HIGH confidence (official)
-- [Envoy Gateway: Deploy without LoadBalancer via NodePort (Issue #3385)](https://github.com/envoyproxy/gateway/issues/3385) — MEDIUM confidence (official GitHub issue)
-- [Metrics Server GitHub — v0.8.1](https://github.com/kubernetes-sigs/metrics-server) — HIGH confidence (official repo)
-- [Kubernetes Resource Metrics Pipeline](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-metrics-pipeline/) — HIGH confidence (official Kubernetes docs)
-- [CoreDNS Customizing DNS Service](https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/) — HIGH confidence (official Kubernetes docs)
-- [CoreDNS autopath plugin](https://coredns.io/plugins/autopath/) — HIGH confidence (official CoreDNS docs)
-- [Using CoreDNS Effectively with Kubernetes](https://www.infracloud.io/blogs/using-coredns-effectively-kubernetes/) — MEDIUM confidence (well-regarded community blog)
-- [Kubernetes Dashboard archived (kubernetes-retired/dashboard)](https://github.com/kubernetes-retired/dashboard) — HIGH confidence (official GitHub archive)
-- [Headlamp v0.40.1 releases](https://github.com/kubernetes-sigs/headlamp/releases) — HIGH confidence (official repo)
-- [Headlamp official site](https://headlamp.dev/) — HIGH confidence (official)
-- [Kubernetes Dashboard Alternatives 2026](https://alexandre-vazquez.com/kubernetes-dashboard-alternatives-2026/) — LOW confidence (community blog, useful context)
-- [Kubernetes Gateway API in 2026: Envoy Gateway, Istio, Cilium and Kong](https://dev.to/mechcloud_academy/kubernetes-gateway-api-in-2026-the-definitive-guide-to-envoy-gateway-istio-cilium-and-kong-2bkl) — LOW confidence (community, useful ecosystem overview)
+- [Evil Martians: We studied 100 dev tool landing pages](https://evilmartians.com/chronicles/we-studied-100-devtool-landing-pages-here-is-what-actually-works-in-2025) — MEDIUM confidence (paywalled content partially accessible)
+- [Bun landing page](https://bun.com) — HIGH confidence (direct analysis)
+- [Deno landing page](https://deno.com) — HIGH confidence (direct analysis; includes install command, benchmarks, feature sections, CTAs)
+- [Astro landing page](https://astro.build) — HIGH confidence (direct analysis; Islands architecture showcase, framework integration grid, social proof)
+- [kind website](https://kind.sigs.k8s.io/) — HIGH confidence (direct analysis; baseline comparison — plain Hugo, no visual hierarchy, no dark mode)
+- [Headlamp landing page](https://headlamp.dev) — HIGH confidence (direct analysis; multi-platform install commands, feature cards, no screenshots — notable gap)
+- [k9s website](https://k9scli.io) — HIGH confidence (direct analysis; terminal preview/asciinema, feature list, sponsorship CTA)
+- [DevSpace landing page](https://devspace.sh) — HIGH confidence (direct analysis; Kubernetes dev tool, 5-reason feature showcase, CLI command examples)
+- [Astro Starlight documentation](https://starlight.astro.build) — HIGH confidence (official; lists all built-in features: search, nav, dark mode, code blocks, SEO, i18n)
+- [Astro GitHub Pages deployment guide](https://docs.astro.build/en/guides/deploy/github/) — HIGH confidence (official Astro docs; CNAME, workflow, astro.config.mjs settings)
+- [Starlight vs Docusaurus comparison](https://blog.logrocket.com/starlight-vs-docusaurus-building-documentation/) — MEDIUM confidence (community blog, verified against Starlight docs)
+- [Astro in 2026](https://sitepins.com/blog/astro-sitepins-2026) — LOW confidence (community blog, used only for Cloudflare acquisition context)
+
+---
+*Feature research for: kinder website (v1.1 milestone)*
+*Researched: 2026-03-01*

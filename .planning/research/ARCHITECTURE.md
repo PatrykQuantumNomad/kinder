@@ -1,641 +1,512 @@
-# Architecture Patterns: Addon Integration for Kinder
+# Architecture Research
 
-**Domain:** Kubernetes cluster tooling — addon integration into creation pipeline
+**Domain:** Static documentation + landing page site integrated into Go CLI monorepo
 **Researched:** 2026-03-01
-**Overall confidence:** HIGH (codebase read directly; addon installation patterns verified against official docs)
+**Confidence:** HIGH (Astro/Starlight official docs verified; GitHub Actions pattern verified; existing repo read directly)
 
 ---
 
-## System Overview: Updated Pipeline Diagram
+## Standard Architecture
 
-The existing kind action pipeline runs sequentially inside `Cluster()` in
-`pkg/cluster/internal/create/create.go`. Each step satisfies the `Action`
-interface (`Execute(*ActionContext) error`). Five new addon actions slot in
-**after** `waitforready`, because addons require a fully ready API server and
-scheduled node to apply manifests.
+### System Overview
 
 ```
-kinder create cluster
-  │
-  ▼
-Provider.Provision()          ← unchanged; starts node containers
-  │
-  ├─ loadbalancer.NewAction()  ← unchanged; configures HAProxy for multi-CP
-  ├─ configaction.NewAction()  ← unchanged; writes kubeadm config
-  ├─ kubeadminit.NewAction()   ← unchanged; kubeadm init
-  ├─ installcni.NewAction()    ← unchanged; installs kindnet (if not disabled)
-  ├─ installstorage.NewAction()← unchanged; installs local-path StorageClass
-  ├─ kubeadmjoin.NewAction()   ← unchanged; joins worker nodes
-  ├─ waitforready.NewAction()  ← unchanged; waits for control-plane Ready
-  │
-  │   ── NEW ADDON ACTIONS (all opt-out via config.Addons) ──
-  │
-  ├─ installmetallb.NewAction()       ← Layer2 LB; needs docker network subnet
-  ├─ installgatewayapi.NewAction()    ← Gateway API CRDs (prereq for Envoy GW)
-  ├─ installenvoygw.NewAction()       ← Envoy Gateway controller
-  ├─ installmetricsserver.NewAction() ← Metrics Server (+insecure-tls patch)
-  ├─ installcorednstuning.NewAction() ← Patches CoreDNS ConfigMap
-  └─ installdashboard.NewAction()     ← Kubernetes Dashboard + RBAC
+┌─────────────────────────────────────────────────────────────────┐
+│                     kinder GitHub repo (main)                    │
+├────────────────────────────┬────────────────────────────────────┤
+│       Go CLI (existing)    │       Website (new)                 │
+│  ┌─────────────────────┐  │  ┌────────────────────────────┐    │
+│  │  cmd/kinder/        │  │  │  kinder-site/              │    │
+│  │  pkg/cluster/...    │  │  │  ├── src/                  │    │
+│  │  internal/actions/  │  │  │  │   ├── content/docs/     │    │
+│  │  Makefile           │  │  │  │   ├── components/       │    │
+│  └─────────────────────┘  │  │  │   └── assets/           │    │
+│                            │  │  ├── public/               │    │
+│  (Go build, no changes)   │  │  │   └── CNAME             │    │
+│                            │  │  ├── astro.config.mjs      │    │
+│                            │  │  └── package.json          │    │
+│                            │  └────────────────────────────┘    │
+├────────────────────────────┴────────────────────────────────────┤
+│                     GitHub Actions CI                            │
+│  ┌──────────────────┐  ┌─────────────────────────────────────┐  │
+│  │  Go test/build   │  │  Astro build + GitHub Pages deploy  │  │
+│  │  (unchanged)     │  │  (new workflow, path: kinder-site/) │  │
+│  └──────────────────┘  └─────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│                     GitHub Pages                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  kinder.patrykgolabek.dev  (custom CNAME)               │    │
+│  │  Landing page (/)  +  Docs (/docs/...)                  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Why addons come after `waitforready`:** All addon installations use `kubectl
-apply` or `kubectl patch` against the live API server via the node's
-`/etc/kubernetes/admin.conf`. The API server and at least one node must be
-`Ready` before any workload can be scheduled. Installing before `waitforready`
-results in pods stuck in `Pending` and race conditions when checking rollout
-status.
+### Component Responsibilities
 
-**Why Gateway API CRDs precede Envoy Gateway:** Envoy Gateway controller
-startup validates that Gateway API CRDs exist in the cluster. If they are
-absent, the controller enters a crash loop. A dedicated `installgatewayapi`
-action makes this dependency explicit and separately opt-outable from the
-controller.
+| Component | Responsibility | Implementation |
+|-----------|----------------|----------------|
+| `kinder-site/` | Entire website source; fully self-contained Node project | Astro 5 + Starlight 0.37.x |
+| `src/content/docs/` | All documentation pages as Markdown/MDX | Starlight content collection; auto-generates sidebar |
+| `src/pages/index.astro` | Custom landing page (splash template, no sidebar) | Astro `.astro` page outside the docs collection |
+| `src/components/` | Reusable Astro components for landing sections | Hero, FeatureGrid, AddonCard, QuickStart |
+| `src/assets/` | Images, logo — processed by Astro's image pipeline | SVG logo, hero screenshots |
+| `public/CNAME` | Custom domain declaration for GitHub Pages | Single line: `kinder.patrykgolabek.dev` |
+| `astro.config.mjs` | Starlight integration config, site URL, sidebar, social links | Root config for entire site |
+| `.github/workflows/deploy-site.yml` | Build Astro and deploy to GitHub Pages | `withastro/action@v5` with `path: ./kinder-site` |
 
 ---
 
-## Component Responsibilities: New Actions
-
-### `installmetallb` — `pkg/cluster/internal/create/actions/installmetallb/`
-
-| Concern | Approach |
-|---------|----------|
-| Manifest source | Embed `metallb-native.yaml` at build time in `pkg/cluster/internal/create/actions/installmetallb/manifests/` or fetch from a pinned URL at runtime. Embedding is strongly preferred so cluster creation works offline. |
-| IP pool range | Call `docker network inspect kind --format '{{(index .IPAM.Config 0).Subnet}}'` via `exec.Command` on the host (not inside a node), parse the CIDR, then derive a safe tail range (last /28 of the IPv4 space). This mirrors the documented kind+MetalLB pattern. |
-| Pool config | After the controller is running, apply an `IPAddressPool` + `L2Advertisement` manifest constructed in-memory with the computed range. Both objects are `metallb.io/v1beta1` CRDs. |
-| Wait | Poll `kubectl -n metallb-system rollout status deployment/controller` before returning. |
-| Responsibility | This action owns: manifest apply, pool CRD creation, readiness wait. |
-
-**Provider compatibility note:** Docker, Podman, and Nerdctl all expose a
-`network inspect` subcommand. The network name is `kind` for Docker/Nerdctl
-and may differ for Podman (typically `podman`). The action must resolve the
-correct network name by reading the provider string from `ctx.Provider.String()`
-and selecting the appropriate inspect command. Layer2 mode works inside any
-bridge network, so the same approach applies across providers.
-
-### `installgatewayapi` — `pkg/cluster/internal/create/actions/installgatewayapi/`
-
-| Concern | Approach |
-|---------|----------|
-| Manifest source | Embed `standard-install.yaml` from the Gateway API release corresponding to the Envoy Gateway version pinned in kinder. Standard channel is sufficient (HTTPRoute, GRPCRoute, ReferenceGrant). |
-| Apply method | `kubectl apply --server-side -f -` piped from embedded manifest via node's `admin.conf`. Server-side apply handles large CRD objects without annotation size limits. |
-| Wait | None needed beyond apply completing; CRDs are cluster-scoped resources, not workloads. |
-
-### `installenvoygw` — `pkg/cluster/internal/create/actions/installenvoygw/`
-
-| Concern | Approach |
-|---------|----------|
-| Manifest source | Embed `install.yaml` from the Envoy Gateway GitHub release (e.g., `github.com/envoyproxy/gateway/releases/download/v1.2.x/install.yaml`). This file bundles the controller Deployment plus Envoy Gateway CRDs. |
-| Apply method | `kubectl apply --server-side -f -` (Envoy GW manifests are large). |
-| Wait | Poll `kubectl -n envoy-gateway-system rollout status deployment/envoy-gateway` before returning. |
-| Dependency | Runs after `installgatewayapi` so Gateway API CRDs exist when the controller starts. |
-
-### `installmetricsserver` — `pkg/cluster/internal/create/actions/installmetricsserver/`
-
-| Concern | Approach |
-|---------|----------|
-| Manifest source | Embed `components.yaml` from `github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`. |
-| kind-specific patch | Metrics Server refuses to start in kind because kubelet uses self-signed TLS certificates. The action must patch the Deployment to add `--kubelet-insecure-tls` to the container args immediately after applying the manifest, before waiting for rollout. Use `kubectl patch -n kube-system deployment metrics-server --type=json -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'` run as a node command. |
-| Wait | `kubectl -n kube-system rollout status deployment/metrics-server`. |
-
-### `installcorednstuning` — `pkg/cluster/internal/create/actions/installcorednstuning/`
-
-| Concern | Approach |
-|---------|----------|
-| What changes | Patch the `coredns` ConfigMap in `kube-system` to increase cache TTL and add `cache 300` directive. Does not replace the full ConfigMap; uses `kubectl patch` to avoid overwriting cluster-specific configuration. |
-| Implementation | Run a heredoc-style `kubectl patch configmap coredns -n kube-system --type merge` on the control plane node. Then `kubectl -n kube-system rollout restart deployment/coredns` to pick up the change. |
-| Wait | `kubectl -n kube-system rollout status deployment/coredns`. |
-| Why this approach | CoreDNS is already installed by kubeadm before the addon actions run. This action tunes it rather than reinstalling it. No new manifest is needed — only a targeted patch. |
-
-### `installdashboard` — `pkg/cluster/internal/create/actions/installdashboard/`
-
-| Concern | Approach |
-|---------|----------|
-| Version | Kubernetes Dashboard v2.7.0 via `recommended.yaml` manifest. v3+ dropped plain manifest support in favour of Helm+Kong; v2.7.0 is the last version installable via a single `kubectl apply -f` and remains compatible with current Kubernetes versions. |
-| Manifest source | Embed `recommended.yaml` at build time. |
-| RBAC | After apply, create a `ServiceAccount` named `kinder-admin` in `kubernetes-dashboard` namespace and bind it to `cluster-admin`. This is appropriate for a local development tool. |
-| Access | The action logs a `kubectl -n kubernetes-dashboard create token kinder-admin` command to stdout so users can immediately get a token. |
-| Wait | `kubectl -n kubernetes-dashboard rollout status deployment/kubernetes-dashboard`. |
-
----
-
-## Recommended Changes to Project Structure
-
-### New Files
+## Recommended Project Structure
 
 ```
-pkg/cluster/internal/create/actions/
-├── installmetallb/
-│   ├── metallb.go               ← action implementation
-│   └── manifests/
-│       └── metallb-native.yaml  ← embedded, pinned version
-├── installgatewayapi/
-│   ├── gatewayapi.go
-│   └── manifests/
-│       └── standard-install.yaml
-├── installenvoygw/
-│   ├── envoygw.go
-│   └── manifests/
-│       └── install.yaml
-├── installmetricsserver/
-│   ├── metricsserver.go
-│   └── manifests/
-│       └── components.yaml
-├── installcorednstuning/
-│   └── corednstuning.go         ← no embedded manifest; patches in-place
-└── installdashboard/
-    ├── dashboard.go
-    └── manifests/
-        └── recommended.yaml
+kinder-site/
+├── astro.config.mjs          # Site config: title, social links, sidebar, customCss
+├── package.json              # Dependencies: astro, @astrojs/starlight
+├── package-lock.json         # Lockfile committed (required by withastro/action)
+├── tsconfig.json             # TypeScript config (Astro scaffold provides this)
+│
+├── public/
+│   ├── CNAME                 # "kinder.patrykgolabek.dev" — required for custom domain
+│   └── favicon.svg           # Site icon (dark-friendly)
+│
+└── src/
+    ├── content.config.ts     # Content Layer schema: extends docsSchema()
+    │
+    ├── content/
+    │   └── docs/             # Starlight maps every file here to a URL
+    │       ├── index.mdx     # Redirect to /docs/getting-started/ (or remove if landing is separate)
+    │       ├── getting-started.mdx
+    │       ├── configuration.mdx
+    │       └── addons/
+    │           ├── overview.mdx
+    │           ├── metallb.mdx
+    │           ├── envoy-gateway.mdx
+    │           ├── metrics-server.mdx
+    │           ├── coredns.mdx
+    │           └── headlamp.mdx
+    │
+    ├── pages/
+    │   └── index.astro       # Landing page — overrides Starlight's root page
+    │
+    ├── components/
+    │   ├── Hero.astro         # Full-width hero: headline + install command
+    │   ├── FeatureGrid.astro  # 3-column grid of addon feature cards
+    │   ├── AddonCard.astro    # Individual card: icon, name, one-liner
+    │   ├── QuickStart.astro   # Tabbed code block: install + create cluster
+    │   └── GithubBadge.astro  # Stars/version badge linking to GitHub
+    │
+    └── assets/
+        ├── logo.svg           # Kinder logo (light + dark safe)
+        └── hero-terminal.png  # Terminal screenshot showing kinder create cluster
 ```
 
-### Modified Files
+### Structure Rationale
 
-```
-pkg/internal/apis/config/types.go          ← add Addons struct to Cluster
-pkg/apis/config/v1alpha4/types.go          ← add Addons to public Cluster type
-pkg/internal/apis/config/convert_v1alpha4.go ← convert Addons field
-pkg/internal/apis/config/default.go        ← set all Addons.Disable* = false
-pkg/internal/apis/config/validate.go       ← validate Addons (no-op for bools)
-pkg/internal/apis/config/zz_generated.deepcopy.go ← regenerate
-pkg/cluster/internal/create/create.go      ← wire new actions into pipeline
-```
-
----
-
-## Config Schema Extension
-
-### Internal types (`pkg/internal/apis/config/types.go`)
-
-Add to the `Cluster` struct:
-
-```go
-// Addons controls which default addons are installed during cluster creation.
-// All addons are enabled by default; set the corresponding Disable field to
-// true to skip installation.
-Addons Addons
-```
-
-New type in the same file:
-
-```go
-// Addons holds per-addon opt-out flags for kinder's default addon suite.
-type Addons struct {
-    // DisableMetalLB skips MetalLB installation when true.
-    // MetalLB provides LoadBalancer service support via Layer2 ARP.
-    DisableMetalLB bool
-
-    // DisableGatewayAPI skips Gateway API CRD installation when true.
-    // Disabling this also implicitly skips Envoy Gateway.
-    DisableGatewayAPI bool
-
-    // DisableEnvoyGateway skips Envoy Gateway controller installation when true.
-    // Has no effect if DisableGatewayAPI is also true.
-    DisableEnvoyGateway bool
-
-    // DisableMetricsServer skips Metrics Server installation when true.
-    DisableMetricsServer bool
-
-    // DisableCoreDNSTuning skips CoreDNS cache tuning when true.
-    DisableCoreDNSTuning bool
-
-    // DisableDashboard skips Kubernetes Dashboard installation when true.
-    DisableDashboard bool
-}
-```
-
-### v1alpha4 public type (`pkg/apis/config/v1alpha4/types.go`)
-
-Mirror the same `Addons` struct with YAML/JSON tags on `Cluster`:
-
-```go
-Addons Addons `yaml:"addons,omitempty" json:"addons,omitempty"`
-```
-
-```go
-type Addons struct {
-    DisableMetalLB       bool `yaml:"disableMetalLB,omitempty" json:"disableMetalLB,omitempty"`
-    DisableGatewayAPI    bool `yaml:"disableGatewayAPI,omitempty" json:"disableGatewayAPI,omitempty"`
-    DisableEnvoyGateway  bool `yaml:"disableEnvoyGateway,omitempty" json:"disableEnvoyGateway,omitempty"`
-    DisableMetricsServer bool `yaml:"disableMetricsServer,omitempty" json:"disableMetricsServer,omitempty"`
-    DisableCoreDNSTuning bool `yaml:"disableCoreDNSTuning,omitempty" json:"disableCoreDNSTuning,omitempty"`
-    DisableDashboard     bool `yaml:"disableDashboard,omitempty" json:"disableDashboard,omitempty"`
-}
-```
-
-**Backward compatibility:** All fields are `omitempty` and default to `false` (all addons enabled). Existing `kind.x-k8s.io/v1alpha4` cluster configs that omit the `addons` key continue to work unchanged — they get all addons. The YAML decoder in `encoding/load.go` uses `yamlUnmarshalStrict` which will reject unknown fields, so the field must be added to the v1alpha4 type before any config files use it.
-
-### Example user config (opt-out pattern)
-
-```yaml
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-addons:
-  disableDashboard: true
-  disableEnvoyGateway: true
-nodes:
-  - role: control-plane
-```
+- **`kinder-site/` at repo root:** Keeps Go codebase completely separate. Go tooling ignores `kinder-site/` entirely; Node tooling starts from `kinder-site/`. No workspace or symlink hacks needed.
+- **`src/content/docs/`:** Starlight's required path. Everything here becomes a documentation page automatically with sidebar, breadcrumbs, search, and prev/next navigation.
+- **`src/pages/index.astro`:** Landing pages need no sidebar and a custom layout. Placing a real `.astro` file at `src/pages/index.astro` overrides Starlight's generated root page, giving full layout control while keeping the docs integration intact.
+- **`public/CNAME`:** The `withastro/action` copies the `public/` directory verbatim into the build output. GitHub Pages reads `CNAME` from the root of the deployed artifact to configure the custom domain.
+- **`package-lock.json` committed:** `withastro/action` requires a lockfile to determine which package manager to use and to enable caching. Without it, the action falls back to a slower uncached install.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Embedded Manifest with Embedded Go
+### Pattern 1: Starlight Integration (Docs) with Custom Landing Page
 
-**What:** Each addon action embeds its manifest YAML using `//go:embed manifests/*.yaml` (Go 1.16+). The manifest bytes are passed directly to `kubectl apply -f -` via stdin.
+**What:** Use Starlight for all documentation pages while adding a completely custom `src/pages/index.astro` landing page. Starlight handles `/docs/**` routes via content collections; the landing page handles `/`.
 
-**When:** All addons except CoreDNS tuning (which patches in place).
+**When to use:** Any site that needs both a marketing landing page (no sidebar, custom layout) and structured documentation (sidebar, search, prev/next). This is the standard pattern for developer tools.
 
-**Example (installmetricsserver):**
+**Trade-offs:** Starlight controls its own layout for docs pages. Custom component injection requires Starlight's override mechanism (`components:` in the Starlight config), which adds complexity for non-trivial customizations. For kinder, basic CSS variable overrides are sufficient — avoid the override mechanism for the initial build.
 
-```go
-package installmetricsserver
+**Example `astro.config.mjs`:**
+```javascript
+import { defineConfig } from 'astro/config';
+import starlight from '@astrojs/starlight';
 
-import _ "embed"
+export default defineConfig({
+  site: 'https://kinder.patrykgolabek.dev',
+  // No `base` needed when using a custom domain at apex of subdomain
+  integrations: [
+    starlight({
+      title: 'kinder',
+      description: 'Batteries-included local Kubernetes clusters',
+      logo: { src: './src/assets/logo.svg' },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/patrykattc/kinder' },
+      ],
+      customCss: ['./src/custom.css'],
+      defaultLocale: 'en',
+      sidebar: [
+        { label: 'Getting Started', link: '/docs/getting-started/' },
+        { label: 'Configuration', link: '/docs/configuration/' },
+        {
+          label: 'Addons',
+          autogenerate: { directory: 'addons' },
+        },
+      ],
+    }),
+  ],
+});
+```
 
-//go:embed manifests/components.yaml
-var metricsServerManifest []byte
+**Example `src/content.config.ts`:**
+```typescript
+import { defineCollection } from 'astro:content';
+import { docsSchema } from '@astrojs/starlight/schema';
 
-func (a *action) Execute(ctx *actions.ActionContext) error {
-    ctx.Status.Start("Installing Metrics Server")
-    defer ctx.Status.End(false)
+export const collections = {
+  docs: defineCollection({ schema: docsSchema() }),
+};
+```
 
-    allNodes, err := ctx.Nodes()
-    // ...
-    node := controlPlanes[0]
+### Pattern 2: CSS Variable Override for Dark Terminal Theme
 
-    if err := node.Command(
-        "kubectl", "apply", "--kubeconfig=/etc/kubernetes/admin.conf",
-        "--server-side", "-f", "-",
-    ).SetStdin(bytes.NewReader(metricsServerManifest)).Run(); err != nil {
-        return errors.Wrap(err, "failed to apply metrics-server manifest")
-    }
+**What:** Override Starlight's CSS custom properties in a `customCss` file to match a dark developer-tool aesthetic. Starlight already defaults to dark mode; the overrides tune colors to a terminal-inspired palette (dark backgrounds, green/cyan accents, monospace code).
 
-    // kind-required patch: kubelet uses self-signed certs
-    if err := node.Command(
-        "kubectl", "patch", "-n", "kube-system",
-        "deployment", "metrics-server",
-        "--kubeconfig=/etc/kubernetes/admin.conf",
-        "--type=json",
-        "-p", `[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]`,
-    ).Run(); err != nil {
-        return errors.Wrap(err, "failed to patch metrics-server for insecure TLS")
-    }
+**When to use:** When Starlight's default Night Owl palette does not match the product's brand. For kinder, the target is a darker, more muted palette similar to tools like `kind`'s docs or `flux`'s site.
 
-    return waitForRollout(node, "kube-system", "deployment/metrics-server")
+**Trade-offs:** CSS variable overrides are stable across Starlight versions (they are a documented public API). Overriding component templates via Starlight's `components:` prop is less stable and should be avoided unless absolutely necessary.
+
+**Example `src/custom.css`:**
+```css
+/* Dark terminal theme for kinder */
+:root {
+  --sl-color-accent-low: #0d2b2b;
+  --sl-color-accent: #00b4b4;       /* cyan — Kubernetes brand adjacent */
+  --sl-color-accent-high: #7fffee;
+  --sl-color-white: #f4f4f5;
+  --sl-color-gray-1: #eaeaeb;
+  --sl-color-gray-6: #111318;       /* near-black background */
+  --sl-font-system-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Force dark background even on light system preference */
+:root[data-theme='light'] {
+  /* intentionally close to dark — kinder is a dev tool, dark-first */
+  --sl-color-bg: #1a1d24;
+  --sl-color-bg-nav: #111318;
 }
 ```
 
-### Pattern 2: Dynamic Manifest (MetalLB IP Pool)
+### Pattern 3: Static Code Blocks for Install Instructions
 
-**What:** Some configuration cannot be known until runtime (the docker network CIDR). Generate the manifest string in Go after querying the provider, then pipe it to `kubectl apply`.
+**What:** Use Starlight's built-in Expressive Code syntax highlighting for the install commands. Place the most important command (the quickstart) prominently on the landing page using a custom `QuickStart.astro` component, not inside a docs page.
 
-**When:** MetalLB `IPAddressPool` and `L2Advertisement` objects.
+**When to use:** Landing pages need scannable install commands. Docs pages use standard Markdown code fences.
 
-**Example:**
+**Trade-offs:** Custom components in `src/components/` are not automatically styled by Starlight. They inherit global CSS variables but require their own layout CSS. Keep landing page components simple — flexbox/grid, no complex JS.
 
-```go
-func detectDockerNetworkSubnet(clusterName string) (string, error) {
-    // "kind" is the fixed docker network name for kind clusters
-    // exec runs on the host, not inside a node
-    out, err := exec.Output(exec.Command(
-        "docker", "network", "inspect", "kind",
-        "--format", `{{(index .IPAM.Config 0).Subnet}}`,
-    ))
-    if err != nil {
-        return "", errors.Wrap(err, "failed to inspect docker network")
-    }
-    return strings.TrimSpace(string(out)), nil
-}
-
-func ipPoolRange(subnet string) (string, error) {
-    _, ipNet, err := net.ParseCIDR(subnet)
-    if err != nil {
-        return "", err
-    }
-    // Use the last /28 of the network as the MetalLB pool
-    // e.g. 172.18.0.0/16 -> 172.18.255.200-172.18.255.250
-    // Implementation: set last octet range to 200-250 on base network
-    // ...
-    return computedRange, nil
-}
-```
-
-### Pattern 3: Rollout Wait via Node Command
-
-**What:** All addon actions that deploy workloads must wait for them to be Ready before returning, to ensure the cluster is fully functional when `kinder create cluster` exits.
-
-**When:** Every addon action except CoreDNS tuning (which waits for the existing CoreDNS rollout to complete after restart).
-
-**Example:**
-
-```go
-func waitForRollout(node nodes.Node, namespace, target string) error {
-    cmd := node.Command(
-        "kubectl",
-        "--kubeconfig=/etc/kubernetes/admin.conf",
-        "rollout", "status",
-        "--namespace", namespace,
-        "--timeout=120s",
-        target,
-    )
-    if err := cmd.Run(); err != nil {
-        return errors.Wrapf(err, "timed out waiting for %s rollout", target)
-    }
-    return nil
-}
-```
-
-### Pattern 4: Opt-Out Guard
-
-**What:** Each new action in `create.go` is wrapped in a conditional that checks `ctx.Config.Addons.DisableX`.
-
-**When:** Wiring all addon actions into the pipeline.
-
-**Example (in `create.go`):**
-
-```go
-// addon actions — all enabled by default, opt-out via config.Addons
-if !opts.Config.Addons.DisableMetalLB {
-    actionsToRun = append(actionsToRun, installmetallb.NewAction())
-}
-if !opts.Config.Addons.DisableGatewayAPI {
-    actionsToRun = append(actionsToRun, installgatewayapi.NewAction())
-    if !opts.Config.Addons.DisableEnvoyGateway {
-        actionsToRun = append(actionsToRun, installenvoygw.NewAction())
-    }
-}
-if !opts.Config.Addons.DisableMetricsServer {
-    actionsToRun = append(actionsToRun, installmetricsserver.NewAction())
-}
-if !opts.Config.Addons.DisableCoreDNSTuning {
-    actionsToRun = append(actionsToRun, installcorednstuning.NewAction())
-}
-if !opts.Config.Addons.DisableDashboard {
-    actionsToRun = append(actionsToRun, installdashboard.NewAction())
-}
-```
-
-**Note:** `DisableGatewayAPI` gates `DisableEnvoyGateway`. If a user disables the Gateway API CRDs, the Envoy Gateway action is automatically skipped regardless of its own flag, because the controller cannot function without the CRDs.
-
+**Example landing page snippet:**
+```astro
 ---
-
-## Data Flow: Addon Installation
-
+// src/pages/index.astro
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import Hero from '../components/Hero.astro';
+import FeatureGrid from '../components/FeatureGrid.astro';
+---
+<StarlightPage frontmatter={{ title: 'kinder', template: 'splash' }}>
+  <Hero />
+  <FeatureGrid />
+</StarlightPage>
 ```
-kinder create cluster
-  │
-  │  1. Container network exists
-  │     Provider.Provision() creates node containers on the "kind" bridge network.
-  │     The bridge has a subnet (e.g., 172.18.0.0/16) assigned by Docker.
-  │
-  │  2. Kubernetes is running (waitforready complete)
-  │     admin.conf is at /etc/kubernetes/admin.conf on control-plane node.
-  │     All subsequent kubectl commands use this kubeconfig.
-  │
-  │  3. MetalLB addon
-  │     a. Host: exec "docker network inspect kind" → parse subnet CIDR
-  │     b. Compute IP pool range from subnet tail
-  │     c. controlPlane.Command("kubectl apply ... -f -").SetStdin(metallbManifest)
-  │     d. Generate IPAddressPool + L2Advertisement YAML in memory
-  │     e. controlPlane.Command("kubectl apply ... -f -").SetStdin(poolManifest)
-  │     f. Wait: "kubectl -n metallb-system rollout status deployment/controller"
-  │
-  │  4. Gateway API CRDs addon
-  │     a. controlPlane.Command("kubectl apply --server-side -f -")
-  │        .SetStdin(gatewayAPIManifest)   ← embedded standard-install.yaml
-  │     b. No rollout wait (CRDs, not pods)
-  │
-  │  5. Envoy Gateway addon
-  │     a. controlPlane.Command("kubectl apply --server-side -f -")
-  │        .SetStdin(envoyGWManifest)      ← embedded install.yaml
-  │     b. Wait: "kubectl -n envoy-gateway-system rollout status deployment/envoy-gateway"
-  │
-  │  6. Metrics Server addon
-  │     a. controlPlane.Command("kubectl apply -f -")
-  │        .SetStdin(metricsManifest)      ← embedded components.yaml
-  │     b. Patch: kubectl patch deployment metrics-server --type=json
-  │        (adds --kubelet-insecure-tls arg)
-  │     c. Wait: "kubectl -n kube-system rollout status deployment/metrics-server"
-  │
-  │  7. CoreDNS tuning addon
-  │     a. controlPlane.Command("kubectl patch configmap coredns -n kube-system ...")
-  │        (merges cache settings into Corefile)
-  │     b. controlPlane.Command("kubectl rollout restart deployment/coredns -n kube-system")
-  │     c. Wait: "kubectl -n kube-system rollout status deployment/coredns"
-  │
-  │  8. Dashboard addon
-  │     a. controlPlane.Command("kubectl apply -f -")
-  │        .SetStdin(dashboardManifest)    ← embedded recommended.yaml
-  │     b. controlPlane.Command("kubectl apply -f -")
-  │        .SetStdin(rbacManifest)         ← inline YAML for kinder-admin SA + ClusterRoleBinding
-  │     c. Wait: "kubectl -n kubernetes-dashboard rollout status deployment/kubernetes-dashboard"
-  │     d. ctx.Logger.V(0).Info("Get dashboard token: kubectl -n kubernetes-dashboard create token kinder-admin")
-  │
-  └─ cluster ready; kubeconfig exported
+
+### Pattern 4: Content Collections with Autogenerated Sidebar
+
+**What:** Place all addon docs in `src/content/docs/addons/` and use `autogenerate: { directory: 'addons' }` in the sidebar config. Starlight generates sidebar entries alphabetically by filename; use numeric prefixes (`01-metallb.mdx`) or the `sidebar.order` frontmatter field to control order.
+
+**When to use:** Any section with multiple related pages. Avoids manually maintaining a sidebar list.
+
+**Trade-offs:** Autogenerated labels default to the filename (with capitalization). Override with `sidebar.label` in page frontmatter to get clean display names.
+
+**Example frontmatter in `src/content/docs/addons/metallb.mdx`:**
+```yaml
+---
+title: MetalLB
+description: LoadBalancer support for kinder clusters via Layer 2 ARP
+sidebar:
+  label: MetalLB
+  order: 1
+---
 ```
 
 ---
 
-## Integration Points with Existing Kind Code
+## Data Flow
 
-### `pkg/cluster/internal/create/create.go`
+### Build-Time Flow (GitHub Actions)
 
-**Lines 110-131** (action list construction) — the only file that must be
-edited to wire new actions in. New actions are appended after
-`waitforready.NewAction(...)`.
-
-```go
-// EXISTING (unchanged)
-actionsToRun = append(actionsToRun,
-    installstorage.NewAction(),
-    kubeadmjoin.NewAction(),
-    waitforready.NewAction(opts.WaitForReady),
-)
-
-// NEW — addon actions
-if !opts.Config.Addons.DisableMetalLB {
-    actionsToRun = append(actionsToRun, installmetallb.NewAction())
-}
-// ... (see Pattern 4 above)
+```
+git push to main
+    |
+    v
+.github/workflows/deploy-site.yml triggers
+    |
+    v
+actions/checkout@v5  (full repo checkout)
+    |
+    v
+withastro/action@v5
+    path: ./kinder-site         <- tells action where Astro project lives
+    node-version: 22            <- default
+    |
+    v
+npm install                     <- installs astro + @astrojs/starlight
+    |
+    v
+astro build                     <- reads astro.config.mjs
+    |
+    +-- reads src/content/docs/**   -> generates HTML for each doc page
+    +-- reads src/pages/index.astro -> generates landing page HTML
+    +-- processes src/assets/       -> optimized images
+    +-- copies public/CNAME         -> into dist/
+    |
+    v
+dist/                           <- static site output
+    |
+    v
+actions/deploy-pages@v4         <- uploads dist/ as GitHub Pages artifact
+    |
+    v
+GitHub Pages serves at kinder.patrykgolabek.dev
 ```
 
-New imports required:
+### Request Flow (End User)
 
-```go
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installgatewayapi"
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
-"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
+```
+Browser: https://kinder.patrykgolabek.dev/
+    |
+    v
+GitHub Pages CDN (cached static files)
+    |
+    v
+Landing page HTML (index.astro compiled output)
+    -> Hero component: headline, install command, GitHub link
+    -> FeatureGrid: 5 addon cards
+    -> QuickStart: code block with kinder create cluster
+
+Browser: https://kinder.patrykgolabek.dev/docs/getting-started/
+    |
+    v
+GitHub Pages CDN
+    |
+    v
+Starlight-generated HTML
+    -> Left sidebar: navigation tree
+    -> Content: getting-started.mdx rendered
+    -> Right sidebar: table of contents
+    -> Footer: prev/next pagination
 ```
 
-### `pkg/cluster/internal/create/actions/action.go`
+### Go CLI / Website Data Boundary
 
-**No changes.** `ActionContext` already provides everything addon actions need:
-- `ctx.Nodes()` — get the control-plane node to run kubectl
-- `ctx.Config` — access `cfg.Addons` for any runtime decisions
-- `ctx.Provider` — get provider string to handle Docker vs Podman network names
-- `ctx.Status` — display progress to user
-- `ctx.Logger` — emit the dashboard token hint
+There is intentionally no runtime coupling between the Go CLI and the website. The website is pure static HTML. The only data that crosses the boundary is:
 
-### `pkg/internal/apis/config/types.go`
+| Data | Direction | Mechanism |
+|------|-----------|-----------|
+| CLI version string | Go CLI -> website | Hard-coded in docs frontmatter; updated manually on release |
+| Addon version numbers | Go CLI -> website | Hard-coded in addon docs; updated manually on release |
+| Install instructions | Human -> website | Authored in MDX once, updated on CLI changes |
 
-Add `Addons Addons` field to `Cluster` struct. Add `Addons` type. No existing
-fields are modified.
-
-### `pkg/apis/config/v1alpha4/types.go`
-
-Add `Addons Addons` field with `yaml:"addons,omitempty"` to `Cluster`. Add
-`Addons` type. `yamlUnmarshalStrict` will reject unknown fields, so this must
-be done before any config file uses the new key.
-
-### `pkg/internal/apis/config/convert_v1alpha4.go`
-
-`Convertv1alpha4()` function — add one field copy:
-
-```go
-out.Addons = Addons{
-    DisableMetalLB:       in.Addons.DisableMetalLB,
-    DisableGatewayAPI:    in.Addons.DisableGatewayAPI,
-    DisableEnvoyGateway:  in.Addons.DisableEnvoyGateway,
-    DisableMetricsServer: in.Addons.DisableMetricsServer,
-    DisableCoreDNSTuning: in.Addons.DisableCoreDNSTuning,
-    DisableDashboard:     in.Addons.DisableDashboard,
-}
-```
-
-### `pkg/internal/apis/config/default.go`
-
-`SetDefaultsCluster()` — no change needed. Go zero values for `bool` are
-`false`, which means all addons enabled by default. No explicit defaulting
-required.
-
-### `pkg/internal/apis/config/zz_generated.deepcopy.go`
-
-Must be regenerated after adding `Addons` to the internal type. The `Addons`
-struct contains only scalars (bools), so `DeepCopyInto` is trivially a field
-copy. Run `go generate ./pkg/internal/apis/config/...` (or manually write the
-trivial deep-copy, since booleans need no pointer handling).
-
-### `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go`
-
-Same regeneration requirement for the public v1alpha4 type.
+No dynamic API calls. No version auto-detection from the binary. This is correct for a static site: keep complexity low, update docs as part of the release process.
 
 ---
 
-## Anti-Patterns to Avoid
+## Scaling Considerations
 
-### Anti-Pattern 1: Applying Addon Manifests Before `waitforready`
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| 0-1k monthly visitors | GitHub Pages free tier is more than sufficient; no CDN tuning needed |
+| 1k-100k monthly visitors | GitHub Pages handles this without any changes (served via Fastly CDN) |
+| 100k+ monthly visitors | Consider Cloudflare proxy in front of GitHub Pages for analytics and caching control; no site architecture change needed |
 
-**What:** Inserting addon actions between `kubeadmjoin` and `waitforready`.
-
-**Why bad:** The API server may be up but nodes are `NotReady`. DaemonSets like
-MetalLB speaker will be scheduled but pods won't start. Rollout waits will
-time out. Race conditions produce flaky cluster creation.
-
-**Instead:** All addon actions come after `waitforready`. The additional time
-cost is minimal — `waitforready` ensures the node is schedulable before addon
-pods are created.
-
-### Anti-Pattern 2: Fetching Manifests at Runtime from the Internet
-
-**What:** `kubectl apply -f https://...` or `curl | kubectl apply` inside node
-commands.
-
-**Why bad:** Cluster creation fails in air-gapped environments. Version pinning
-is broken (latest URL is not pinned). Node containers may not have outbound
-internet access depending on provider configuration.
-
-**Instead:** Embed all manifests at build time using `//go:embed`. Embed the
-specific pinned version. Update manifests by updating the embedded file and
-rebuilding.
-
-### Anti-Pattern 3: Adding New Methods to the Provider Interface
-
-**What:** Adding a `GetNetworkSubnet()` method to `providers.Provider` to
-abstract Docker/Podman/Nerdctl network inspection.
-
-**Why bad:** All three providers would need updating. The provider interface
-is an alpha-grade internal API that is already complex. The MetalLB action
-only needs a network subnet, which can be obtained with a straightforward
-`exec.Command("docker", "network", "inspect", ...)` keyed on the provider name.
-
-**Instead:** In `installmetallb`, switch on `ctx.Provider.String()` to select
-the appropriate CLI command. Docker and Nerdctl both use `docker network
-inspect kind`. Podman uses `podman network inspect kind`. This keeps the
-provider interface stable.
-
-### Anti-Pattern 4: Using Helm for Addon Installation
-
-**What:** Bundling Helm in the kinder binary or shelling out to a `helm`
-binary to install addons.
-
-**Why bad:** Adds a new external dependency. Helm must be present on the host
-and version-compatible. The project constraint explicitly prohibits this.
-Helm adds complexity for what is essentially a `kubectl apply`.
-
-**Instead:** Apply static YAML manifests via kubectl. For addons with runtime
-configuration (MetalLB pool range), generate the YAML string in Go.
-
-### Anti-Pattern 5: Silently Skipping Failed Addon Installs
-
-**What:** Catching errors from addon actions and logging a warning rather than
-returning the error.
-
-**Why bad:** The cluster appears ready but addons are non-functional. Users
-discover this later with confusing failures.
-
-**Instead:** Return errors from `Execute()` as the existing actions do. If
-`opts.Retain` is false, the cluster is deleted on failure (existing behaviour).
-If users need a cluster without a specific addon, they should use the opt-out
-config flag rather than relying on silent failure.
+This is a developer tool docs site. Traffic will be dominated by organic search and GitHub referrals. GitHub Pages free tier supports unlimited bandwidth for public repos. No scaling concerns exist for this project.
 
 ---
 
-## Action Ordering: Dependency Rationale
+## Anti-Patterns
 
-| Order | Action | Depends On | Reason |
-|-------|--------|------------|--------|
-| 1 | `installmetallb` | `waitforready` | Needs schedulable nodes; no dependency on other addons |
-| 2 | `installgatewayapi` | `waitforready` | CRD apply only; no pod dependency; must precede Envoy GW |
-| 3 | `installenvoygw` | `installgatewayapi` | Controller crashes without Gateway API CRDs present |
-| 4 | `installmetricsserver` | `waitforready` | Independent; kubelets must be ready to serve metrics |
-| 5 | `installcorednstuning` | kubeadm-installed CoreDNS (already up after `waitforready`) | Patches running deployment |
-| 6 | `installdashboard` | `waitforready` | Independent; placing last is a style choice (cosmetic addon) |
+### Anti-Pattern 1: Reusing the Existing `site/` Directory
 
-MetalLB is placed first so that by the time Envoy Gateway is ready, any
-`LoadBalancer` services it creates can be immediately assigned IPs. This
-produces a cleaner end state where all services have external IPs when the
-creation command exits.
+**What people do:** Modify the existing `site/` directory (Hugo-based, kind's site) to add kinder branding.
+
+**Why it's wrong:** The `site/` directory is a Hugo project targeting kind's upstream website. It has kind's config, kind's theme, kind's menus. Mixing kinder content in creates maintenance confusion, makes upgrades from upstream harder, and produces a site that looks like kind's site with kinder content.
+
+**Do this instead:** Create a completely separate `kinder-site/` directory at the repo root. The existing `site/` directory can be removed or left as-is — it is unused by kinder's build.
+
+### Anti-Pattern 2: Setting `base` When Using a Custom Domain
+
+**What people do:** Set `base: '/kinder'` in `astro.config.mjs` because they assume the site lives at a sub-path.
+
+**Why it's wrong:** When a custom domain (`kinder.patrykgolabek.dev`) is configured, the site is at the root of that domain, not at a sub-path. Setting `base` causes all internal links and asset paths to be prefixed with `/kinder`, breaking navigation.
+
+**Do this instead:** Set only `site: 'https://kinder.patrykgolabek.dev'` and do not set `base`. The `public/CNAME` file handles domain association with GitHub Pages.
+
+### Anti-Pattern 3: Checking In `node_modules/`
+
+**What people do:** Commit `node_modules/` to avoid the install step in CI.
+
+**Why it's wrong:** Node modules are platform-specific binaries + thousands of files. They bloat the repo, slow down clones, and cause cache invalidation issues.
+
+**Do this instead:** Commit `package-lock.json`. The `withastro/action` uses it to restore the npm cache between runs, making subsequent CI builds fast without committing node_modules.
+
+### Anti-Pattern 4: Embedding the Website in Go's Build System
+
+**What people do:** Add a `make site` target that shells out to `npm run build` inside the repo's root Makefile, using the Go-managed `PATH` setup from `hack/build/setup-go.sh`.
+
+**Why it's wrong:** Node and Go have entirely different toolchain management. Mixing them in the same Makefile creates confusion about which PATH is active, what versions of tools are available, and what CI jobs are responsible for what. The existing Makefile uses `hack/build/setup-go.sh` to configure Go's toolchain — injecting `npm` into this path is fragile.
+
+**Do this instead:** The website lives in `kinder-site/` with its own `package.json`. Developers who want to work on the site `cd kinder-site && npm install && npm run dev`. GitHub Actions uses the `withastro/action` with `path: ./kinder-site`. No Makefile integration needed.
+
+### Anti-Pattern 5: Using Starlight's Component Override System for Minor Styling
+
+**What people do:** Override Starlight's built-in components (Header, Sidebar, Footer) by creating local copies in `src/components/starlight/` and wiring them in via `components:` in the Starlight config.
+
+**Why it's wrong:** Overriding components is a copy-paste of Starlight's internal implementation. When Starlight releases updates (bug fixes, accessibility improvements), the overridden components don't get the fixes. Minor styling doesn't justify the maintenance cost.
+
+**Do this instead:** Use CSS variable overrides in `customCss`. They are a documented, stable API. Only use component overrides for structural changes that CSS cannot achieve.
 
 ---
 
-## Scalability Considerations
+## Integration Points
 
-| Concern | Single node (dev) | Multi-node |
-|---------|------------------|------------|
-| MetalLB IP pool | Sufficient with /28 from docker network | Same; pool is shared across all LB services |
-| Envoy GW pods | Scheduled on control-plane (taint removed for single-node) | Scheduled on workers |
-| Metrics Server | Works; kubelet endpoint on single node | Works; scrapes all kubelets |
-| Dashboard | localhost port-forward sufficient | Same; not exposed externally by design |
-| CoreDNS tuning | Minimal impact | Same configmap patch |
+### External Services
 
-All addons are designed for local development clusters (1-3 nodes). No
-production-scale considerations are needed.
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| GitHub Pages | `withastro/action@v5` in deploy workflow | `path: ./kinder-site` for subdirectory; `public/CNAME` for custom domain |
+| DNS (custom domain) | CNAME record: `kinder.patrykgolabek.dev -> patrykattc.github.io` | Set in DNS provider; GitHub Pages Settings > Custom Domain; can take hours to propagate |
+| GitHub (social link) | `social:` in Starlight config | Icon link in site header to the repo |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| Go CLI source ↔ website docs | None at runtime; manual sync at release time | Addon versions and CLI flags documented in MDX; update docs as part of the release process |
+| `kinder-site/` ↔ root Makefile | None — fully decoupled | No make target needed; Go CI workflow explicitly ignores `kinder-site/**` via `paths-ignore` |
+| Existing Go CI workflows ↔ deploy-site workflow | None — independent triggers | Go CI: `paths-ignore: ['kinder-site/**']`; Site CI: `paths: ['kinder-site/**']` |
+
+### New Files in Repo Root (not in `kinder-site/`)
+
+| File | Purpose |
+|------|---------|
+| `.github/workflows/deploy-site.yml` | Build + deploy Astro site to GitHub Pages |
+
+The existing Go CI workflows (`docker.yaml`, `podman.yml`, `nerdctl.yaml`, `vm.yaml`) already ignore the `site/` path. They should also ignore `kinder-site/**` to avoid triggering Go test runs when only docs are changed.
+
+---
+
+## GitHub Actions Workflow
+
+Complete workflow for reference. Place at `.github/workflows/deploy-site.yml`:
+
+```yaml
+name: Deploy kinder site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kinder-site/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install, build, and upload site
+        uses: withastro/action@v5
+        with:
+          path: ./kinder-site
+          node-version: 22
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+**Path trigger:** Only runs when files under `kinder-site/` change. Go source changes do not trigger a site deploy.
+
+---
+
+## Build Order for Implementation Phases
+
+The following order respects dependencies and allows incremental validation:
+
+```
+Phase 1: Scaffold
+    scaffold kinder-site/ with Starlight template
+    configure astro.config.mjs (title, social, sidebar structure)
+    add public/CNAME for custom domain
+    verify: npm run dev shows Starlight default site locally
+
+Phase 2: Deploy pipeline
+    add .github/workflows/deploy-site.yml
+    configure GitHub Pages: Source = GitHub Actions, Custom Domain
+    configure DNS: CNAME record
+    verify: push to main deploys placeholder site to kinder.patrykgolabek.dev
+
+Phase 3: Dark theme
+    add src/custom.css with CSS variable overrides
+    verify: dark terminal aesthetic in local dev and deployed
+
+Phase 4: Documentation pages
+    write src/content/docs/getting-started.mdx
+    write src/content/docs/configuration.mdx
+    write src/content/docs/addons/*.mdx (one per addon)
+    verify: sidebar shows all pages; search works; prev/next navigation works
+
+Phase 5: Landing page
+    implement src/pages/index.astro
+    implement src/components/ (Hero, FeatureGrid, AddonCard, QuickStart)
+    verify: / renders landing page without sidebar; /docs/* still renders with sidebar
+
+Phase 6: Polish
+    add logo to Starlight config
+    add favicon
+    verify: mobile responsive; Lighthouse score acceptable
+```
+
+**Why deploy pipeline before content:** Validates the deployment plumbing early. If GitHub Pages configuration or DNS is broken, finding it in Phase 2 is much cheaper than discovering it after writing all the content.
 
 ---
 
 ## Sources
 
-- Kind codebase read directly at `/Users/patrykattc/work/git/kinder` (commit 89ff06bd) — HIGH confidence
-- [MetalLB Installation](https://metallb.universe.tf/installation/) — official docs, metallb-native.yaml manifest — HIGH confidence
-- [MetalLB Configuration: IPAddressPool + L2Advertisement](https://metallb.universe.tf/configuration/) — HIGH confidence
-- [kind LoadBalancer guide (MetalLB + kind pattern)](https://master--k8s-kind.netlify.app/docs/user/loadbalancer/) — MEDIUM confidence
-- [Envoy Gateway Install with YAML](https://gateway.envoyproxy.io/docs/install/install-yaml/) — official docs — HIGH confidence
-- [Envoy Gateway Quickstart](https://gateway.envoyproxy.io/latest/tasks/quickstart/) — HIGH confidence
-- [Metrics Server GitHub: kind insecure-TLS requirement](https://github.com/kubernetes-sigs/metrics-server) — HIGH confidence
-- [Kubernetes Dashboard v2.7.0 recommended.yaml](https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/) — HIGH confidence; v3 Helm-only confirmed by multiple sources — HIGH confidence
-- [CoreDNS cache tuning best practices](https://medium.com/@GiteshWadhwa/optimizing-dns-resolution-in-kubernetes-best-practices-for-coredns-performance-e3f6ed041bbb) — MEDIUM confidence (community source, consistent with official CoreDNS docs)
-- [MetalLB + kind: compute docker network subnet for IP pool](https://michaelheap.com/metallb-ip-address-pool/) — MEDIUM confidence (community, consistent with official MetalLB docs)
+- [Starlight Project Structure](https://starlight.astro.build/guides/project-structure/) — HIGH confidence (official Starlight docs)
+- [Starlight Getting Started](https://starlight.astro.build/getting-started/) — HIGH confidence (official)
+- [Starlight Configuration Reference](https://starlight.astro.build/reference/configuration/) — HIGH confidence (official)
+- [Starlight Customization Guide](https://starlight.astro.build/guides/customization/) — HIGH confidence (official)
+- [Starlight Sidebar Navigation](https://starlight.astro.build/guides/sidebar/) — HIGH confidence (official)
+- [Astro Deploy to GitHub Pages](https://docs.astro.build/en/guides/deploy/github/) — HIGH confidence (official Astro docs)
+- [withastro/action GitHub README](https://github.com/withastro/action) — HIGH confidence (official action repo, verified `path` parameter)
+- [Astro content collections](https://docs.astro.build/en/guides/content-collections/) — HIGH confidence (official)
+- [Starlight 0.37.6 release](https://github.com/withastro/starlight/releases) — HIGH confidence (verified latest version)
+- [Astro 5.x on npm](https://www.npmjs.com/package/astro) — MEDIUM confidence (npm registry, version 5.16.6 current as of 2026-03)
+- Existing kinder repo read directly at `/Users/patrykattc/work/git/kinder` — HIGH confidence
+
+---
+*Architecture research for: Astro/Starlight website integration into kinder Go CLI repo*
+*Researched: 2026-03-01*
