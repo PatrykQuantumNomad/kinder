@@ -2,7 +2,7 @@
 
 ## Overview
 
-Starting from the upstream kind fork, this roadmap builds kinder's batteries-included cluster experience in seven phases. Phase 1 lays the shared infrastructure (config schema and action scaffolding) that every subsequent phase depends on. Phases 2-6 each deliver one complete addon — MetalLB, Metrics Server, CoreDNS tuning, Envoy Gateway, and Dashboard — in dependency order. Phase 7 validates the full system with cross-addon integration tests. When all seven phases are complete, `kinder create cluster` produces a fully functional development cluster with no manual setup required.
+Starting from the upstream kind fork, this roadmap builds kinder's batteries-included cluster experience in eight phases. Phase 1 lays the shared infrastructure (config schema and action scaffolding) that every subsequent phase depends on. Phases 2-6 each deliver one complete addon — MetalLB, Metrics Server, CoreDNS tuning, Envoy Gateway, and Dashboard — in dependency order. Phase 7 validates the full system with cross-addon integration tests. Phase 8 closes audit gaps from milestone verification. When all eight phases are complete, `kinder create cluster` produces a fully functional development cluster with no manual setup required.
 
 ## Phases
 
@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
 - [x] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
 - [x] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
+- [ ] **Phase 8: Gap Closure** - Fix all-false config guard edge case and harden integration script
 
 ## Phase Details
 
@@ -117,10 +118,24 @@ Plans:
 - [x] 07-01-PLAN.md — TDD: Extract CoreDNS patchCorefile function and write table-driven unit tests for all transforms and guard checks
 - [x] 07-02-PLAN.md — Unit tests for create.go addon summary/platform warning + live-cluster integration verification script
 
+### Phase 8: Gap Closure
+**Goal**: Fix the all-addons-disabled config edge case so explicit opt-out is respected, and harden the integration test script with proper kubectl context targeting
+**Depends on**: Phases 1, 7
+**Requirements**: FOUND-04 (edge case fix)
+**Gap Closure:** Closes integration issues 1-2 and flow gaps 3-4 from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. A cluster config with all five addons set to `false` results in zero addon pods being installed
+  2. Unit tests verify the all-addons-disabled config path produces an internal config with all bools false
+  3. `hack/verify-integration.sh` explicitly sets kubectl context to `kind-kinder-integration-test` before running checks
+  4. Re-running `/gsd:audit-milestone` produces zero integration issues and zero partial flows
+**Plans**: 0 plans
+Plans:
+- *(to be planned)*
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each other. Phases 5 and 6 depend on Phase 1 (Phase 5 also hard-depends on Phase 2). In practice, execute in the order listed — MetalLB first ensures Phase 5 can be verified end-to-end.
 
@@ -133,3 +148,4 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 1/1 | Complete | 2026-03-01 |
 | 7. Integration Testing | 2/2 | Complete | 2026-03-01 |
+| 8. Gap Closure | 0/0 | Pending | — |
