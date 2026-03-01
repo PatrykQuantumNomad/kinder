@@ -40,6 +40,21 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 
 	convertv1alpha4Networking(&in.Networking, &out.Networking)
 
+	boolVal := func(b *bool) bool {
+		if b == nil {
+			return true
+		}
+		return *b
+	}
+
+	out.Addons = Addons{
+		MetalLB:       boolVal(in.Addons.MetalLB),
+		EnvoyGateway:  boolVal(in.Addons.EnvoyGateway),
+		MetricsServer: boolVal(in.Addons.MetricsServer),
+		CoreDNSTuning: boolVal(in.Addons.CoreDNSTuning),
+		Dashboard:     boolVal(in.Addons.Dashboard),
+	}
+
 	for i := range in.KubeadmConfigPatchesJSON6902 {
 		convertv1alpha4PatchJSON6902(&in.KubeadmConfigPatchesJSON6902[i], &out.KubeadmConfigPatchesJSON6902[i])
 	}

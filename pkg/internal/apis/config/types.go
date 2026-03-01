@@ -69,6 +69,18 @@ type Cluster struct {
 	// in the order listed.
 	// These should be YAML or JSON formatting RFC 6902 JSON patches
 	ContainerdConfigPatchesJSON6902 []string
+
+	// Addons configures which default addons are installed.
+	Addons Addons
+}
+
+// Addons configures which default addons are installed during cluster creation.
+type Addons struct {
+	MetalLB       bool
+	EnvoyGateway  bool
+	MetricsServer bool
+	CoreDNSTuning bool
+	Dashboard     bool
 }
 
 // Node contains settings for a node in the `kind` Cluster.

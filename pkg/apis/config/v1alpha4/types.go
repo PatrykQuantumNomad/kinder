@@ -84,6 +84,29 @@ type Cluster struct {
 	// These should be YAML or JSON formatting RFC 6902 JSON patches
 	// NOTE: These are not currently version-aware.
 	ContainerdConfigPatchesJSON6902 []string `yaml:"containerdConfigPatchesJSON6902,omitempty" json:"containerdConfigPatchesJSON6902,omitempty"`
+
+	// Addons configures which default addons are installed.
+	Addons Addons `yaml:"addons,omitempty" json:"addons,omitempty"`
+}
+
+// Addons configures which default addons are installed during cluster creation.
+// All addons are enabled by default. Set a field to false to skip that addon.
+type Addons struct {
+	// MetalLB enables MetalLB for LoadBalancer services.
+	// +optional (default: true)
+	MetalLB *bool `yaml:"metalLB,omitempty" json:"metalLB,omitempty"`
+	// EnvoyGateway enables Envoy Gateway and Gateway API CRDs.
+	// +optional (default: true)
+	EnvoyGateway *bool `yaml:"envoyGateway,omitempty" json:"envoyGateway,omitempty"`
+	// MetricsServer enables Kubernetes Metrics Server.
+	// +optional (default: true)
+	MetricsServer *bool `yaml:"metricsServer,omitempty" json:"metricsServer,omitempty"`
+	// CoreDNSTuning enables CoreDNS cache and performance tuning.
+	// +optional (default: true)
+	CoreDNSTuning *bool `yaml:"coreDNSTuning,omitempty" json:"coreDNSTuning,omitempty"`
+	// Dashboard enables the Kubernetes Dashboard (Headlamp).
+	// +optional (default: true)
+	Dashboard *bool `yaml:"dashboard,omitempty" json:"dashboard,omitempty"`
 }
 
 // TypeMeta partially copies apimachinery/pkg/apis/meta/v1.TypeMeta
