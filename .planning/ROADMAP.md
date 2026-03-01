@@ -85,7 +85,9 @@ Plans:
   2. A user can deploy a Gateway and HTTPRoute and curl a backend service through the resulting LoadBalancer IP
   3. When MetalLB is disabled and Envoy Gateway is enabled, kinder prints a clear warning that the Gateway proxy will not get an IP
   4. Setting `addons.envoyGateway: false` in cluster config causes no Gateway API CRDs or Envoy Gateway pods to be installed
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 05-01-PLAN.md — Envoy Gateway v1.3.1 install.yaml embedding with server-side apply, certgen/controller/GatewayClass wait sequence, TLS termination docs
 
 ### Phase 6: Dashboard
 **Goal**: Headlamp is installed and a developer can immediately open the Kubernetes dashboard using a printed token and port-forward command
@@ -123,6 +125,6 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 2. MetalLB | 2/2 | Complete | 2026-03-01 |
 | 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
-| 5. Envoy Gateway | 0/TBD | Not started | - |
+| 5. Envoy Gateway | 0/1 | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
 | 7. Integration Testing | 0/TBD | Not started | - |
