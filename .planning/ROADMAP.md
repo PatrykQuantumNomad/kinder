@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Metrics Server** - kubectl top and HPA metrics functional within 60 seconds of cluster creation
 - [x] **Phase 4: CoreDNS Tuning** - DNS cache improved and CoreDNS patched in-place without breaking resolution
 - [x] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
-- [ ] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
+- [x] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
 - [ ] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
 
 ## Phase Details
@@ -100,7 +100,7 @@ Plans:
   4. Setting `addons.dashboard: false` in cluster config causes no Headlamp pods or RBAC resources to be installed
 **Plans**: 1 plan
 Plans:
-- [ ] 06-01-PLAN.md — Headlamp v0.40.1 manifest embedding with RBAC, long-lived token Secret, token decode and print
+- [x] 06-01-PLAN.md — Headlamp v0.40.1 manifest embedding with RBAC, long-lived token Secret, token decode and print
 
 ### Phase 7: Integration Testing
 **Goal**: All five addons work correctly together in a single `kinder create cluster` run and each addon's functional health is verified — not just pod readiness
@@ -128,5 +128,5 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
-| 6. Dashboard | 0/1 | Planned | - |
+| 6. Dashboard | 1/1 | Complete | 2026-03-01 |
 | 7. Integration Testing | 0/TBD | Not started | - |

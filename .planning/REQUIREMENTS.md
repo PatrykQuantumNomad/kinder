@@ -53,12 +53,12 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### Dashboard (Headlamp)
 
-- [ ] **DASH-01**: Headlamp is installed and running in `kube-system` namespace by default
-- [ ] **DASH-02**: A dedicated `kinder-dashboard` service account with cluster-admin role is created
-- [ ] **DASH-03**: Service account token is printed at the end of `kinder create cluster` output
-- [ ] **DASH-04**: Port-forward command is printed so user can access the dashboard immediately
-- [ ] **DASH-05**: User can view pods, services, deployments, and logs in the Headlamp UI
-- [ ] **DASH-06**: User can disable Dashboard via `addons.dashboard: false` in cluster config
+- [x] **DASH-01**: Headlamp is installed and running in `kube-system` namespace by default
+- [x] **DASH-02**: A dedicated `kinder-dashboard` service account with cluster-admin role is created
+- [x] **DASH-03**: Service account token is printed at the end of `kinder create cluster` output
+- [x] **DASH-04**: Port-forward command is printed so user can access the dashboard immediately
+- [x] **DASH-05**: User can view pods, services, deployments, and logs in the Headlamp UI
+- [x] **DASH-06**: User can disable Dashboard via `addons.dashboard: false` in cluster config
 
 ## v2 Requirements
 
@@ -131,12 +131,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EGW-04 | Phase 5 | Complete |
 | EGW-05 | Phase 5 | Complete |
 | EGW-06 | Phase 5 | Complete |
-| DASH-01 | Phase 6 | Pending |
-| DASH-02 | Phase 6 | Pending |
-| DASH-03 | Phase 6 | Pending |
-| DASH-04 | Phase 6 | Pending |
-| DASH-05 | Phase 6 | Pending |
-| DASH-06 | Phase 6 | Pending |
+| DASH-01 | Phase 6 | Complete |
+| DASH-02 | Phase 6 | Complete |
+| DASH-03 | Phase 6 | Complete |
+| DASH-04 | Phase 6 | Complete |
+| DASH-05 | Phase 6 | Complete |
+| DASH-06 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total
