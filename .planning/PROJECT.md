@@ -27,7 +27,22 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(None — next milestone not yet planned)
+- [ ] Kinder website with landing page and documentation, built with Astro
+- [ ] Modern dark developer-tool aesthetic (terminal-style, code snippets, badges)
+- [ ] Landing page showcasing features, install instructions, and addon highlights
+- [ ] Documentation pages: installation guide, configuration reference, addon docs
+- [ ] Custom domain: kinder.patrykgolabek.dev via GitHub Pages
+- [ ] Source lives in `kinder-site/` directory at repo root
+
+## Current Milestone: v1.1 Kinder Website
+
+**Goal:** Create a standalone website for kinder with a marketing landing page and full documentation, hosted on GitHub Pages at kinder.patrykgolabek.dev.
+
+**Target features:**
+- Astro-based site in `kinder-site/` with modern dark developer aesthetic
+- Landing page with feature highlights, install quickstart, and addon showcase
+- Documentation pages covering installation, cluster config, and each addon
+- Custom domain configuration for GitHub Pages
 
 ### Out of Scope
 
@@ -48,10 +63,12 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ## Constraints
 
-- **Tech stack**: Go, same build system as kind — no new languages or build tools
+- **Tech stack (core)**: Go, same build system as kind — no new languages or build tools
+- **Tech stack (website)**: Astro framework, TypeScript/JS — standard static site tooling
 - **Compatibility**: Must work with Docker, Podman, and Nerdctl (all existing providers)
 - **Config format**: Extend kind's `v1alpha4` config API with addon fields, don't break existing configs
 - **Image size**: Addon manifests applied at runtime, not baked into node image
+- **Hosting**: GitHub Pages with custom domain kinder.patrykgolabek.dev
 
 ## Key Decisions
 
@@ -66,6 +83,9 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Headlamp over kubernetes/dashboard | kubernetes/dashboard archived Jan 2026, Helm dependency | ✓ Good |
 | Server-side apply for Envoy Gateway | httproutes CRD exceeds 256 KB annotation limit | ✓ Good |
 | CoreDNS read-modify-write in Go | Corefile is a string blob, not structured YAML | ✓ Good |
+| Astro for website | Static site generator, fast, great for docs + landing pages | — Pending |
+| Separate kinder-site/ directory | Clean separation from Go codebase, no reuse of kind's site | — Pending |
+| No kind website code reuse | Fresh design for kinder identity, avoids inheriting kind's patterns | — Pending |
 
 ---
-*Last updated: 2026-03-01 after v1.0 milestone*
+*Last updated: 2026-03-01 after v1.1 milestone start*
