@@ -10,27 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 2 of 7 (MetalLB)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-01 — Phase 1 verified and approved. Ready for Phase 2 planning.
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-01 — Completed 02-01: subnet detection and IP pool carving (15 tests, all pass).
 
-Progress: [██░░░░░░░░] 14%
+Progress: [███░░░░░░░] 21%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: 2 minutes
-- Total execution time: 0.07 hours
+- Total execution time: 0.11 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 2 | 4 min | 2 min |
+| 02-metallb | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2m), 01-02 (2m)
+- Last 5 plans: 01-01 (2m), 01-02 (2m), 02-01 (2m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -52,6 +53,8 @@ Recent decisions affecting current work:
 - [01-02]: Addon loop uses a closure (runAddon) rather than a top-level function — keeps actionsContext and addonResults in natural scope
 - [01-02]: Platform warning fires after all addon runs, before summary — groups warning visually with addon results
 - [01-02]: Salutation updated "kind" to "kinder" — URLs left pointing to kind docs until kinder docs exist
+- [02-01]: carvePoolFromSubnet uses broadcast-address arithmetic — computes broadcast, then sets last octet to .200-.250; handles /16, /24, /20 automatically
+- [02-01]: parseSubnetFromJSON branches on providerName=="podman" only — Docker and Nerdctl share IPAM.Config schema so no third branch needed
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 01-02-PLAN.md — action pipeline scaffolding with stub addon actions, warn-continue loop, platform warning, addon summary. Phase 1 complete.
+Stopped at: Completed 02-01-PLAN.md — subnet detection and IP pool carving (subnet.go + subnet_test.go, 15 tests all pass). Ready for 02-02.
 Resume file: None
