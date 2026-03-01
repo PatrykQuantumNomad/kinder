@@ -15,12 +15,22 @@ limitations under the License.
 */
 
 // Package installdashboard implements the action to install the Headlamp
-// Kubernetes dashboard.
+// Kubernetes dashboard with RBAC, long-lived token, and access info printing.
 package installdashboard
 
 import (
+	"bytes"
+	"encoding/base64"
+	_ "embed"
+	"strings"
+
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
+	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
+	"sigs.k8s.io/kind/pkg/errors"
 )
+
+//go:embed manifests/headlamp.yaml
+var headlampManifest string
 
 type action struct{}
 
@@ -31,9 +41,74 @@ func NewAction() actions.Action {
 
 // Execute runs the action
 func (a *action) Execute(ctx *actions.ActionContext) error {
-	ctx.Status.Start("Installing Dashboard (stub)")
+	ctx.Status.Start("Installing Dashboard")
 	defer ctx.Status.End(false)
-	// TODO: Real implementation in Phase 6
+
+	// Get control plane node
+	allNodes, err := ctx.Nodes()
+	if err != nil {
+		return errors.Wrap(err, "failed to list cluster nodes")
+	}
+	controlPlanes, err := nodeutils.ControlPlaneNodes(allNodes)
+	if err != nil {
+		return errors.Wrap(err, "failed to find control plane nodes")
+	}
+	if len(controlPlanes) == 0 {
+		return errors.New("no control plane nodes found")
+	}
+	node := controlPlanes[0]
+
+	// Apply Headlamp manifest (SA, RBAC, Secret, Service, Deployment)
+	if err := node.Command(
+		"kubectl",
+		"--kubeconfig=/etc/kubernetes/admin.conf",
+		"apply", "-f", "-",
+	).SetStdin(strings.NewReader(headlampManifest)).Run(); err != nil {
+		return errors.Wrap(err, "failed to apply Headlamp manifest")
+	}
+
+	// Wait for Headlamp Deployment to be Available
+	if err := node.Command(
+		"kubectl",
+		"--kubeconfig=/etc/kubernetes/admin.conf",
+		"wait",
+		"--namespace=kube-system",
+		"--for=condition=Available",
+		"deployment/headlamp",
+		"--timeout=120s",
+	).Run(); err != nil {
+		return errors.Wrap(err, "Headlamp deployment did not become available")
+	}
+
+	// Read the long-lived token from the Secret
+	var tokenBuf bytes.Buffer
+	if err := node.Command(
+		"kubectl",
+		"--kubeconfig=/etc/kubernetes/admin.conf",
+		"get", "secret", "kinder-dashboard-token",
+		"--namespace=kube-system",
+		"-o", "jsonpath={.data.token}",
+	).SetStdout(&tokenBuf).Run(); err != nil {
+		return errors.Wrap(err, "failed to read dashboard token from secret")
+	}
+
+	// Decode base64 in Go to avoid shell compatibility issues
+	tokenBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(tokenBuf.String()))
+	if err != nil {
+		return errors.Wrap(err, "failed to decode dashboard token")
+	}
+	token := string(tokenBytes)
+
+	// End spinner before printing multi-line output
 	ctx.Status.End(true)
+
+	// Print token and port-forward command for the user
+	ctx.Logger.V(0).Info("")
+	ctx.Logger.V(0).Info("Dashboard:")
+	ctx.Logger.V(0).Infof("  Token: %s", token)
+	ctx.Logger.V(0).Info("  Port-forward: kubectl port-forward -n kube-system service/headlamp 8080:80")
+	ctx.Logger.V(0).Info("  Then open: http://localhost:8080")
+	ctx.Logger.V(0).Info("")
+
 	return nil
 }
