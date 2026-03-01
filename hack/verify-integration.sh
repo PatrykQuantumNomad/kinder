@@ -92,6 +92,8 @@ section "SC-1: Full cluster creation with all addons"
 echo "  Creating cluster (this takes a few minutes)..."
 if kinder create cluster --name "$CLUSTER_NAME" 2>&1 | tee "$CREATE_LOG"; then
   pass "SC-1a: kinder create cluster exited 0"
+  echo "  Setting kubectl context to kind-${CLUSTER_NAME}..."
+  kubectl config use-context "kind-${CLUSTER_NAME}"
 else
   fail "SC-1a: kinder create cluster exited non-zero"
 fi
