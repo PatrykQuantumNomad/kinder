@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 9 of 14 (Scaffold and Deploy Pipeline)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-01 — Roadmap created for v1.1; 23 requirements mapped across 6 phases (9-14)
+Plan: 01 complete, 02 pending
+Status: In progress
+Last activity: 2026-03-01 — Phase 9 Plan 01 executed: Astro/Starlight scaffold + GitHub Actions deploy workflow
 
-Progress: [░░░░░░░░░░] 0% (v1.1)
+Progress: [█░░░░░░░░░] 8% (v1.1 — 1/12 plans complete)
 
 ## Performance Metrics
 
@@ -23,8 +23,9 @@ Progress: [░░░░░░░░░░] 0% (v1.1)
 - Total phases: 8
 
 **v1.1 (current):**
-- Plans completed: 0
+- Plans completed: 1
 - Phases complete: 0/6
+- Phase 9 Plan 01: 3 min, 2 tasks, 9 files created
 
 ## Accumulated Context
 
@@ -32,11 +33,14 @@ Progress: [░░░░░░░░░░] 0% (v1.1)
 
 - v1.0: Fork kind (not wrap), addons as creation actions, on-by-default opt-out, go:embed for manifests
 - v1.1: Astro + Starlight for website, kinder-site/ subdirectory, no Tailwind, custom domain kinder.patrykgolabek.dev
+- Phase 9: npm (not pnpm) for CI compatibility; no base setting in astro.config.mjs (custom domain serves from root)
+- Phase 9: GitHub repo confirmed patrykattc/kinder (resolves prior inconsistency in ARCHITECTURE.md)
+- Phase 9: Deploy job gated to push only; PRs get build-check without deployment
 
 ### Blockers/Concerns
 
 - [Phase 11] Binary distribution method unconfirmed — affects install command in installation guide and hero. Options: `go install`, GitHub Releases binary, Homebrew tap. Confirm before Phase 11.
-- [Phase 9] GitHub repo URL inconsistency — ARCHITECTURE.md references both `patrykgolabek/kinder` and `patrykattc/kinder`. Confirm correct GitHub username before writing any config or docs.
+- [Phase 9] RESOLVED: GitHub repo confirmed as patrykattc/kinder (per CONTEXT.md)
 
 ### Pending Todos
 
@@ -45,5 +49,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Roadmap created. ROADMAP.md, STATE.md written; REQUIREMENTS.md traceability updated.
+Stopped at: Phase 9 Plan 01 complete. kinder-site/ scaffolded with Astro/Starlight; GitHub Actions deploy workflow created. Plan 02 (DNS + GitHub Pages) is next.
 Resume file: None

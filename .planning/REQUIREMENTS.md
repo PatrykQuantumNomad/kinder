@@ -9,11 +9,11 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Astro + Starlight project scaffolded in `kinder-site/` directory with dark theme CSS variable overrides
-- [ ] **INFRA-02**: `public/CNAME` file with `kinder.patrykgolabek.dev` for custom domain
-- [ ] **INFRA-03**: `public/.nojekyll` file to prevent Jekyll from stripping `_astro/` assets
-- [ ] **INFRA-04**: `astro.config.mjs` with `site: 'https://kinder.patrykgolabek.dev'` and no `base` setting
-- [ ] **INFRA-05**: GitHub Actions workflow (`.github/workflows/deploy-site.yml`) that builds and deploys on push to main, path-filtered to `kinder-site/**`
+- [x] **INFRA-01**: Astro + Starlight project scaffolded in `kinder-site/` directory with dark theme CSS variable overrides
+- [x] **INFRA-02**: `public/CNAME` file with `kinder.patrykgolabek.dev` for custom domain
+- [x] **INFRA-03**: `public/.nojekyll` file to prevent Jekyll from stripping `_astro/` assets
+- [x] **INFRA-04**: `astro.config.mjs` with `site: 'https://kinder.patrykgolabek.dev'` and no `base` setting
+- [x] **INFRA-05**: GitHub Actions workflow (`.github/workflows/deploy-site.yml`) that builds and deploys on push to main, path-filtered to `kinder-site/**`
 - [ ] **INFRA-06**: Dark mode FOUC prevention with synchronous inline script in base layout
 
 ### Documentation
@@ -66,11 +66,11 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 9 | Pending |
-| INFRA-02 | Phase 9 | Pending |
-| INFRA-03 | Phase 9 | Pending |
-| INFRA-04 | Phase 9 | Pending |
-| INFRA-05 | Phase 9 | Pending |
+| INFRA-01 | Phase 9 | Complete (09-01) |
+| INFRA-02 | Phase 9 | Complete (09-01) |
+| INFRA-03 | Phase 9 | Complete (09-01) |
+| INFRA-04 | Phase 9 | Complete (09-01) |
+| INFRA-05 | Phase 9 | Complete (09-01) |
 | INFRA-06 | Phase 10 | Pending |
 | DOCS-01 | Phase 11 | Pending |
 | DOCS-02 | Phase 11 | Pending |
