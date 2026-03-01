@@ -31,7 +31,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. An existing kind `v1alpha4` cluster config file (without an `addons:` section) works unchanged with kinder
   3. A cluster config with `addons.metalLB: false` parses without error and the opt-out flag is visible to action code
   4. On macOS or Windows, kinder prints a warning that MetalLB LoadBalancer IPs may not be reachable from the host
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 01-01-PLAN.md — Config schema extension with Addons struct, binary rename to kinder, config parsing tests
+- [ ] 01-02-PLAN.md — Action pipeline scaffolding with stub addon actions, warn-continue loop, platform warning, addon summary
 
 ### Phase 2: MetalLB
 **Goal**: Services of type LoadBalancer receive an EXTERNAL-IP automatically on every supported container provider
@@ -109,7 +112,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/2 | Planning complete | - |
 | 2. MetalLB | 0/TBD | Not started | - |
 | 3. Metrics Server | 0/TBD | Not started | - |
 | 4. CoreDNS Tuning | 0/TBD | Not started | - |
