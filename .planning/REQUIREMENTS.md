@@ -66,35 +66,35 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| INFRA-06 | — | Pending |
-| DOCS-01 | — | Pending |
-| DOCS-02 | — | Pending |
-| DOCS-03 | — | Pending |
-| DOCS-04 | — | Pending |
-| DOCS-05 | — | Pending |
-| DOCS-06 | — | Pending |
-| DOCS-07 | — | Pending |
-| DOCS-08 | — | Pending |
-| LAND-01 | — | Pending |
-| LAND-02 | — | Pending |
-| LAND-03 | — | Pending |
-| LAND-04 | — | Pending |
-| PLSH-01 | — | Pending |
-| PLSH-02 | — | Pending |
-| PLSH-03 | — | Pending |
-| PLSH-04 | — | Pending |
-| PLSH-05 | — | Pending |
+| INFRA-01 | Phase 9 | Pending |
+| INFRA-02 | Phase 9 | Pending |
+| INFRA-03 | Phase 9 | Pending |
+| INFRA-04 | Phase 9 | Pending |
+| INFRA-05 | Phase 9 | Pending |
+| INFRA-06 | Phase 10 | Pending |
+| DOCS-01 | Phase 11 | Pending |
+| DOCS-02 | Phase 11 | Pending |
+| DOCS-03 | Phase 11 | Pending |
+| DOCS-04 | Phase 11 | Pending |
+| DOCS-05 | Phase 11 | Pending |
+| DOCS-06 | Phase 11 | Pending |
+| DOCS-07 | Phase 11 | Pending |
+| DOCS-08 | Phase 11 | Pending |
+| LAND-01 | Phase 12 | Pending |
+| LAND-02 | Phase 12 | Pending |
+| LAND-03 | Phase 12 | Pending |
+| LAND-04 | Phase 12 | Pending |
+| PLSH-01 | Phase 13 | Pending |
+| PLSH-02 | Phase 13 | Pending |
+| PLSH-03 | Phase 13 | Pending |
+| PLSH-04 | Phase 14 | Pending |
+| PLSH-05 | Phase 14 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after initial definition*
+*Last updated: 2026-03-01 — traceability complete after roadmap creation*
