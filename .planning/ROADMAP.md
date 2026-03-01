@@ -98,7 +98,9 @@ Plans:
   2. Following the printed port-forward command, the Headlamp UI loads in a browser and accepts the printed token
   3. In the Headlamp UI, a user can view pods, services, deployments, and logs across namespaces
   4. Setting `addons.dashboard: false` in cluster config causes no Headlamp pods or RBAC resources to be installed
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Headlamp v0.40.1 manifest embedding with RBAC, long-lived token Secret, token decode and print
 
 ### Phase 7: Integration Testing
 **Goal**: All five addons work correctly together in a single `kinder create cluster` run and each addon's functional health is verified — not just pod readiness
@@ -115,7 +117,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each other. Phases 5 and 6 depend on Phase 1 (Phase 5 also hard-depends on Phase 2). In practice, execute in the order listed — MetalLB first ensures Phase 5 can be verified end-to-end.
 
@@ -126,5 +128,5 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
-| 6. Dashboard | 0/TBD | Not started | - |
+| 6. Dashboard | 0/1 | Planned | - |
 | 7. Integration Testing | 0/TBD | Not started | - |
