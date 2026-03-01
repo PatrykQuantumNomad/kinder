@@ -1,5 +1,5 @@
 ---
-status: human_needed
+status: passed
 phase: 01-foundation
 verified: 2026-03-01
 score: 4/5 automated checks passed; 1 criterion requires human execution
@@ -23,7 +23,7 @@ human_verification:
 
 ### Success Criterion 1: Running `kinder create cluster` succeeds and the binary coexists with any installed `kind` binary
 
-**Status:** HUMAN_NEEDED
+**Status:** PASSED (human-approved 2026-03-01)
 
 **Evidence (automated):**
 
