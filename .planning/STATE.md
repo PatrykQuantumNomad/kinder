@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 2 — MetalLB
+**Current focus:** Phase 3 — Metrics Server
 
 ## Current Position
 
-Phase: 2 of 7 (MetalLB) — COMPLETE
-Plan: 2 of 2 in current phase (phase complete)
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-03-01 — Completed 02-02: MetalLB action with embedded manifest, webhook wait, and CR application.
+Phase: 3 of 7 (Metrics Server) — COMPLETE
+Plan: 1 of 1 in current phase (phase complete)
+Status: Phase 3 complete, ready for Phase 4
+Last activity: 2026-03-01 — Completed 03-01: Metrics Server action with embedded v0.8.1 manifest and deployment readiness wait.
 
-Progress: [████░░░░░░] 29%
+Progress: [█████░░░░░] 43%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2 minutes
-- Total execution time: 0.11 hours
+- Total plans completed: 4
+- Average duration: 1.75 minutes
+- Total execution time: 0.12 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [████░░░░░░] 29%
 |-------|-------|-------|----------|
 | 01-foundation | 2 | 4 min | 2 min |
 | 02-metallb | 2 | 3 min | 1.5 min |
+| 03-metrics-server | 1 | 1 min | 1 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2m), 01-02 (2m), 02-01 (2m), 02-02 (1m)
+- Last 5 plans: 01-01 (2m), 01-02 (2m), 02-01 (2m), 02-02 (1m), 03-01 (1m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -58,6 +59,9 @@ Recent decisions affecting current work:
 - [02-02]: fmt.Stringer type assertion for provider name — Provider interface lacks String(), type assertion with "docker" fallback avoids interface pollution
 - [02-02]: MetalLB manifest embedded at build time via go:embed — pinned to v0.15.3, no network required at cluster creation
 - [02-02]: Webhook wait targets deployment/controller Available (120s) before CR application to avoid webhook not ready errors
+- [03-01]: Metrics Server manifest embedded at build time via go:embed — pinned to v0.8.1, no network required at cluster creation
+- [03-01]: --kubelet-insecure-tls pre-patched into manifest — mandatory because kind kubelets serve self-signed TLS certificates
+- [03-01]: Namespace is kube-system (not a dedicated namespace); no webhook wait or CR application needed
 
 ### Pending Todos
 
@@ -73,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 02-02-PLAN.md — MetalLB action implementation with embedded v0.15.3 manifest, webhook wait, and IPAddressPool/L2Advertisement CR application. Phase 2 complete.
+Stopped at: Completed 03-01-PLAN.md — Metrics Server action with embedded v0.8.1 manifest, --kubelet-insecure-tls pre-patched, deployment readiness wait in kube-system. Phase 3 complete.
 Resume file: None

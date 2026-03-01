@@ -37,11 +37,11 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### Metrics Server
 
-- [ ] **MET-01**: Metrics Server is installed with `--kubelet-insecure-tls` flag by default
-- [ ] **MET-02**: `kubectl top nodes` returns data within 60 seconds of cluster creation
-- [ ] **MET-03**: `kubectl top pods` works for pods in any namespace
-- [ ] **MET-04**: HPA can read CPU/memory metrics from the Metrics API
-- [ ] **MET-05**: User can disable Metrics Server via `addons.metricsServer: false` in cluster config
+- [x] **MET-01**: Metrics Server is installed with `--kubelet-insecure-tls` flag by default
+- [x] **MET-02**: `kubectl top nodes` returns data within 60 seconds of cluster creation
+- [x] **MET-03**: `kubectl top pods` works for pods in any namespace
+- [x] **MET-04**: HPA can read CPU/memory metrics from the Metrics API
+- [x] **MET-05**: User can disable Metrics Server via `addons.metricsServer: false` in cluster config
 
 ### CoreDNS Tuning
 
@@ -115,11 +115,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MLB-06 | Phase 2 | Pending |
 | MLB-07 | Phase 2 | Pending |
 | MLB-08 | Phase 2 | Pending |
-| MET-01 | Phase 3 | Pending |
-| MET-02 | Phase 3 | Pending |
-| MET-03 | Phase 3 | Pending |
-| MET-04 | Phase 3 | Pending |
-| MET-05 | Phase 3 | Pending |
+| MET-01 | Phase 3 | Complete |
+| MET-02 | Phase 3 | Complete |
+| MET-03 | Phase 3 | Complete |
+| MET-04 | Phase 3 | Complete |
+| MET-05 | Phase 3 | Complete |
 | DNS-01 | Phase 4 | Pending |
 | DNS-02 | Phase 4 | Pending |
 | DNS-03 | Phase 4 | Pending |

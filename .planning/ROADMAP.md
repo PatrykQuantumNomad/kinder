@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Config schema extensions and action pipeline scaffolding enabling addon opt-out
 - [x] **Phase 2: MetalLB** - LoadBalancer IP assignment working on all three container providers
-- [ ] **Phase 3: Metrics Server** - kubectl top and HPA metrics functional within 60 seconds of cluster creation
+- [x] **Phase 3: Metrics Server** - kubectl top and HPA metrics functional within 60 seconds of cluster creation
 - [ ] **Phase 4: CoreDNS Tuning** - DNS cache improved and CoreDNS patched in-place without breaking resolution
 - [ ] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
 - [ ] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
@@ -61,7 +61,7 @@ Plans:
   4. Setting `addons.metricsServer: false` in cluster config causes no Metrics Server pods to be installed
 **Plans**: 1 plan
 Plans:
-- [ ] 03-01-PLAN.md — Metrics Server v0.8.1 manifest embedding with --kubelet-insecure-tls and action Execute implementation
+- [x] 03-01-PLAN.md — Metrics Server v0.8.1 manifest embedding with --kubelet-insecure-tls and action Execute implementation
 
 ### Phase 4: CoreDNS Tuning
 **Goal**: CoreDNS ConfigMap is patched in-place with improved cache settings and existing in-cluster DNS resolution continues to work
@@ -119,7 +119,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. MetalLB | 2/2 | Complete | 2026-03-01 |
-| 3. Metrics Server | 0/1 | Planned | - |
+| 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
 | 4. CoreDNS Tuning | 0/TBD | Not started | - |
 | 5. Envoy Gateway | 0/TBD | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
