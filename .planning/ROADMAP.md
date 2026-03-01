@@ -72,7 +72,9 @@ Plans:
   2. In-cluster DNS resolution works correctly after patching — a pod can resolve `kubernetes.default.svc.cluster.local`
   3. The CoreDNS Corefile contains the updated cache TTL for external queries after cluster creation
   4. Setting `addons.coreDNSTuning: false` in cluster config leaves the CoreDNS ConfigMap at its kind default
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 04-01-PLAN.md — CoreDNS Corefile read-modify-write with autopath, pods verified, cache 60, and rollout restart
 
 ### Phase 5: Envoy Gateway
 **Goal**: Gateway API CRDs are established and Envoy Gateway controller is running so a user can deploy a Gateway and route HTTP traffic via a LoadBalancer IP
@@ -120,7 +122,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. MetalLB | 2/2 | Complete | 2026-03-01 |
 | 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
-| 4. CoreDNS Tuning | 0/TBD | Not started | - |
+| 4. CoreDNS Tuning | 0/1 | Planning complete | - |
 | 5. Envoy Gateway | 0/TBD | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
 | 7. Integration Testing | 0/TBD | Not started | - |
