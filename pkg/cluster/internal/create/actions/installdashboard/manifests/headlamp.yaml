@@ -1,0 +1,84 @@
+# Headlamp v0.40.1 - Kubernetes dashboard for kinder
+# Resources in dependency order: SA -> ClusterRoleBinding -> Secret -> Service -> Deployment
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kinder-dashboard
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kinder-dashboard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: kinder-dashboard
+    namespace: kube-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kinder-dashboard-token
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: kinder-dashboard
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp
+  namespace: kube-system
+spec:
+  ports:
+    - port: 80
+      targetPort: 4466
+  selector:
+    k8s-app: headlamp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: headlamp
+  template:
+    metadata:
+      labels:
+        k8s-app: headlamp
+    spec:
+      serviceAccountName: kinder-dashboard
+      containers:
+        - name: headlamp
+          image: ghcr.io/headlamp-k8s/headlamp:v0.40.1
+          args:
+            - "-in-cluster"
+            - "-plugins-dir=/headlamp/plugins"
+          ports:
+            - containerPort: 4466
+              name: http
+          readinessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /
+              port: 4466
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /
+              port: 4466
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+      nodeSelector:
+        'kubernetes.io/os': linux
