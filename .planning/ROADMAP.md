@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
 - [x] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
 - [x] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
-- [ ] **Phase 8: Gap Closure** - Fix all-false config guard edge case and harden integration script
+- [x] **Phase 8: Gap Closure** - Fix all-false config guard edge case and harden integration script
 
 ## Phase Details
 
@@ -130,8 +130,8 @@ Plans:
   4. Re-running `/gsd:audit-milestone` produces zero integration issues and zero partial flows
 **Plans**: 2 plans
 Plans:
-- [ ] 08-01-PLAN.md — Remove all-false addon guard from SetDefaultsCluster, remove redundant call from fixupOptions, add unit test
-- [ ] 08-02-PLAN.md — Add kubectl context targeting to integration test script
+- [x] 08-01-PLAN.md — Remove all-false addon guard from SetDefaultsCluster, remove redundant call from fixupOptions, add unit test
+- [x] 08-02-PLAN.md — Add kubectl context targeting to integration test script
 
 ## Progress
 
@@ -149,4 +149,4 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 1/1 | Complete | 2026-03-01 |
 | 7. Integration Testing | 2/2 | Complete | 2026-03-01 |
-| 8. Gap Closure | 0/2 | Planned | — |
+| 8. Gap Closure | 2/2 | Complete | 2026-03-01 |
