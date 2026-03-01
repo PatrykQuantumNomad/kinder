@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 7 — Integration Testing
+**Current focus:** Phase 8 — Gap Closure (complete)
 
 ## Current Position
 
-Phase: 7 of 7 (Integration Testing) — COMPLETE
+Phase: 8 of 8 (Gap Closure) — COMPLETE
 Plan: 2 of 2 in current phase (phase complete)
-Status: Phase 7 complete, all phases complete -- v1 milestone reached
-Last activity: 2026-03-01 — Completed 07-02: Unit tests for logAddonSummary/logMetalLBPlatformWarning with testLogger, plus hack/verify-integration.sh covering all 5 success criteria.
+Status: Phase 8 complete, all phases complete -- v1 milestone reached and hardened
+Last activity: 2026-03-01 — Completed 08-02: Added kubectl context targeting to integration script; context switch inside success branch using kind-${CLUSTER_NAME} convention.
 
 Progress: [██████████] 100%
 
@@ -86,6 +86,8 @@ Recent decisions affecting current work:
 - [07-02]: Platform-aware assertion in TestLogMetalLBPlatformWarning uses runtime.GOOS to branch expected output (darwin vs linux)
 - [07-02]: Integration script uses set -uo pipefail without set -e so all checks run regardless of earlier failures
 - [07-02]: SC-2 curl runs inside the cluster via kubectl run because MetalLB IPs are unreachable on macOS/Windows hosts
+- [08-02]: kubectl context switch placed inside success branch only — avoids secondary error when cluster creation fails
+- [08-02]: Context name uses kind- prefix (kind-${CLUSTER_NAME}) matching kind's automatic kubectl context naming convention
 
 ### Pending Todos
 
@@ -98,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 07-02-PLAN.md — Unit tests for logAddonSummary/logMetalLBPlatformWarning with testLogger, plus hack/verify-integration.sh covering all 5 success criteria. All 7 phases complete. v1 milestone reached.
+Stopped at: Completed 08-02-PLAN.md — kubectl context targeting added to integration script. All 8 phases complete. v1 milestone hardened.
 Resume file: None
