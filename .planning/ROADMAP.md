@@ -45,7 +45,10 @@ Plans:
   2. A service of type LoadBalancer gets an EXTERNAL-IP within seconds of creation on a Docker-backed cluster
   3. Subnet detection runs without user input and produces a valid IP pool carved from the active Docker/Podman/Nerdctl network
   4. Setting `addons.metalLB: false` in cluster config causes no MetalLB pods to be installed
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — TDD: Subnet detection and IP pool carving with unit tests for Docker/Podman/Nerdctl JSON schemas
+- [ ] 02-02-PLAN.md — MetalLB action implementation with embedded manifest, webhook wait, and CR application
 
 ### Phase 3: Metrics Server
 **Goal**: `kubectl top nodes` and `kubectl top pods` return data immediately after cluster creation and HPA can read the metrics API
@@ -113,7 +116,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
-| 2. MetalLB | 0/TBD | Not started | - |
+| 2. MetalLB | 0/2 | Planning complete | - |
 | 3. Metrics Server | 0/TBD | Not started | - |
 | 4. CoreDNS Tuning | 0/TBD | Not started | - |
 | 5. Envoy Gateway | 0/TBD | Not started | - |
