@@ -12,7 +12,7 @@ Starting from the upstream kind fork, this roadmap builds kinder's batteries-inc
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Config schema extensions and action pipeline scaffolding enabling addon opt-out
+- [x] **Phase 1: Foundation** - Config schema extensions and action pipeline scaffolding enabling addon opt-out
 - [ ] **Phase 2: MetalLB** - LoadBalancer IP assignment working on all three container providers
 - [ ] **Phase 3: Metrics Server** - kubectl top and HPA metrics functional within 60 seconds of cluster creation
 - [ ] **Phase 4: CoreDNS Tuning** - DNS cache improved and CoreDNS patched in-place without breaking resolution
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 Plans:
 - [x] 01-01-PLAN.md — Config schema extension with Addons struct, binary rename to kinder, config parsing tests
-- [ ] 01-02-PLAN.md — Action pipeline scaffolding with stub addon actions, warn-continue loop, platform warning, addon summary
+- [x] 01-02-PLAN.md — Action pipeline scaffolding with stub addon actions, warn-continue loop, platform warning, addon summary
 
 ### Phase 2: MetalLB
 **Goal**: Services of type LoadBalancer receive an EXTERNAL-IP automatically on every supported container provider
@@ -112,7 +112,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/2 | In progress | - |
+| 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. MetalLB | 0/TBD | Not started | - |
 | 3. Metrics Server | 0/TBD | Not started | - |
 | 4. CoreDNS Tuning | 0/TBD | Not started | - |

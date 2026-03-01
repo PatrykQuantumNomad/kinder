@@ -12,8 +12,8 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 - [x] **FOUND-01**: Binary is named `kinder` and coexists with `kind` on the system
 - [x] **FOUND-02**: Config schema extends v1alpha4 with an `addons` section for enabling/disabling each addon
 - [x] **FOUND-03**: Existing kind configs without addons section work unchanged (backward compatible)
-- [ ] **FOUND-04**: Each addon action checks its enable flag before executing
-- [ ] **FOUND-05**: Platform detection warns macOS/Windows users that MetalLB LoadBalancer IPs may not be reachable from the host
+- [x] **FOUND-04**: Each addon action checks its enable flag before executing
+- [x] **FOUND-05**: Platform detection warns macOS/Windows users that MetalLB LoadBalancer IPs may not be reachable from the host
 
 ### MetalLB
 
@@ -105,8 +105,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-01 | Phase 1 | Pending |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Complete |
+| FOUND-05 | Phase 1 | Complete |
 | MLB-01 | Phase 2 | Pending |
 | MLB-02 | Phase 2 | Pending |
 | MLB-03 | Phase 2 | Pending |
