@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: CoreDNS Tuning** - DNS cache improved and CoreDNS patched in-place without breaking resolution
 - [x] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
 - [x] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
-- [ ] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
+- [x] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
 
 ## Phase Details
 
@@ -115,7 +115,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 07-01-PLAN.md — TDD: Extract CoreDNS patchCorefile function and write table-driven unit tests for all transforms and guard checks
-- [ ] 07-02-PLAN.md — Unit tests for create.go addon summary/platform warning + live-cluster integration verification script
+- [x] 07-02-PLAN.md — Unit tests for create.go addon summary/platform warning + live-cluster integration verification script
 
 ## Progress
 
@@ -132,4 +132,4 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 1/1 | Complete | 2026-03-01 |
-| 7. Integration Testing | 1/2 | In progress | - |
+| 7. Integration Testing | 2/2 | Complete | 2026-03-01 |

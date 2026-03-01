@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 7 of 7 (Integration Testing) — IN PROGRESS
-Plan: 1 of 2 in current phase
-Status: Plan 07-01 complete, ready for 07-02
-Last activity: 2026-03-01 — Completed 07-01: Extracted patchCorefile from Execute() with 9 table-driven unit tests covering all 3 DNS transforms and guard-check error paths.
+Phase: 7 of 7 (Integration Testing) — COMPLETE
+Plan: 2 of 2 in current phase (phase complete)
+Status: Phase 7 complete, all phases complete -- v1 milestone reached
+Last activity: 2026-03-01 — Completed 07-02: Unit tests for logAddonSummary/logMetalLBPlatformWarning with testLogger, plus hack/verify-integration.sh covering all 5 success criteria.
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 2 minutes
-- Total execution time: 0.3 hours
+- Total execution time: 0.33 hours
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [█████████░] 92%
 | 05-envoy-gateway | 1 | 3 min | 3 min |
 | 06-dashboard | 1 | 1 min | 1 min |
 
-| 07-integration-testing | 1 | 2 min | 2 min |
+| 07-integration-testing | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (1m), 04-01 (2m), 05-01 (3m), 06-01 (1m), 07-01 (2m)
+- Last 5 plans: 04-01 (2m), 05-01 (3m), 06-01 (1m), 07-01 (2m), 07-02 (2m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -82,6 +82,10 @@ Recent decisions affecting current work:
 - [07-01]: Extracted patchCorefile as package-level function returning (string, error) for hermetic unit testing without a live cluster
 - [07-01]: Guard check error messages preserved exactly from Execute() to maintain identical runtime behavior
 - [07-01]: Test uses realistic kind Corefile constant rather than minimal input for higher confidence
+- [07-02]: testLogger captures all log levels into a single lines slice for simple output assertions in same-package tests
+- [07-02]: Platform-aware assertion in TestLogMetalLBPlatformWarning uses runtime.GOOS to branch expected output (darwin vs linux)
+- [07-02]: Integration script uses set -uo pipefail without set -e so all checks run regardless of earlier failures
+- [07-02]: SC-2 curl runs inside the cluster via kubectl run because MetalLB IPs are unreachable on macOS/Windows hosts
 
 ### Pending Todos
 
@@ -94,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 07-01-PLAN.md — Extracted patchCorefile from Execute() with 9 table-driven unit tests covering all 3 DNS transforms and guard-check error paths. Ready for 07-02.
+Stopped at: Completed 07-02-PLAN.md — Unit tests for logAddonSummary/logMetalLBPlatformWarning with testLogger, plus hack/verify-integration.sh covering all 5 success criteria. All 7 phases complete. v1 milestone reached.
 Resume file: None
