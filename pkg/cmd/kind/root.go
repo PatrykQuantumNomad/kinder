@@ -43,9 +43,9 @@ type flagpole struct {
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	flags := &flagpole{}
 	cmd := &cobra.Command{
-		Use:   "kind",
-		Short: "kind is a tool for managing local Kubernetes clusters",
-		Long:  "kind creates and manages local Kubernetes clusters using Docker container 'nodes'",
+		Use:   "kinder",
+		Short: "kinder is a tool for managing local Kubernetes clusters with batteries included",
+		Long:  "kinder creates and manages local Kubernetes clusters using Docker container 'nodes', with addons pre-installed",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return runE(logger, flags)
 		},

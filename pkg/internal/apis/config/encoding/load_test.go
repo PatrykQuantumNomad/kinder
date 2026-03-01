@@ -102,6 +102,21 @@ func TestLoadCurrent(t *testing.T) {
 			Path:        "./testdata/invalid-yaml.yaml",
 			ExpectError: true,
 		},
+		{
+			TestName:    "v1alpha4 config with all addons enabled",
+			Path:        "./testdata/v1alpha4/valid-addons-all-enabled.yaml",
+			ExpectError: false,
+		},
+		{
+			TestName:    "v1alpha4 config with some addons disabled",
+			Path:        "./testdata/v1alpha4/valid-addons-some-disabled.yaml",
+			ExpectError: false,
+		},
+		{
+			TestName:    "v1alpha4 config with addons section absent",
+			Path:        "./testdata/v1alpha4/valid-addons-absent.yaml",
+			ExpectError: false,
+		},
 	}
 	for _, c := range cases {
 		c := c // capture loop variable
@@ -121,5 +136,60 @@ func TestLoadCurrent(t *testing.T) {
 				t.Fatalf("unexpected lack or error while Loading config")
 			}
 		})
+	}
+}
+
+func TestAddonsDefaults(t *testing.T) {
+	t.Parallel()
+
+	// Test 1: No addons section — all default to enabled
+	cfg, err := Load("./testdata/v1alpha4/valid-addons-absent.yaml")
+	if err != nil {
+		t.Fatalf("failed to load config without addons: %v", err)
+	}
+	if !cfg.Addons.MetalLB {
+		t.Error("expected MetalLB to default to true when addons section absent")
+	}
+	if !cfg.Addons.EnvoyGateway {
+		t.Error("expected EnvoyGateway to default to true when addons section absent")
+	}
+	if !cfg.Addons.MetricsServer {
+		t.Error("expected MetricsServer to default to true when addons section absent")
+	}
+	if !cfg.Addons.CoreDNSTuning {
+		t.Error("expected CoreDNSTuning to default to true when addons section absent")
+	}
+	if !cfg.Addons.Dashboard {
+		t.Error("expected Dashboard to default to true when addons section absent")
+	}
+
+	// Test 2: Some addons disabled — explicit false should be respected
+	cfg2, err := Load("./testdata/v1alpha4/valid-addons-some-disabled.yaml")
+	if err != nil {
+		t.Fatalf("failed to load config with some addons disabled: %v", err)
+	}
+	if cfg2.Addons.MetalLB {
+		t.Error("expected MetalLB to be false when explicitly set to false")
+	}
+	if !cfg2.Addons.EnvoyGateway {
+		t.Error("expected EnvoyGateway to be true when explicitly set to true")
+	}
+	if !cfg2.Addons.MetricsServer {
+		t.Error("expected MetricsServer to default to true when not specified in addons")
+	}
+	if !cfg2.Addons.CoreDNSTuning {
+		t.Error("expected CoreDNSTuning to default to true when not specified in addons")
+	}
+	if !cfg2.Addons.Dashboard {
+		t.Error("expected Dashboard to default to true when not specified in addons")
+	}
+
+	// Test 3: All addons enabled
+	cfg3, err := Load("./testdata/v1alpha4/valid-addons-all-enabled.yaml")
+	if err != nil {
+		t.Fatalf("failed to load config with all addons enabled: %v", err)
+	}
+	if !cfg3.Addons.MetalLB || !cfg3.Addons.EnvoyGateway || !cfg3.Addons.MetricsServer || !cfg3.Addons.CoreDNSTuning || !cfg3.Addons.Dashboard {
+		t.Error("expected all addons to be true when explicitly set to true")
 	}
 }

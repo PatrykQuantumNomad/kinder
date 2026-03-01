@@ -52,7 +52,7 @@ INSTALL?=install
 # install will place binaries here, by default attempts to mimic go install
 INSTALL_DIR?=$(shell hack/build/goinstalldir.sh)
 # the output binary name, overridden when cross compiling
-KIND_BINARY_NAME?=kind
+KIND_BINARY_NAME?=kinder
 # build flags for the kind binary
 # - reproducible builds: -trimpath and -ldflags=-buildid=
 # - smaller binaries: -w (trim debugger data, but not panics)
