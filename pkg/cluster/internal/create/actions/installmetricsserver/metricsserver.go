@@ -19,8 +19,16 @@ limitations under the License.
 package installmetricsserver
 
 import (
+	_ "embed"
+	"strings"
+
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
+	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
+	"sigs.k8s.io/kind/pkg/errors"
 )
+
+//go:embed manifests/components.yaml
+var metricsServerManifest string
 
 type action struct{}
 
@@ -31,9 +39,37 @@ func NewAction() actions.Action {
 
 // Execute runs the action
 func (a *action) Execute(ctx *actions.ActionContext) error {
-	ctx.Status.Start("Installing Metrics Server (stub)")
+	ctx.Status.Start("Installing Metrics Server")
 	defer ctx.Status.End(false)
-	// TODO: Real implementation in Phase 3
+
+	// Get control plane node
+	allNodes, err := ctx.Nodes()
+	if err != nil {
+		return errors.Wrap(err, "failed to list cluster nodes")
+	}
+	controlPlanes, err := nodeutils.ControlPlaneNodes(allNodes)
+	if err != nil {
+		return errors.Wrap(err, "failed to find control plane nodes")
+	}
+	if len(controlPlanes) == 0 {
+		return errors.New("no control plane nodes found")
+	}
+	node := controlPlanes[0]
+
+	// Apply the embedded Metrics Server manifest via kubectl
+	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
+		SetStdin(strings.NewReader(metricsServerManifest)).Run(); err != nil {
+		return errors.Wrap(err, "failed to apply Metrics Server manifest")
+	}
+
+	// Wait for deployment readiness
+	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+		"wait", "--namespace=kube-system",
+		"--for=condition=Available", "deployment/metrics-server",
+		"--timeout=120s").Run(); err != nil {
+		return errors.Wrap(err, "Metrics Server deployment did not become available")
+	}
+
 	ctx.Status.End(true)
 	return nil
 }
