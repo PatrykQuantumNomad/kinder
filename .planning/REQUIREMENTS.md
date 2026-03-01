@@ -102,47 +102,47 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| FOUND-04 | — | Pending |
-| FOUND-05 | — | Pending |
-| MLB-01 | — | Pending |
-| MLB-02 | — | Pending |
-| MLB-03 | — | Pending |
-| MLB-04 | — | Pending |
-| MLB-05 | — | Pending |
-| MLB-06 | — | Pending |
-| MLB-07 | — | Pending |
-| MLB-08 | — | Pending |
-| EGW-01 | — | Pending |
-| EGW-02 | — | Pending |
-| EGW-03 | — | Pending |
-| EGW-04 | — | Pending |
-| EGW-05 | — | Pending |
-| EGW-06 | — | Pending |
-| MET-01 | — | Pending |
-| MET-02 | — | Pending |
-| MET-03 | — | Pending |
-| MET-04 | — | Pending |
-| MET-05 | — | Pending |
-| DNS-01 | — | Pending |
-| DNS-02 | — | Pending |
-| DNS-03 | — | Pending |
-| DNS-04 | — | Pending |
-| DNS-05 | — | Pending |
-| DASH-01 | — | Pending |
-| DASH-02 | — | Pending |
-| DASH-03 | — | Pending |
-| DASH-04 | — | Pending |
-| DASH-05 | — | Pending |
-| DASH-06 | — | Pending |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Pending |
+| MLB-01 | Phase 2 | Pending |
+| MLB-02 | Phase 2 | Pending |
+| MLB-03 | Phase 2 | Pending |
+| MLB-04 | Phase 2 | Pending |
+| MLB-05 | Phase 2 | Pending |
+| MLB-06 | Phase 2 | Pending |
+| MLB-07 | Phase 2 | Pending |
+| MLB-08 | Phase 2 | Pending |
+| MET-01 | Phase 3 | Pending |
+| MET-02 | Phase 3 | Pending |
+| MET-03 | Phase 3 | Pending |
+| MET-04 | Phase 3 | Pending |
+| MET-05 | Phase 3 | Pending |
+| DNS-01 | Phase 4 | Pending |
+| DNS-02 | Phase 4 | Pending |
+| DNS-03 | Phase 4 | Pending |
+| DNS-04 | Phase 4 | Pending |
+| DNS-05 | Phase 4 | Pending |
+| EGW-01 | Phase 5 | Pending |
+| EGW-02 | Phase 5 | Pending |
+| EGW-03 | Phase 5 | Pending |
+| EGW-04 | Phase 5 | Pending |
+| EGW-05 | Phase 5 | Pending |
+| EGW-06 | Phase 5 | Pending |
+| DASH-01 | Phase 6 | Pending |
+| DASH-02 | Phase 6 | Pending |
+| DASH-03 | Phase 6 | Pending |
+| DASH-04 | Phase 6 | Pending |
+| DASH-05 | Phase 6 | Pending |
+| DASH-06 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 34 total
-- Mapped to phases: 0
-- Unmapped: 34
+- Mapped to phases: 34
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after initial definition*
+*Last updated: 2026-03-01 after roadmap creation — all 34 requirements mapped*
