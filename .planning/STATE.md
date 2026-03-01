@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 9 of 14 (Scaffold and Deploy Pipeline)
-Plan: 01 complete, 02 pending
-Status: In progress
-Last activity: 2026-03-01 — Phase 9 Plan 01 executed: Astro/Starlight scaffold + GitHub Actions deploy workflow
+Phase: 9 of 14 (Scaffold and Deploy Pipeline) — COMPLETE
+Plan: 02/02 complete
+Status: Phase complete, pending verification
+Last activity: 2026-03-01 — Phase 9 complete: site live at https://kinder.patrykgolabek.dev
 
-Progress: [█░░░░░░░░░] 8% (v1.1 — 1/12 plans complete)
+Progress: [██░░░░░░░░] 17% (v1.1 — 2/12 plans complete)
 
 ## Performance Metrics
 
@@ -23,9 +23,10 @@ Progress: [█░░░░░░░░░] 8% (v1.1 — 1/12 plans complete)
 - Total phases: 8
 
 **v1.1 (current):**
-- Plans completed: 1
-- Phases complete: 0/6
+- Plans completed: 2
+- Phases complete: 0/6 (Phase 9 pending verification)
 - Phase 9 Plan 01: 3 min, 2 tasks, 9 files created
+- Phase 9 Plan 02: ~5 min (user action), 2 checkpoint tasks
 
 ## Accumulated Context
 
@@ -36,6 +37,7 @@ Progress: [█░░░░░░░░░] 8% (v1.1 — 1/12 plans complete)
 - Phase 9: npm (not pnpm) for CI compatibility; no base setting in astro.config.mjs (custom domain serves from root)
 - Phase 9: GitHub repo confirmed patrykattc/kinder (resolves prior inconsistency in ARCHITECTURE.md)
 - Phase 9: Deploy job gated to push only; PRs get build-check without deployment
+- Phase 9: DNS CNAME kinder.patrykgolabek.dev → patrykattc.github.io; GitHub Pages source = GitHub Actions
 
 ### Blockers/Concerns
 
@@ -49,5 +51,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Phase 9 Plan 01 complete. kinder-site/ scaffolded with Astro/Starlight; GitHub Actions deploy workflow created. Plan 02 (DNS + GitHub Pages) is next.
+Stopped at: Phase 9 complete — all plans executed, site live at https://kinder.patrykgolabek.dev. Verification pending.
 Resume file: None

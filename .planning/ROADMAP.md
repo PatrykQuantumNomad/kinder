@@ -24,7 +24,7 @@ Forked kind into kinder with 5 default addons (MetalLB, Envoy Gateway, Metrics S
 - Integer phases (9, 10, 11...): Planned milestone work
 - Decimal phases (9.1, 9.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 9: Scaffold and Deploy Pipeline** - Astro/Starlight project scaffolded and live at kinder.patrykgolabek.dev
+- [x] **Phase 9: Scaffold and Deploy Pipeline** - Astro/Starlight project scaffolded and live at kinder.patrykgolabek.dev
 - [ ] **Phase 10: Dark Theme** - Terminal-aesthetic dark theme applied site-wide with FOUC prevention
 - [ ] **Phase 11: Documentation Content** - All 8 documentation pages written and navigable
 - [ ] **Phase 12: Landing Page** - Full marketing landing page with hero, addon grid, and comparison section
@@ -45,7 +45,7 @@ Forked kind into kinder with 5 default addons (MetalLB, Envoy Gateway, Metrics S
 **Plans**: 2 plans
 Plans:
 - [x] 09-01-PLAN.md -- Scaffold Astro/Starlight project and create GitHub Actions deploy workflow
-- [ ] 09-02-PLAN.md -- Configure DNS, GitHub Pages, and verify live site
+- [x] 09-02-PLAN.md -- Configure DNS, GitHub Pages, and verify live site
 
 ### Phase 10: Dark Theme
 **Goal**: The entire site renders with a dark terminal aesthetic and never flashes white on load or page navigation
@@ -107,7 +107,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-8. v1.0 Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
-| 9. Scaffold and Deploy Pipeline | v1.1 | 1/2 | In progress | - |
+| 9. Scaffold and Deploy Pipeline | v1.1 | 2/2 | Complete | 2026-03-01 |
 | 10. Dark Theme | v1.1 | 0/TBD | Not started | - |
 | 11. Documentation Content | v1.1 | 0/TBD | Not started | - |
 | 12. Landing Page | v1.1 | 0/TBD | Not started | - |
