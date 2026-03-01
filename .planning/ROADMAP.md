@@ -128,9 +128,10 @@ Plans:
   2. Unit tests verify the all-addons-disabled config path produces an internal config with all bools false
   3. `hack/verify-integration.sh` explicitly sets kubectl context to `kind-kinder-integration-test` before running checks
   4. Re-running `/gsd:audit-milestone` produces zero integration issues and zero partial flows
-**Plans**: 0 plans
+**Plans**: 2 plans
 Plans:
-- *(to be planned)*
+- [ ] 08-01-PLAN.md — Remove all-false addon guard from SetDefaultsCluster, remove redundant call from fixupOptions, add unit test
+- [ ] 08-02-PLAN.md — Add kubectl context targeting to integration test script
 
 ## Progress
 
@@ -148,4 +149,4 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 1/1 | Complete | 2026-03-01 |
 | 7. Integration Testing | 2/2 | Complete | 2026-03-01 |
-| 8. Gap Closure | 0/0 | Pending | — |
+| 8. Gap Closure | 0/2 | Planned | — |
