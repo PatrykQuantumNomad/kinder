@@ -28,12 +28,12 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### Envoy Gateway
 
-- [ ] **EGW-01**: Gateway API CRDs are installed before Envoy Gateway controller starts
-- [ ] **EGW-02**: Envoy Gateway controller is running and a default GatewayClass is created
-- [ ] **EGW-03**: User can create a Gateway + HTTPRoute and traffic routes to backend service via LoadBalancer IP
-- [ ] **EGW-04**: User can disable Envoy Gateway via `addons.envoyGateway: false` in cluster config
-- [ ] **EGW-05**: If MetalLB is disabled and Envoy Gateway is enabled, kinder prints a clear warning that Gateway proxy will not get an IP
-- [ ] **EGW-06**: TLS termination is documented (manual cert path, no cert-manager)
+- [x] **EGW-01**: Gateway API CRDs are installed before Envoy Gateway controller starts
+- [x] **EGW-02**: Envoy Gateway controller is running and a default GatewayClass is created
+- [x] **EGW-03**: User can create a Gateway + HTTPRoute and traffic routes to backend service via LoadBalancer IP
+- [x] **EGW-04**: User can disable Envoy Gateway via `addons.envoyGateway: false` in cluster config
+- [x] **EGW-05**: If MetalLB is disabled and Envoy Gateway is enabled, kinder prints a clear warning that Gateway proxy will not get an IP
+- [x] **EGW-06**: TLS termination is documented (manual cert path, no cert-manager)
 
 ### Metrics Server
 
@@ -125,12 +125,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DNS-03 | Phase 4 | Complete |
 | DNS-04 | Phase 4 | Complete |
 | DNS-05 | Phase 4 | Complete |
-| EGW-01 | Phase 5 | Pending |
-| EGW-02 | Phase 5 | Pending |
-| EGW-03 | Phase 5 | Pending |
-| EGW-04 | Phase 5 | Pending |
-| EGW-05 | Phase 5 | Pending |
-| EGW-06 | Phase 5 | Pending |
+| EGW-01 | Phase 5 | Complete |
+| EGW-02 | Phase 5 | Complete |
+| EGW-03 | Phase 5 | Complete |
+| EGW-04 | Phase 5 | Complete |
+| EGW-05 | Phase 5 | Complete |
+| EGW-06 | Phase 5 | Complete |
 | DASH-01 | Phase 6 | Pending |
 | DASH-02 | Phase 6 | Pending |
 | DASH-03 | Phase 6 | Pending |

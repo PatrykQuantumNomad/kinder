@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 4 — CoreDNS Tuning
+**Current focus:** Phase 5 — Envoy Gateway
 
 ## Current Position
 
-Phase: 4 of 7 (CoreDNS Tuning) — COMPLETE
+Phase: 5 of 7 (Envoy Gateway) — COMPLETE
 Plan: 1 of 1 in current phase (phase complete)
-Status: Phase 4 complete, ready for Phase 5
-Last activity: 2026-03-01 — Completed 04-01: CoreDNS Corefile patched with autopath @kubernetes, pods verified, cache 60 via read-modify-write cycle with guard checks and rollout restart.
+Status: Phase 5 complete, ready for Phase 6
+Last activity: 2026-03-01 — Completed 05-01: Envoy Gateway v1.3.1 installed via embedded 40,570-line install.yaml with server-side apply, certgen/controller/GatewayClass wait chain, GatewayClass "eg" accepted.
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -31,9 +31,10 @@ Progress: [██████░░░░] 57%
 | 02-metallb | 2 | 3 min | 1.5 min |
 | 03-metrics-server | 1 | 1 min | 1 min |
 | 04-coredns-tuning | 1 | 2 min | 2 min |
+| 05-envoy-gateway | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2m), 02-01 (2m), 02-02 (1m), 03-01 (1m), 04-01 (2m)
+- Last 5 plans: 02-01 (2m), 02-02 (1m), 03-01 (1m), 04-01 (2m), 05-01 (3m)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -67,6 +68,10 @@ Recent decisions affecting current work:
 - [04-01]: Guard checks (pods insecure, cache 30, kubernetes cluster.local) added to fail safely if Corefile format changes upstream
 - [04-01]: indentCorefile helper prepends 4 spaces to each non-empty line for valid YAML literal block scalar embedding
 - [04-01]: No go:embed needed — Corefile read live from cluster at action time, not embedded at build time
+- [05-01]: --server-side apply required for install.yaml because httproutes CRD is 372 KB, exceeding 256 KB last-applied-configuration annotation limit
+- [05-01]: Wait for eg-gateway-helm-certgen Job Complete before deployment wait — Job creates TLS Secrets the controller requires to start
+- [05-01]: GatewayClass "eg" applied separately after Deployment Available — not included in install.yaml, requires running controller to be accepted
+- [05-01]: GatewayClass apply uses standard (not server-side) apply — resource is tiny (< 1 KB), avoids unnecessary field ownership complexity
 
 ### Pending Todos
 
@@ -74,12 +79,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 5]: Confirm standard vs. experimental Gateway API CRD channel; measure binary size of ~3,000-line Envoy Gateway manifest
 - [Phase 6]: Headlamp v0.40.1 static manifest URLs need verification before embedding
 - [Phase 2]: Podman rootless MetalLB viability (L2 speaker + raw sockets) needs testing during implementation
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 04-01-PLAN.md — CoreDNS Corefile patched with autopath @kubernetes, pods verified, cache 60 via read-modify-write with guard checks and rollout restart. Phase 4 complete.
+Stopped at: Completed 05-01-PLAN.md — Envoy Gateway v1.3.1 installed via embedded 40,570-line install.yaml with server-side apply, certgen/controller/GatewayClass wait chain, GatewayClass "eg" accepted. Phase 5 complete.
 Resume file: None

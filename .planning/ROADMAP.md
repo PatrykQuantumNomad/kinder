@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: MetalLB** - LoadBalancer IP assignment working on all three container providers
 - [x] **Phase 3: Metrics Server** - kubectl top and HPA metrics functional within 60 seconds of cluster creation
 - [x] **Phase 4: CoreDNS Tuning** - DNS cache improved and CoreDNS patched in-place without breaking resolution
-- [ ] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
+- [x] **Phase 5: Envoy Gateway** - Gateway API CRDs and controller installed with end-to-end HTTPRoute traffic
 - [ ] **Phase 6: Dashboard** - Headlamp installed with printed token and port-forward command for immediate access
 - [ ] **Phase 7: Integration Testing** - All addons verified functional together via cross-addon smoke tests
 
@@ -87,7 +87,7 @@ Plans:
   4. Setting `addons.envoyGateway: false` in cluster config causes no Gateway API CRDs or Envoy Gateway pods to be installed
 **Plans**: 1 plan
 Plans:
-- [ ] 05-01-PLAN.md — Envoy Gateway v1.3.1 install.yaml embedding with server-side apply, certgen/controller/GatewayClass wait sequence, TLS termination docs
+- [x] 05-01-PLAN.md — Envoy Gateway v1.3.1 install.yaml embedding with server-side apply, certgen/controller/GatewayClass wait sequence, TLS termination docs
 
 ### Phase 6: Dashboard
 **Goal**: Headlamp is installed and a developer can immediately open the Kubernetes dashboard using a printed token and port-forward command
@@ -125,6 +125,6 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 | 2. MetalLB | 2/2 | Complete | 2026-03-01 |
 | 3. Metrics Server | 1/1 | Complete | 2026-03-01 |
 | 4. CoreDNS Tuning | 1/1 | Complete | 2026-03-01 |
-| 5. Envoy Gateway | 0/1 | Not started | - |
+| 5. Envoy Gateway | 1/1 | Complete | 2026-03-01 |
 | 6. Dashboard | 0/TBD | Not started | - |
 | 7. Integration Testing | 0/TBD | Not started | - |
