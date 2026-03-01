@@ -19,6 +19,7 @@ package create
 import (
 	"fmt"
 	"math/rand"
+	"runtime"
 	"time"
 
 	"al.essio.dev/pkg/shellescape"
@@ -34,6 +35,11 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcni"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installstorage"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/kubeadminit"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/kubeadmjoin"
@@ -62,6 +68,13 @@ type ClusterOptions struct {
 	// Options to control output
 	DisplayUsage      bool
 	DisplaySalutation bool
+}
+
+// addonResult captures the outcome of running a single addon action.
+type addonResult struct {
+	name    string
+	enabled bool
+	err     error
 }
 
 // Cluster creates a cluster
@@ -159,6 +172,44 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 		return err
 	}
 
+	// --- Addon actions (warn-and-continue) ---
+	var addonResults []addonResult
+
+	// Helper: run an addon action, capturing result
+	runAddon := func(name string, enabled bool, a actions.Action) {
+		if !enabled {
+			logger.V(0).Infof(" * Skipping %s (disabled in config)\n", name)
+			addonResults = append(addonResults, addonResult{name: name, enabled: false})
+			return
+		}
+		if err := a.Execute(actionsContext); err != nil {
+			logger.Warnf("Addon %s failed to install (cluster still usable): %v", name, err)
+			addonResults = append(addonResults, addonResult{name: name, enabled: true, err: err})
+			return
+		}
+		addonResults = append(addonResults, addonResult{name: name, enabled: true})
+	}
+
+	// Dependency conflict check (per user decision: warn and continue)
+	if !opts.Config.Addons.MetalLB && opts.Config.Addons.EnvoyGateway {
+		logger.Warn("MetalLB is disabled but Envoy Gateway is enabled. Envoy Gateway proxy services will not receive LoadBalancer IPs.")
+	}
+
+	// Run addon actions in dependency order
+	runAddon("MetalLB", opts.Config.Addons.MetalLB, installmetallb.NewAction())
+	runAddon("Metrics Server", opts.Config.Addons.MetricsServer, installmetricsserver.NewAction())
+	runAddon("CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction())
+	runAddon("Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction())
+	runAddon("Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction())
+
+	// Platform warning for MetalLB (FOUND-05)
+	if opts.Config.Addons.MetalLB {
+		logMetalLBPlatformWarning(logger)
+	}
+
+	// Addon summary
+	logAddonSummary(logger, addonResults)
+
 	// optionally display usage
 	if opts.DisplayUsage {
 		logUsage(logger, opts.Config.Name, opts.KubeconfigPath)
@@ -199,7 +250,7 @@ func logUsage(logger log.Logger, name, explicitKubeconfigPath string) {
 func logSalutation(logger log.Logger) {
 	salutations := []string{
 		"Have a nice day! 👋",
-		"Thanks for using kind! 😊",
+		"Thanks for using kinder! 😊",
 		"Not sure what to do next? 😅  Check out https://kind.sigs.k8s.io/docs/user/quick-start/",
 		"Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂",
 	}
@@ -254,4 +305,34 @@ func validateProvider(p providers.Provider) error {
 		}
 	}
 	return nil
+}
+
+// logMetalLBPlatformWarning prints a warning on macOS/Windows that MetalLB
+// LoadBalancer IPs are not reachable from the host.
+func logMetalLBPlatformWarning(logger log.Logger) {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		logger.Warnf(
+			"On %s, MetalLB LoadBalancer IPs are not directly reachable from the host.\n"+
+				"   Use kubectl port-forward to access LoadBalancer services:\n"+
+				"   kubectl port-forward svc/<service-name> <local-port>:<service-port>",
+			runtime.GOOS,
+		)
+	}
+}
+
+// logAddonSummary prints a scannable summary of addon installation results.
+func logAddonSummary(logger log.Logger, results []addonResult) {
+	logger.V(0).Info("")
+	logger.V(0).Info("Addons:")
+	for _, r := range results {
+		switch {
+		case !r.enabled:
+			logger.V(0).Infof(" * %-20s skipped (disabled)", r.name)
+		case r.err != nil:
+			logger.V(0).Infof(" * %-20s FAILED: %v", r.name, r.err)
+		default:
+			logger.V(0).Infof(" * %-20s installed", r.name)
+		}
+	}
 }
