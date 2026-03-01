@@ -59,7 +59,9 @@ Plans:
   2. `kubectl top pods` returns data for pods in any namespace
   3. An HPA targeting CPU utilization successfully reads metrics from the Metrics API without errors
   4. Setting `addons.metricsServer: false` in cluster config causes no Metrics Server pods to be installed
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 03-01-PLAN.md — Metrics Server v0.8.1 manifest embedding with --kubelet-insecure-tls and action Execute implementation
 
 ### Phase 4: CoreDNS Tuning
 **Goal**: CoreDNS ConfigMap is patched in-place with improved cache settings and existing in-cluster DNS resolution continues to work
@@ -117,7 +119,7 @@ Note: Phases 2, 3, and 4 each depend only on Phase 1 and are independent of each
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. MetalLB | 2/2 | Complete | 2026-03-01 |
-| 3. Metrics Server | 0/TBD | Not started | - |
+| 3. Metrics Server | 0/1 | Planned | - |
 | 4. CoreDNS Tuning | 0/TBD | Not started | - |
 | 5. Envoy Gateway | 0/TBD | Not started | - |
 | 6. Dashboard | 0/TBD | Not started | - |
