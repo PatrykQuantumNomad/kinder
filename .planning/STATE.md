@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 1 of 7 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-01 — Roadmap created, all 34 v1 requirements mapped to 7 phases
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-01 — Completed 01-01: config schema with Addons struct and binary rename to kinder
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 7%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 2 minutes
+- Total execution time: 0.03 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-foundation | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: —
+- Last 5 plans: 01-01 (2m)
 - Trend: —
 
 *Updated after each plan completion*
@@ -46,6 +46,9 @@ Recent decisions affecting current work:
 - [Research]: Embed all addon manifests at build time using go:embed (offline-capable, no external tools)
 - [Research]: MetalLB must be fully ready before Envoy Gateway actions run (hard ordering dependency)
 - [Research]: CoreDNS patching uses read-modify-write in Go, not kubectl patch (Corefile is a string blob)
+- [01-01]: *bool for v1alpha4 Addons fields — nil means not-set, defaults to true; avoids Go bool zero-value ambiguity after YAML decode
+- [01-01]: Internal config uses plain bool — conversion is the single point where nil *bool => true translation happens
+- [01-01]: Binary renamed via Makefile + cobra Use field only — module path stays sigs.k8s.io/kind
 
 ### Pending Todos
 
@@ -61,5 +64,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Roadmap created and written to disk. REQUIREMENTS.md traceability updated.
+Stopped at: Completed 01-01-PLAN.md — config schema with Addons struct, binary rename to kinder, and config parsing tests.
 Resume file: None

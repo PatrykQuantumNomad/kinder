@@ -9,9 +9,9 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FOUND-01**: Binary is named `kinder` and coexists with `kind` on the system
-- [ ] **FOUND-02**: Config schema extends v1alpha4 with an `addons` section for enabling/disabling each addon
-- [ ] **FOUND-03**: Existing kind configs without addons section work unchanged (backward compatible)
+- [x] **FOUND-01**: Binary is named `kinder` and coexists with `kind` on the system
+- [x] **FOUND-02**: Config schema extends v1alpha4 with an `addons` section for enabling/disabling each addon
+- [x] **FOUND-03**: Existing kind configs without addons section work unchanged (backward compatible)
 - [ ] **FOUND-04**: Each addon action checks its enable flag before executing
 - [ ] **FOUND-05**: Platform detection warns macOS/Windows users that MetalLB LoadBalancer IPs may not be reachable from the host
 
