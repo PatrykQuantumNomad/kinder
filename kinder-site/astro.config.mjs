@@ -10,6 +10,16 @@ export default defineConfig({
         { slug: 'installation' },
         { slug: 'quick-start' },
         { slug: 'configuration' },
+        {
+          label: 'Addons',
+          items: [
+            { slug: 'addons/metallb' },
+            { slug: 'addons/envoy-gateway' },
+            { slug: 'addons/metrics-server' },
+            { slug: 'addons/coredns' },
+            { slug: 'addons/headlamp' },
+          ],
+        },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/patrykattc/kinder' },
