@@ -106,7 +106,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. The landing page and all documentation pages are fully readable and usable on a 375px-wide mobile viewport with no horizontal scroll or overlapping elements
   2. Lighthouse reports 90 or above on Performance, Accessibility, Best Practices, and SEO when run against the live production URL
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 14-01-PLAN.md -- Fix mobile CSS, add robots.txt, and verify Lighthouse 90+ on live site
 
 ## Progress
 
@@ -121,4 +123,4 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 11. Documentation Content | v1.1 | 2/2 | Complete | 2026-03-02 |
 | 12. Landing Page | v1.1 | 1/1 | Complete | 2026-03-02 |
 | 13. Assets and Identity | v1.1 | 1/1 | Complete | 2026-03-02 |
-| 14. Polish and Validation | v1.1 | 0/TBD | Not started | - |
+| 14. Polish and Validation | v1.1 | 0/1 | Not started | - |
