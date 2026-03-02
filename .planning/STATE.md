@@ -11,8 +11,8 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: 11 of 14 (Documentation Content) — COMPLETE
 Plan: 02/02 complete
-Status: Phase 11 complete — all 8 documentation pages written, Addons sidebar group, full build verified
-Last activity: 2026-03-02 — Phase 11 Plan 02 complete: Five addon pages + Addons sidebar group added
+Status: Phase 11 complete — verified and gap-fixed
+Last activity: 2026-03-02 — Phase 11 verification passed (13/13). Fixed dashboard references (Kubernetes Dashboard → Headlamp) in quick-start and config.
 
 Progress: [█████░░░░░] 42% (v1.1 — 5/12 plans complete)
 
