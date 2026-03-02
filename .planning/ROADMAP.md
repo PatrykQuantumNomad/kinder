@@ -26,7 +26,7 @@ Forked kind into kinder with 5 default addons (MetalLB, Envoy Gateway, Metrics S
 
 - [x] **Phase 9: Scaffold and Deploy Pipeline** - Astro/Starlight project scaffolded and live at kinder.patrykgolabek.dev
 - [x] **Phase 10: Dark Theme** - Terminal-aesthetic dark theme applied site-wide with FOUC prevention
-- [ ] **Phase 11: Documentation Content** - All 8 documentation pages written and navigable
+- [x] **Phase 11: Documentation Content** - All 8 documentation pages written and navigable
 - [ ] **Phase 12: Landing Page** - Full marketing landing page with hero, addon grid, and comparison section
 - [ ] **Phase 13: Assets and Identity** - Favicon, og:image, and custom 404 page in place
 - [ ] **Phase 14: Polish and Validation** - Mobile-responsive and Lighthouse 90+ confirmed
@@ -71,8 +71,8 @@ Plans:
   5. Pagefind search returns relevant results when a user searches for addon names or config fields
 **Plans**: 2 plans
 Plans:
-- [ ] 11-01-PLAN.md -- Write installation, quick start, and configuration reference pages with sidebar config
-- [ ] 11-02-PLAN.md -- Write all five addon documentation pages and add Addons sidebar group
+- [x] 11-01-PLAN.md -- Write installation, quick start, and configuration reference pages with sidebar config
+- [x] 11-02-PLAN.md -- Write all five addon documentation pages and add Addons sidebar group
 
 ### Phase 12: Landing Page
 **Goal**: A visitor arriving at kinder.patrykgolabek.dev understands what kinder offers over kind within 10 seconds and can immediately copy the install command or navigate to documentation
@@ -114,7 +114,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 1-8. v1.0 Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
 | 9. Scaffold and Deploy Pipeline | v1.1 | 2/2 | Complete | 2026-03-01 |
 | 10. Dark Theme | v1.1 | 1/1 | Complete | 2026-03-01 |
-| 11. Documentation Content | v1.1 | 0/2 | Planned | - |
+| 11. Documentation Content | v1.1 | 2/2 | Complete | 2026-03-02 |
 | 12. Landing Page | v1.1 | 0/TBD | Not started | - |
 | 13. Assets and Identity | v1.1 | 0/TBD | Not started | - |
 | 14. Polish and Validation | v1.1 | 0/TBD | Not started | - |

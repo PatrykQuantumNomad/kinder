@@ -21,11 +21,11 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 - [ ] **DOCS-01**: Installation guide page covering `go install` and binary download
 - [ ] **DOCS-02**: Quick start page walking through `kinder create cluster` and verifying addons
 - [ ] **DOCS-03**: Configuration reference page documenting `v1alpha4` addons schema and all config options
-- [ ] **DOCS-04**: MetalLB addon documentation page (what it does, config options, platform notes)
-- [ ] **DOCS-05**: Envoy Gateway addon documentation page (Gateway API routing, GatewayClass, HTTPRoute)
-- [ ] **DOCS-06**: Metrics Server addon documentation page (`kubectl top`, HPA support)
-- [ ] **DOCS-07**: CoreDNS tuning addon documentation page (autopath, cache, what changes)
-- [ ] **DOCS-08**: Headlamp dashboard addon documentation page (access, token, port-forward)
+- [x] **DOCS-04**: MetalLB addon documentation page (what it does, config options, platform notes)
+- [x] **DOCS-05**: Envoy Gateway addon documentation page (Gateway API routing, GatewayClass, HTTPRoute)
+- [x] **DOCS-06**: Metrics Server addon documentation page (`kubectl top`, HPA support)
+- [x] **DOCS-07**: CoreDNS tuning addon documentation page (autopath, cache, what changes)
+- [x] **DOCS-08**: Headlamp dashboard addon documentation page (access, token, port-forward)
 
 ### Landing Page
 
@@ -75,11 +75,11 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 | DOCS-01 | Phase 11 | Pending |
 | DOCS-02 | Phase 11 | Pending |
 | DOCS-03 | Phase 11 | Pending |
-| DOCS-04 | Phase 11 | Pending |
-| DOCS-05 | Phase 11 | Pending |
-| DOCS-06 | Phase 11 | Pending |
-| DOCS-07 | Phase 11 | Pending |
-| DOCS-08 | Phase 11 | Pending |
+| DOCS-04 | Phase 11 | Complete (11-02) |
+| DOCS-05 | Phase 11 | Complete (11-02) |
+| DOCS-06 | Phase 11 | Complete (11-02) |
+| DOCS-07 | Phase 11 | Complete (11-02) |
+| DOCS-08 | Phase 11 | Complete (11-02) |
 | LAND-01 | Phase 12 | Pending |
 | LAND-02 | Phase 12 | Pending |
 | LAND-03 | Phase 12 | Pending |
@@ -97,4 +97,4 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 — traceability complete after roadmap creation*
+*Last updated: 2026-03-02 — DOCS-04 through DOCS-08 complete (Phase 11 Plan 02)*
