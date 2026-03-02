@@ -36,9 +36,9 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 ### Polish
 
-- [ ] **PLSH-01**: Favicon and site logo (SVG)
-- [ ] **PLSH-02**: Open Graph image for social media sharing
-- [ ] **PLSH-03**: Custom 404 page
+- [x] **PLSH-01**: Favicon and site logo (SVG)
+- [x] **PLSH-02**: Open Graph image for social media sharing
+- [x] **PLSH-03**: Custom 404 page
 - [ ] **PLSH-04**: Mobile-responsive validation
 - [ ] **PLSH-05**: Lighthouse performance pass (90+ on all metrics)
 
@@ -84,9 +84,9 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 | LAND-02 | Phase 12 | Complete (12-01) |
 | LAND-03 | Phase 12 | Complete (12-01) |
 | LAND-04 | Phase 12 | Complete (12-01) |
-| PLSH-01 | Phase 13 | Pending |
-| PLSH-02 | Phase 13 | Pending |
-| PLSH-03 | Phase 13 | Pending |
+| PLSH-01 | Phase 13 | Complete |
+| PLSH-02 | Phase 13 | Complete |
+| PLSH-03 | Phase 13 | Complete |
 | PLSH-04 | Phase 14 | Pending |
 | PLSH-05 | Phase 14 | Pending |
 

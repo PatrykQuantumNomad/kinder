@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.1 Kinder Website — Phase 12: Landing Page
+**Current focus:** v1.1 Kinder Website — Phase 13: Assets and Identity
 
 ## Current Position
 
-Phase: 12 of 14 (Landing Page) — COMPLETE
+Phase: 13 of 14 (Assets and Identity) — IN PROGRESS
 Plan: 01/01 complete
-Status: Phase 12 complete — landing page built and site builds with zero errors
-Last activity: 2026-03-02 — Phase 12 Plan 01 complete. Landing page with hero, InstallCommand, Comparison, and 5 addon cards. 10-page build verified.
+Status: Phase 13 Plan 01 complete — favicon wired, OG meta tags added, og.png generated, custom 404 page created
+Last activity: 2026-03-02 — Phase 13 Plan 01 complete. Favicon, OG meta tags (5), og.png (1200x630), and custom 404 page. Site builds 10 pages.
 
-Progress: [██████░░░░] 50% (v1.1 — 6/12 plans complete)
+Progress: [███████░░░] 58% (v1.1 — 7/12 plans complete)
 
 ## Performance Metrics
 
@@ -31,6 +31,7 @@ Progress: [██████░░░░] 50% (v1.1 — 6/12 plans complete)
 - Phase 11 Plan 01: 2 min, 2 tasks, 5 files (3 created, 1 modified, 2 deleted)
 - Phase 11 Plan 02: 2 min, 2 tasks, 6 files (5 created, 1 modified)
 - Phase 12 Plan 01: 2 min, 2 tasks, 3 files (2 created, 1 modified)
+- Phase 13 Plan 01: 2 min, 2 tasks, 3 files (2 created, 1 modified)
 
 ## Accumulated Context
 
@@ -46,6 +47,7 @@ Progress: [██████░░░░] 50% (v1.1 — 6/12 plans complete)
 - Phase 11 Plan 01: Build-from-source via `make install` is the only documented install method (binary distribution unconfirmed). apiVersion is `kind.x-k8s.io/v1alpha4` (confirmed from Go source). Sidebar uses slug-based entries for auto-sync with frontmatter titles.
 - Phase 11 Plan 02: Starlight sidebar groups use `{ label, items: [{ slug }] }` pattern. Addon config field for Headlamp is `dashboard` (not `headlamp`). Starlight admonition syntax: `:::caution[Title]`, `:::note`, `:::tip`.
 - Phase 12 Plan 01: `not-content` class required on custom Astro component roots to escape Starlight `.sl-markdown-content` styles. `CardGrid` without `stagger` for odd card counts (5). All addon links use root-relative paths with trailing slash.
+- Phase 13 Plan 01: Starlight `disable404Route: true` required before creating custom 404.astro to prevent route collision. StarlightPage with `template: 'splash'` suppresses sidebar on 404. SVG XML comments cannot use `--` (double hyphen) — sharp rejects invalid XML. OG meta tags require absolute URLs for social crawler compatibility.
 
 ### Blockers/Concerns
 
@@ -59,5 +61,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Phase 12 Plan 01 complete — Landing page with hero, InstallCommand clipboard component, Comparison grid, and 5 addon Cards. Site builds 10 pages, Pagefind index intact.
+Stopped at: Phase 13 Plan 01 complete — Favicon wired, 5 OG/Twitter meta tags, og.png 1200x630, custom 404 page. Site builds 10 pages.
 Resume file: None
