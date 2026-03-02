@@ -201,7 +201,7 @@ func (p *provider) GetAPIServerEndpoint(cluster string) (string, error) {
 	// https://github.com/containers/podman/issues/8444
 	if v.AtLeast(version.MustParseSemantic("2.2.0")) &&
 		v.LessThan(version.MustParseSemantic("3.0.0")) {
-		p.logger.Warnf("WARNING: podman version %s not fully supported, please use versions 3.0.0+")
+		p.logger.Warnf("WARNING: podman version %s not fully supported, please use versions 3.0.0+", v)
 
 		cmd := exec.Command(
 			"podman", "inspect",

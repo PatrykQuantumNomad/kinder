@@ -162,7 +162,16 @@ func validatePortMappings(portMappings []PortMapping) error {
 			continue
 		}
 
-		addr := net.ParseIP(portMapping.ListenAddress)
+		// Empty ListenAddress is treated as the wildcard address 0.0.0.0
+		listenAddr := portMapping.ListenAddress
+		if listenAddr == "" {
+			listenAddr = "0.0.0.0"
+		}
+
+		addr := net.ParseIP(listenAddr)
+		if addr == nil {
+			return fmt.Errorf("invalid listen address: %s", portMapping.ListenAddress)
+		}
 		addrString := addr.String()
 
 		portProtocol := formatPortProtocol(portMapping.HostPort, portMapping.Protocol)

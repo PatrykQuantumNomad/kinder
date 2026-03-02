@@ -7,9 +7,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"sigs.k8s.io/kind/pkg/log"
 )
+
+// sanitizeTarPath validates that the tar entry name does not escape the
+// destination directory (prevents zip-slip / path-traversal attacks).
+func sanitizeTarPath(destDirectory, name string) (string, error) {
+	// Reject absolute paths outright -- tar entries should always be relative.
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("illegal file path in tar: %s", name)
+	}
+	destPath := filepath.Join(destDirectory, name)
+	if !strings.HasPrefix(filepath.Clean(destPath)+string(os.PathSeparator), filepath.Clean(destDirectory)+string(os.PathSeparator)) &&
+		filepath.Clean(destPath) != filepath.Clean(destDirectory) {
+		return "", fmt.Errorf("illegal file path in tar: %s", name)
+	}
+	return destPath, nil
+}
 
 // extractTarball takes a gzipped-tarball and extracts the contents into a specified directory
 func extractTarball(tarPath, destDirectory string, logger log.Logger) (err error) {
@@ -40,13 +56,19 @@ func extractTarball(tarPath, destDirectory string, logger log.Logger) (err error
 			continue
 		}
 
-		if err := os.MkdirAll(
-			filepath.Join(destDirectory, filepath.Dir(hdr.Name)), os.FileMode(0o755),
-		); err != nil {
+		dirPath, err := sanitizeTarPath(destDirectory, filepath.Dir(hdr.Name))
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dirPath, os.FileMode(0o755)); err != nil {
 			return fmt.Errorf("creating image directory structure: %w", err)
 		}
 
-		f, err := os.Create(filepath.Join(destDirectory, hdr.Name))
+		filePath, err := sanitizeTarPath(destDirectory, hdr.Name)
+		if err != nil {
+			return err
+		}
+		f, err := os.Create(filePath)
 		if err != nil {
 			return fmt.Errorf("creating image layer file: %w", err)
 		}

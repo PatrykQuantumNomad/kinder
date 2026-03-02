@@ -20,8 +20,8 @@ package installdashboard
 
 import (
 	"bytes"
-	"encoding/base64"
 	_ "embed"
+	"encoding/base64"
 	"strings"
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"

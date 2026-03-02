@@ -298,7 +298,7 @@ func (p *provider) CollectLogs(dir string, nodes []nodes.Node) error {
 		// record info about the host nerdctl
 		execToPathFn(
 			exec.Command(p.Binary(), "info"),
-			filepath.Join(dir, "docker-info.txt"),
+			filepath.Join(dir, "nerdctl-info.txt"),
 		),
 	}
 	// inspect each node

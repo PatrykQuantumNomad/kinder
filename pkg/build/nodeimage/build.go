@@ -94,6 +94,12 @@ func Build(options ...Option) error {
 		}
 	}
 
+	// If a specific build type was requested but no builder was created, error out
+	// instead of silently falling through to a source build.
+	if ctx.buildType != "" && ctx.builder == nil {
+		return fmt.Errorf("could not create builder for build type %q with parameter %q", ctx.buildType, ctx.kubeParam)
+	}
+
 	if ctx.builder == nil {
 		// locate sources if no kubernetes source was specified
 		if ctx.kubeParam == "" {

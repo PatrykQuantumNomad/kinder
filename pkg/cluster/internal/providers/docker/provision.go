@@ -316,6 +316,9 @@ func getSubnets(networkName string) ([]string, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get subnets")
 	}
+	if len(lines) == 0 {
+		return nil, errors.New("no subnet information returned for network")
+	}
 	return strings.Split(strings.TrimSpace(lines[0]), " "), nil
 }
 

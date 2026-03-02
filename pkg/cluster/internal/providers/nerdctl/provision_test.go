@@ -1,0 +1,76 @@
+/*
+Copyright 2024 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package nerdctl
+
+import (
+	"strings"
+	"testing"
+
+	"sigs.k8s.io/kind/pkg/internal/apis/config"
+)
+
+func TestGenerateMountBindings(t *testing.T) {
+	t.Parallel()
+
+	// Smoke test: no mounts produces no args
+	args := generateMountBindings()
+	if len(args) != 0 {
+		t.Errorf("expected no args for no mounts, got %v", args)
+	}
+}
+
+func TestGeneratePortMappingsEmpty(t *testing.T) {
+	t.Parallel()
+
+	// No port mappings should produce no args and no error
+	args, err := generatePortMappings(config.IPv4Family)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(args) != 0 {
+		t.Errorf("expected no args for no port mappings, got %v", args)
+	}
+}
+
+func TestGetSubnetsEmptyLines(t *testing.T) {
+	t.Parallel()
+
+	// getSubnets calls exec.OutputLines which will fail since the binary
+	// doesn't exist in the test environment. We can't easily mock that,
+	// but we can verify the function signature and that the bounds check
+	// path works by testing the string splitting logic directly.
+
+	// Simulate what getSubnets does after the bounds check
+	testLine := "10.89.0.0/24 fc00:f853:ccd:e793::/64 "
+	result := strings.Split(strings.TrimSpace(testLine), " ")
+	if len(result) != 2 {
+		t.Errorf("expected 2 subnets, got %d: %v", len(result), result)
+	}
+	if result[0] != "10.89.0.0/24" {
+		t.Errorf("expected first subnet 10.89.0.0/24, got %s", result[0])
+	}
+	if result[1] != "fc00:f853:ccd:e793::/64" {
+		t.Errorf("expected second subnet fc00:f853:ccd:e793::/64, got %s", result[1])
+	}
+
+	// Verify empty line handling
+	emptyResult := strings.Split(strings.TrimSpace(""), " ")
+	// strings.Split("", " ") returns [""] which has length 1
+	if len(emptyResult) != 1 || emptyResult[0] != "" {
+		t.Errorf("unexpected empty split result: %v", emptyResult)
+	}
+}

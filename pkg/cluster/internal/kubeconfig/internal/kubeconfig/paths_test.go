@@ -126,6 +126,28 @@ func TestPathForMerge(t *testing.T) {
 	})
 }
 
+func TestFileExists_PermissionError(t *testing.T) {
+	t.Parallel()
+	// Create a temp dir
+	dir := t.TempDir()
+	// Create a file inside
+	filePath := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	// Remove all permissions from parent dir so os.Stat on the file
+	// returns a permission error (not IsNotExist)
+	if err := os.Chmod(dir, 0000); err != nil {
+		t.Fatalf("failed to chmod dir: %v", err)
+	}
+	defer func() { _ = os.Chmod(dir, 0755) }() // restore for cleanup
+	// This should return false, not panic
+	result := fileExists(filePath)
+	if result {
+		t.Error("expected false for inaccessible file")
+	}
+}
+
 func TestHomeDir(t *testing.T) {
 	t.Parallel()
 	t.Run("windows HOME with .kube/config", func(t *testing.T) {

@@ -61,6 +61,7 @@ section() {
 
 # wait_for runs a command repeatedly until it succeeds or timeout (seconds).
 # Usage: wait_for <timeout_seconds> <description> <command...>
+# shellcheck disable=SC2317
 wait_for() {
   local timeout="$1"; shift
   local desc="$1"; shift

@@ -18,7 +18,6 @@ package kubeconfig
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 
@@ -53,7 +52,7 @@ func paths(explicitPath string, getEnv func(string) string) []string {
 		return paths
 	}
 
-	return []string{path.Join(homeDir(runtime.GOOS, getEnv), ".kube", "config")}
+	return []string{filepath.Join(homeDir(runtime.GOOS, getEnv), ".kube", "config")}
 }
 
 // pathForMerge returns the file that kubectl would merge into
@@ -74,7 +73,7 @@ func pathForMerge(explicitPath string, getEnv func(string) string) string {
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return false
 	}
 	return !info.IsDir()

@@ -17,6 +17,8 @@ limitations under the License.
 package kubeconfig
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -100,6 +102,45 @@ users:
 			t.Errorf("Expected: %+v", expected)
 			t.Errorf("Actual: %+v", cfg)
 			t.Errorf("type: %s", reflect.TypeOf(cfg.OtherFields["preferences"]))
+		}
+	})
+}
+
+func TestRead(t *testing.T) {
+	t.Parallel()
+	t.Run("nonexistent file returns empty config", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := read("/nonexistent/path/kubeconfig")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg == nil {
+			t.Fatal("expected non-nil config for nonexistent file")
+		}
+	})
+	t.Run("valid file is read and closed properly", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "kubeconfig")
+		content := []byte(`apiVersion: v1
+kind: Config
+clusters: []
+contexts: []
+users: []
+current-context: ""
+`)
+		if err := os.WriteFile(configPath, content, 0644); err != nil {
+			t.Fatalf("failed to write test kubeconfig: %v", err)
+		}
+		// Read multiple times to verify file descriptors are not leaked
+		for i := 0; i < 100; i++ {
+			cfg, err := read(configPath)
+			if err != nil {
+				t.Fatalf("iteration %d: unexpected error: %v", i, err)
+			}
+			if cfg == nil {
+				t.Fatalf("iteration %d: expected non-nil config", i)
+			}
 		}
 	})
 }

@@ -85,13 +85,18 @@ func deleteClusters(logger log.Logger, flags *flagpole, clusters []string) error
 		}
 	}
 	var success []string
+	var errs []error
 	for _, cluster := range clusters {
 		if err = provider.Delete(cluster, flags.Kubeconfig); err != nil {
 			logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete cluster %q", cluster))
+			errs = append(errs, errors.Wrapf(err, "failed to delete cluster %q", cluster))
 			continue
 		}
 		success = append(success, cluster)
 	}
 	logger.V(0).Infof("Deleted clusters: %q", success)
+	if len(errs) > 0 {
+		return errors.Errorf("failed to delete %d cluster(s)", len(errs))
+	}
 	return nil
 }

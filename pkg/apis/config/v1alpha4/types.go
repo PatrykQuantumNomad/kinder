@@ -241,6 +241,8 @@ const (
 	IPVSProxyMode ProxyMode = "ipvs"
 	// NFTablesProxyMode sets ProxyMode to nftables
 	NFTablesProxyMode ProxyMode = "nftables"
+	// NoneProxyMode disables kube-proxy
+	NoneProxyMode ProxyMode = "none"
 )
 
 // PatchJSON6902 represents an inline kustomize json 6902 patch

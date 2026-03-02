@@ -578,6 +578,23 @@ func TestValidatePortMappings(t *testing.T) {
 			// error expected: port mapping is already defined for wildcard interface - ::
 			expectErr: fmt.Sprintf("%s: [::1]:80/SCTP", errMsg),
 		},
+		{
+			testName: "port mapping with empty listen address should not panic",
+			portMappings: []PortMapping{
+				newPortMapping("", 80, "TCP"),
+			},
+			expectErr: "",
+		},
+		{
+			testName: "empty listen address conflicts with specific address",
+			portMappings: []PortMapping{
+				newPortMapping("", 80, "TCP"),
+				newPortMapping("127.0.0.1", 80, "TCP"),
+			},
+			// empty listen address is equivalent to 0.0.0.0 (wildcard),
+			// so a specific address on the same port/protocol should conflict
+			expectErr: fmt.Sprintf("%s: 127.0.0.1:80/TCP", errMsg),
+		},
 	}
 
 	for _, tc := range cases {

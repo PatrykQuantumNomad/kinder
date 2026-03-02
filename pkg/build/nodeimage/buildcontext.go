@@ -340,6 +340,9 @@ func (c *buildContext) createBuildContainer() (id string, err error) {
 	_ = docker.Pull(c.logger, c.baseImage, dockerBuildOsAndArch(c.arch), 4)
 	// this should be good enough: a specific prefix, the current unix time,
 	// and a little random bits in case we have multiple builds simultaneously
+	// NOTE: explicit seeding is required while the module minimum is Go 1.17.
+	// Once the minimum Go version is bumped to 1.20+, this can be simplified
+	// to just rand.Int31() since the global source is auto-seeded.
 	random := rand.New(rand.NewSource(time.Now().UnixNano())).Int31()
 	id = fmt.Sprintf("kind-build-%d-%d", time.Now().UTC().Unix(), random)
 	runArgs := []string{

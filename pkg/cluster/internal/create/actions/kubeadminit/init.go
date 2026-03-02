@@ -121,20 +121,20 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 		}
 	}
 
+	// Determine if this is a single-node cluster by counting only Kubernetes
+	// nodes (control-plane + worker), excluding the external load balancer.
+	internalNodes, err := nodeutils.InternalNodes(allNodes)
+	if err != nil {
+		return err
+	}
+
 	// if we are only provisioning one node, remove the control plane taint
 	// https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/#master-isolation
-	if len(allNodes) == 1 {
+	if len(internalNodes) == 1 {
 		// TODO: Once kubeadm 1.23 is no longer supported remove the <1.24 handling.
 		// TODO: Once kubeadm 1.24 is no longer supported remove the <1.25 handling.
 		// https://github.com/kubernetes-sigs/kind/issues/1699
-		rawVersion, err := nodeutils.KubeVersion(node)
-		if err != nil {
-			return errors.Wrap(err, "failed to get Kubernetes version from node")
-		}
-		kubeVersion, err := version.ParseSemantic(rawVersion)
-		if err != nil {
-			return errors.Wrap(err, "could not parse Kubernetes version")
-		}
+		// Reuse kubeVersion already parsed above with ParseGeneric.
 		var taints []string
 		if kubeVersion.LessThan(version.MustParseSemantic("v1.24.0-alpha.1.592+370031cadac624")) {
 			// for versions older than 1.24 prerelease remove only the old taint
@@ -158,7 +158,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Kubeadm will add `node.kubernetes.io/exclude-from-external-load-balancers` on control plane nodes.
 	// For single node clusters, this means we cannot have a load balancer at all (MetalLB, etc), so remove the label.
-	if len(allNodes) == 1 {
+	if len(internalNodes) == 1 {
 		labelArgs := []string{"--kubeconfig=/etc/kubernetes/admin.conf", "label", "nodes", "--all", "node.kubernetes.io/exclude-from-external-load-balancers-"}
 		if err := node.Command(
 			"kubectl", labelArgs...,

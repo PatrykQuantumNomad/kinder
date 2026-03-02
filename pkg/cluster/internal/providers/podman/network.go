@@ -20,7 +20,6 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"net"
-	"regexp"
 	"strings"
 
 	"sigs.k8s.io/kind/pkg/errors"
@@ -97,7 +96,7 @@ func createNetwork(name, ipv6Subnet string) error {
 func checkIfNetworkExists(name string) bool {
 	_, err := exec.Output(exec.Command(
 		"podman", "network", "inspect",
-		regexp.QuoteMeta(name),
+		name,
 	))
 	return err == nil
 }

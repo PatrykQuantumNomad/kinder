@@ -19,21 +19,38 @@ package kubeconfig
 import (
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // these are from
 // https://github.com/kubernetes/client-go/blob/611184f7c43ae2d520727f01d49620c7ed33412d/tools/clientcmd/loader.go#L439-L440
 
 func lockFile(filename string) error {
+	lockPath := lockName(filename)
 	// Make sure the dir exists before we try to create a lock file.
-	dir := filepath.Dir(filename)
+	dir := filepath.Dir(lockPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err = os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
 	}
-	f, err := os.OpenFile(lockName(filename), os.O_CREATE|os.O_EXCL, 0)
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL, 0)
 	if err != nil {
+		// Check if lock is stale (older than 5 minutes)
+		if os.IsExist(err) {
+			if info, statErr := os.Stat(lockPath); statErr == nil {
+				if time.Since(info.ModTime()) > 5*time.Minute {
+					// Remove stale lock and retry once
+					os.Remove(lockPath)
+					f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL, 0)
+					if err != nil {
+						return err
+					}
+					f.Close()
+					return nil
+				}
+			}
+		}
 		return err
 	}
 	f.Close()

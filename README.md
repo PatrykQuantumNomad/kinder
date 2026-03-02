@@ -91,6 +91,78 @@ See the full [Configuration Reference](https://kinder.patrykgolabek.dev/configur
 
 Full docs at **[kinder.patrykgolabek.dev](https://kinder.patrykgolabek.dev)**
 
+## Development
+
+### Prerequisites
+
+- [Go] 1.25.7+ (see `.go-version` for the exact compiler version used in CI)
+- [Docker], [Podman], or [nerdctl] (for integration tests and running clusters)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) (for verifying clusters)
+
+### Makefile targets
+
+#### Building
+
+| Target | Description |
+|--------|-------------|
+| `make` | Default target — alias for `make build`. |
+| `make build` | Compile the `kinder` binary to `./bin/kinder`. Uses `-trimpath` for reproducible builds, `-w` to strip debugger data for smaller binaries, and bakes the git commit into `kinder version` via `-ldflags`. |
+| `make install` | Build and copy the binary to your PATH. Defaults to `$(go env GOPATH)/bin`. Override with `make install INSTALL_DIR=/usr/local/bin`. |
+
+#### Testing
+
+| Target | Description |
+|--------|-------------|
+| `make unit` | Run unit tests only. Hermetic — no Docker/Podman required. |
+| `make integration` | Run integration tests only. Requires a container runtime (Docker, Podman, or nerdctl). |
+| `make test` | Run all tests (unit + integration). |
+
+#### Linting & verification
+
+| Target | Description |
+|--------|-------------|
+| `make verify` | Run all verification checks — linters, generated code freshness, formatting, and shellcheck. Use this in CI. |
+| `make lint` | Run Go code linters only. |
+| `make shellcheck` | Run [shellcheck](https://www.shellcheck.net/) on all shell scripts. |
+
+#### Code generation & formatting
+
+| Target | Description |
+|--------|-------------|
+| `make update` | Run all auto-update scripts — regenerate code and fix formatting. |
+| `make generate` | Regenerate generated code only (e.g., `zz_generated.deepcopy.go` files). |
+| `make gofmt` | Run `gofmt` to fix Go source formatting. |
+
+#### Cleanup
+
+| Target | Description |
+|--------|-------------|
+| `make clean` | Delete the `./bin/` output directory and all compiled binaries. |
+
+#### Overridable variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `INSTALL_DIR` | `$(go env GOPATH)/bin` | Where `make install` copies the binary. |
+| `KIND_BINARY_NAME` | `kinder` | Name of the output binary. |
+| `COMMIT` | current git HEAD | Git commit hash baked into `kinder version`. |
+| `CGO_ENABLED` | `0` | Disabled by default for static binaries. |
+
+### Run locally
+
+```sh
+# build and create a cluster
+make build
+./bin/kinder create cluster --name dev
+
+# verify
+kubectl get nodes
+kubectl get pods -A
+
+# clean up
+./bin/kinder delete cluster --name dev
+```
+
 ## Contributing
 
 Issues and pull requests are welcome at [github.com/PatrykQuantumNomad/kinder](https://github.com/PatrykQuantumNomad/kinder).

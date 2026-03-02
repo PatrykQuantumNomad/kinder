@@ -140,6 +140,14 @@ func carvePoolFromSubnet(cidr string) (string, error) {
 		broadcast[i] = base[i] | ^mask[i]
 	}
 
+	// Validate that the subnet is large enough for pool carving.
+	// We need at least a /24 (256 addresses) so that the .200-.250
+	// range in the last octet is guaranteed to fall within the subnet.
+	ones, bits := mask.Size()
+	if bits-ones < 8 {
+		return "", errors.Errorf("subnet %s is too small (/%d) for MetalLB pool carving; need at least /24", cidr, ones)
+	}
+
 	// Place pool at broadcast[-51] to broadcast[-1].
 	start := make(net.IP, 4)
 	end := make(net.IP, 4)

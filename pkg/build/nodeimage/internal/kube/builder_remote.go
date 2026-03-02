@@ -65,6 +65,12 @@ func (b *remoteBuilder) Build() (Bits, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for tar extraction: %w", err)
 	}
+	success := false
+	defer func() {
+		if !success {
+			os.RemoveAll(tmpDir)
+		}
+	}()
 
 	tgzFile := filepath.Join(tmpDir, "kubernetes-"+b.version+"-server-linux-amd64.tar.gz")
 	err = b.downloadURL(b.url, tgzFile)
@@ -90,6 +96,7 @@ func (b *remoteBuilder) Build() (Bits, error) {
 		return nil, errors.Wrap(err, "failed to get version")
 	}
 	sourceVersionRaw := strings.TrimSpace(string(contents))
+	success = true
 	return &bits{
 		binaryPaths: []string{
 			filepath.Join(binDir, "kubeadm"),

@@ -112,7 +112,7 @@ func waitForReady(node nodes.Node, until time.Time, selectorLabel string) bool {
 			"-o=jsonpath='{.items..status.conditions[-1:].status}'",
 		)
 		lines, err := exec.OutputLines(cmd)
-		if err != nil {
+		if err != nil || len(lines) == 0 {
 			return false
 		}
 
@@ -138,6 +138,7 @@ func tryUntil(until time.Time, try func() bool) bool {
 		if try() {
 			return true
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	return false
 }
