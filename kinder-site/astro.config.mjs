@@ -12,6 +12,9 @@ export default defineConfig({
       customCss: [
         './src/styles/theme.css',
       ],
+      components: {
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
     }),
   ],
 });
