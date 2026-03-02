@@ -34,9 +34,12 @@ import (
 // If path == "-" then reads from stdin
 func Load(path string) (*config.Cluster, error) {
 	// special case: empty path -> default config
-	// Route through V1Alpha4ToInternal so addon defaults are applied
+	// Route through V1Alpha4ToInternal so addon defaults are applied,
+	// then SetDefaultsCluster for internal defaults (cluster name, etc.)
 	if path == "" {
-		return V1Alpha4ToInternal(&v1alpha4.Cluster{}), nil
+		out := V1Alpha4ToInternal(&v1alpha4.Cluster{})
+		config.SetDefaultsCluster(out)
+		return out, nil
 	}
 
 	// read in file
