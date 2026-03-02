@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.1 Kinder Website — Phase 13: Assets and Identity
+**Current focus:** v1.1 Kinder Website — Phase 14: Polish and Validation
 
 ## Current Position
 
-Phase: 13 of 14 (Assets and Identity) — COMPLETE
+Phase: 14 of 14 (Polish and Validation) — COMPLETE
 Plan: 01/01 complete
-Status: Phase 13 complete — favicon, OG meta tags, og.png, and custom 404 page verified
-Last activity: 2026-03-02 — Phase 13 Plan 01 complete. Favicon, OG meta tags (5), og.png (1200x630), and custom 404 page. Site builds 10 pages.
+Status: Phase 14 complete — mobile responsive CSS, robots.txt, GitHub links updated, Lighthouse 90+ confirmed
+Last activity: 2026-03-02 — Phase 14 Plan 01 complete. Mobile breakpoint at 50rem, robots.txt, GitHub org updated to PatrykQuantumNomad.
 
-Progress: [███████░░░] 58% (v1.1 — 7/12 plans complete)
+Progress: [██████████] 100% (v1.1 — 8/8 plans complete)
 
 ## Performance Metrics
 
@@ -23,8 +23,8 @@ Progress: [███████░░░] 58% (v1.1 — 7/12 plans complete)
 - Total phases: 8
 
 **v1.1 (current):**
-- Plans completed: 7
-- Phases complete: 5/6 (Phase 9, 10, 11, 12, 13 complete)
+- Plans completed: 8
+- Phases complete: 6/6 (Phase 9, 10, 11, 12, 13, 14 complete)
 - Phase 9 Plan 01: 3 min, 2 tasks, 9 files created
 - Phase 9 Plan 02: ~5 min (user action), 2 checkpoint tasks
 - Phase 10 Plan 01: 2 min, 2 tasks, 3 files
@@ -32,6 +32,7 @@ Progress: [███████░░░] 58% (v1.1 — 7/12 plans complete)
 - Phase 11 Plan 02: 2 min, 2 tasks, 6 files (5 created, 1 modified)
 - Phase 12 Plan 01: 2 min, 2 tasks, 3 files (2 created, 1 modified)
 - Phase 13 Plan 01: 2 min, 2 tasks, 3 files (2 created, 1 modified)
+- Phase 14 Plan 01: 3 min, 2 tasks, 5 files (1 created, 4 modified)
 
 ## Accumulated Context
 
@@ -48,11 +49,12 @@ Progress: [███████░░░] 58% (v1.1 — 7/12 plans complete)
 - Phase 11 Plan 02: Starlight sidebar groups use `{ label, items: [{ slug }] }` pattern. Addon config field for Headlamp is `dashboard` (not `headlamp`). Starlight admonition syntax: `:::caution[Title]`, `:::note`, `:::tip`.
 - Phase 12 Plan 01: `not-content` class required on custom Astro component roots to escape Starlight `.sl-markdown-content` styles. `CardGrid` without `stagger` for odd card counts (5). All addon links use root-relative paths with trailing slash.
 - Phase 13 Plan 01: Starlight `disable404Route: true` required before creating custom 404.astro to prevent route collision. StarlightPage with `template: 'splash'` suppresses sidebar on 404. SVG XML comments cannot use `--` (double hyphen) — sharp rejects invalid XML. OG meta tags require absolute URLs for social crawler compatibility.
+- Phase 14 Plan 01: Static robots.txt in public/ (no npm package). 50rem breakpoint matches Starlight's mobile breakpoint. GitHub org updated from patrykattc to PatrykQuantumNomad.
 
 ### Blockers/Concerns
 
 - [Phase 11] RESOLVED: Binary distribution — documented `make install` (build-from-source) as the only confirmed method. Hero CTA will use the same.
-- [Phase 9] RESOLVED: GitHub repo confirmed as patrykattc/kinder (per CONTEXT.md)
+- [Phase 9] RESOLVED: GitHub repo updated to PatrykQuantumNomad/kinder (previously patrykattc/kinder)
 
 ### Pending Todos
 
@@ -61,5 +63,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Phase 13 Plan 01 complete — Favicon wired, 5 OG/Twitter meta tags, og.png 1200x630, custom 404 page. Site builds 10 pages.
+Stopped at: Phase 14 Plan 01 complete — v1.1 milestone complete. All 6 phases executed.
 Resume file: None
