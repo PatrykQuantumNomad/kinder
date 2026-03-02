@@ -1,9 +1,11 @@
-<p align="center"><img alt="kind" src="./logo/logo.png" width="300px" /></p>
+<p align="center"><img alt="kinder" src="./kinder-logo/logo.png" width="300px" /></p>
 
-# Please see [Our Documentation](https://kind.sigs.k8s.io/docs/user/quick-start/) for more in-depth installation etc.
+# kinder — kind, but with everything you actually need.
 
-kind is a tool for running local Kubernetes clusters using Docker container "nodes".
-kind was primarily designed for testing Kubernetes itself, but may be used for local development or CI.
+Please see [our documentation](https://kinder.patrykgolabek.dev) for more in-depth installation and usage.
+
+kinder is a tool for running local Kubernetes clusters using Docker container "nodes".
+Built on top of kind, kinder adds batteries-included addons and configuration for local development and CI.
 
 If you have [go] 1.16+ and [docker], [podman] or [nerdctl] installed `go install sigs.k8s.io/kind@v0.31.0 && kind create cluster` is all you need!
 

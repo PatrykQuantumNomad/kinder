@@ -1,0 +1,26 @@
+# kinder
+
+> kind, but with everything you actually need.
+
+kinder is a batteries-included tool for running local Kubernetes clusters. It wraps kind (Kubernetes in Docker) and pre-installs MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, and the Headlamp dashboard.
+
+## Links
+
+- Documentation: https://kinder.patrykgolabek.dev
+- Source: https://github.com/PatrykQuantumNomad/kinder
+- Author: https://patrykgolabek.dev
+
+## Pages
+
+- [Installation](https://kinder.patrykgolabek.dev/installation/): How to install kinder by building from source.
+- [Quick Start](https://kinder.patrykgolabek.dev/quick-start/): Create a kinder cluster and verify all addons are working in 5 steps.
+- [Configuration](https://kinder.patrykgolabek.dev/configuration/): Complete reference for kinder cluster configuration including all addon fields.
+- [MetalLB Addon](https://kinder.patrykgolabek.dev/addons/metallb/): MetalLB addon for LoadBalancer service support in kinder clusters.
+- [Envoy Gateway Addon](https://kinder.patrykgolabek.dev/addons/envoy-gateway/): Envoy Gateway addon for Gateway API routing in kinder clusters.
+- [Metrics Server Addon](https://kinder.patrykgolabek.dev/addons/metrics-server/): Metrics Server addon for resource metrics and autoscaling in kinder clusters.
+- [CoreDNS Tuning Addon](https://kinder.patrykgolabek.dev/addons/coredns/): CoreDNS performance tuning applied by kinder to improve DNS resolution.
+- [Headlamp Dashboard Addon](https://kinder.patrykgolabek.dev/addons/headlamp/): Headlamp web dashboard addon for visual Kubernetes cluster management.
+
+## Optional
+
+- [llms-full.txt](https://kinder.patrykgolabek.dev/llms-full.txt): Full documentation content for LLM ingestion.

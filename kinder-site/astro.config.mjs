@@ -6,14 +6,50 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'kinder',
-      favicon: '/favicon.svg',
+      favicon: '/favicon.ico',
       disable404Route: true,
       head: [
+        // Open Graph
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://kinder.patrykgolabek.dev/og.png' } },
         { tag: 'meta', attrs: { property: 'og:title', content: 'kinder' } },
         { tag: 'meta', attrs: { property: 'og:description', content: 'kind, but with everything you actually need.' } },
+        // Twitter Card
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://kinder.patrykgolabek.dev/og.png' } },
+        { tag: 'meta', attrs: { name: 'twitter:title', content: 'kinder' } },
+        { tag: 'meta', attrs: { name: 'twitter:description', content: 'kind, but with everything you actually need.' } },
+        // Author & SEO
+        { tag: 'meta', attrs: { name: 'author', content: 'Patryk Golabek' } },
+        { tag: 'meta', attrs: { name: 'keywords', content: 'kinder, kind, kubernetes, local cluster, docker, metallb, envoy gateway, metrics server, headlamp, k8s, devtools' } },
+        { tag: 'link', attrs: { rel: 'author', href: 'https://patrykgolabek.dev' } },
+        // JSON-LD Structured Data
+        { tag: 'script', attrs: { type: 'application/ld+json' }, content: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'SoftwareApplication',
+              name: 'kinder',
+              description: 'kind, but with everything you actually need. A batteries-included tool for running local Kubernetes clusters with MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, and Headlamp pre-installed.',
+              url: 'https://kinder.patrykgolabek.dev',
+              applicationCategory: 'DeveloperApplication',
+              operatingSystem: 'Linux, macOS, Windows',
+              offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+              author: { '@type': 'Person', name: 'Patryk Golabek', url: 'https://patrykgolabek.dev' },
+              codeRepository: 'https://github.com/PatrykQuantumNomad/kinder',
+              programmingLanguage: 'Go',
+              license: 'https://github.com/PatrykQuantumNomad/kinder/blob/main/LICENSE',
+            },
+            {
+              '@type': 'WebSite',
+              name: 'kinder',
+              url: 'https://kinder.patrykgolabek.dev',
+              description: 'Documentation for kinder — kind, but with everything you actually need.',
+              author: { '@type': 'Person', name: 'Patryk Golabek', url: 'https://patrykgolabek.dev' },
+            },
+          ],
+        }) },
+        // Dark theme enforcement
+        { tag: 'script', content: "localStorage.setItem('starlight-theme','dark');document.documentElement.dataset.theme='dark';" },
       ],
       sidebar: [
         { slug: 'installation' },

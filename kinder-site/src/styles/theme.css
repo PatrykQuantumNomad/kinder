@@ -1,7 +1,10 @@
 /* Dark-only cyan terminal theme */
-:root {
+:root,
+:root[data-theme='light'],
+:root[data-theme='dark'] {
   --sl-color-accent-low: hsl(185, 54%, 15%);
   --sl-color-accent: hsl(185, 100%, 45%);
   --sl-color-accent-high: hsl(185, 100%, 75%);
   --sl-color-black: hsl(220, 15%, 7%);
+  color-scheme: dark;
 }
