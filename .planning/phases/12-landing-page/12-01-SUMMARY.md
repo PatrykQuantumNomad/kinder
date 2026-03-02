@@ -70,7 +70,7 @@ Each task was committed atomically:
 1. **Task 1: Create InstallCommand and Comparison Astro components** - `bf65e3c6` (feat)
 2. **Task 2: Replace index.mdx with complete landing page** - `7f62dcb1` (feat)
 
-**Plan metadata:** `(pending)`
+**Plan metadata:** `07918162` (docs: complete landing page plan)
 
 ## Files Created/Modified
 - `kinder-site/src/components/InstallCommand.astro` - Install command display with copy-to-clipboard button using navigator.clipboard.writeText
