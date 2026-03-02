@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.1 Kinder Website — Phase 10: Dark Theme
+**Current focus:** v1.1 Kinder Website — Phase 11: Documentation Content
 
 ## Current Position
 
-Phase: 10 of 14 (Dark Theme) — COMPLETE
+Phase: 11 of 14 (Documentation Content) — IN PROGRESS
 Plan: 01/01 complete
-Status: Phase complete, pending verification
-Last activity: 2026-03-01 — Phase 10 complete: dark-only cyan terminal theme applied site-wide
+Status: Plan 01 complete — three core doc pages written and sidebar configured
+Last activity: 2026-03-02 — Phase 11 Plan 01 complete: Installation, Quick Start, Configuration Reference pages created
 
-Progress: [███░░░░░░░] 25% (v1.1 — 3/12 plans complete)
+Progress: [████░░░░░░] 33% (v1.1 — 4/12 plans complete)
 
 ## Performance Metrics
 
@@ -23,11 +23,12 @@ Progress: [███░░░░░░░] 25% (v1.1 — 3/12 plans complete)
 - Total phases: 8
 
 **v1.1 (current):**
-- Plans completed: 3
-- Phases complete: 1/6 (Phase 9 complete, Phase 10 pending verification)
+- Plans completed: 4
+- Phases complete: 2/6 (Phase 9 complete, Phase 10 complete, Phase 11 in progress)
 - Phase 9 Plan 01: 3 min, 2 tasks, 9 files created
 - Phase 9 Plan 02: ~5 min (user action), 2 checkpoint tasks
 - Phase 10 Plan 01: 2 min, 2 tasks, 3 files
+- Phase 11 Plan 01: 2 min, 2 tasks, 5 files (3 created, 1 modified, 2 deleted)
 
 ## Accumulated Context
 
@@ -40,10 +41,11 @@ Progress: [███░░░░░░░] 25% (v1.1 — 3/12 plans complete)
 - Phase 9: Deploy job gated to push only; PRs get build-check without deployment
 - Phase 9: DNS CNAME kinder.patrykgolabek.dev → patrykattc.github.io; GitHub Pages source = GitHub Actions
 - Phase 10: Dark-only mode — removed theme toggle, no light mode support. Starlight component override pattern for ThemeSelect.
+- Phase 11 Plan 01: Build-from-source via `make install` is the only documented install method (binary distribution unconfirmed). apiVersion is `kind.x-k8s.io/v1alpha4` (confirmed from Go source). Sidebar uses slug-based entries for auto-sync with frontmatter titles.
 
 ### Blockers/Concerns
 
-- [Phase 11] Binary distribution method unconfirmed — affects install command in installation guide and hero. Options: `go install`, GitHub Releases binary, Homebrew tap. Confirm before Phase 11.
+- [Phase 11] RESOLVED: Binary distribution — documented `make install` (build-from-source) as the only confirmed method. Hero CTA will use the same.
 - [Phase 9] RESOLVED: GitHub repo confirmed as patrykattc/kinder (per CONTEXT.md)
 
 ### Pending Todos
@@ -52,6 +54,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Phase 10 complete — dark-only cyan terminal theme applied. Verification pending.
+Last session: 2026-03-02
+Stopped at: Phase 11 Plan 01 complete — Installation, Quick Start, Configuration Reference pages written. Sidebar configured. Build verified.
 Resume file: None
