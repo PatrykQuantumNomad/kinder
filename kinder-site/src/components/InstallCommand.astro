@@ -1,5 +1,5 @@
 ---
-const command = "git clone https://github.com/PatrykQuantumNomad/kinder.git && cd kinder && make install";
+const command = "curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/') && chmod +x kinder && sudo mv kinder /usr/local/bin/";
 ---
 
 <div class="install-command not-content">
