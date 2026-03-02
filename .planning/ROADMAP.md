@@ -66,10 +66,13 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. A user landing on the docs can install kinder by following the installation guide without leaving the site
   2. A user can follow the quick start page from zero to a working cluster with verified addons in 5 steps
-  3. The configuration reference shows all `kinder.dev/v1alpha4` addon fields, their defaults, and example YAML snippets
+  3. The configuration reference shows all `kind.x-k8s.io/v1alpha4` addon fields, their defaults, and example YAML snippets
   4. Each of the 5 addons (MetalLB, Envoy Gateway, Metrics Server, CoreDNS, Headlamp) has its own dedicated page explaining what it installs, what the user gets, and how to disable it
   5. Pagefind search returns relevant results when a user searches for addon names or config fields
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 11-01-PLAN.md -- Write installation, quick start, and configuration reference pages with sidebar config
+- [ ] 11-02-PLAN.md -- Write all five addon documentation pages and add Addons sidebar group
 
 ### Phase 12: Landing Page
 **Goal**: A visitor arriving at kinder.patrykgolabek.dev understands what kinder offers over kind within 10 seconds and can immediately copy the install command or navigate to documentation
@@ -111,7 +114,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 1-8. v1.0 Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
 | 9. Scaffold and Deploy Pipeline | v1.1 | 2/2 | Complete | 2026-03-01 |
 | 10. Dark Theme | v1.1 | 1/1 | Complete | 2026-03-01 |
-| 11. Documentation Content | v1.1 | 0/TBD | Not started | - |
+| 11. Documentation Content | v1.1 | 0/2 | Planned | - |
 | 12. Landing Page | v1.1 | 0/TBD | Not started | - |
 | 13. Assets and Identity | v1.1 | 0/TBD | Not started | - |
 | 14. Polish and Validation | v1.1 | 0/TBD | Not started | - |
