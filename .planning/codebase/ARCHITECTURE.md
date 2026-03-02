@@ -1,180 +1,279 @@
 # Architecture
 
-**Analysis Date:** 2026-03-01
+**Analysis Date:** 2026-03-02
 
 ## Pattern Overview
 
-**Overall:** Multi-layered CLI tool with provider abstraction pattern
+**Overall:** Layered CLI Application with Provider Abstraction
+
+Kinder is a Go-based CLI tool built on top of kind that manages Kubernetes-in-Docker clusters with a batteries-included addon system. The architecture follows a clear separation of concerns:
+
+1. **CLI Layer** - Cobra-based command structure with flag parsing
+2. **Cluster Management Layer** - High-level cluster operations through a Provider interface
+3. **Provider Layer** - Container runtime abstraction (Docker, Podman, nerdctl)
+4. **Cluster Setup Layer** - Sequential actions for bootstrapping and configuring Kubernetes
+5. **Configuration Layer** - Type-safe cluster configuration and validation
 
 **Key Characteristics:**
-- Cobra-based command structure for CLI interface
-- Provider pattern for pluggable container runtimes (Docker, Podman, Nerdctl)
-- Action-based cluster creation pipeline with composable steps
-- Configuration-driven Kubernetes cluster provisioning via kubeadm
-- Internal/public API separation with configuration versioning
+- Plugin-based provider system allowing multiple container runtimes
+- Action-based cluster creation with ordered sequential steps
+- Configuration-driven cluster definition
+- Error handling with stack traces and aggregation
+- Addon installation through embedded Kubernetes manifests
+- Internal/Public API separation for stability
 
 ## Layers
 
 **CLI Layer:**
-- Purpose: Command-line interface and user interaction
-- Location: `cmd/kind/app/`, `pkg/cmd/kind/`
-- Contains: Cobra command definitions, flag parsing, IO stream handling
-- Depends on: Logger, IOStreams, Cluster operations
-- Used by: End users via binary
+- Purpose: Command parsing, user interface, flag handling
+- Location: `cmd/kind/app/main.go`, `pkg/cmd/kind/root.go`, `pkg/cmd/kind/create/`, `pkg/cmd/kind/delete/`, `pkg/cmd/kind/get/`, `pkg/cmd/kind/load/`, `pkg/cmd/kind/build/`
+- Contains: Cobra command definitions, flag definitions, input validation
+- Depends on: Cluster management layer, runtime detection, configuration loading
+- Used by: Main entry point, orchestrates all user-facing operations
 
-**Command Layer:**
-- Purpose: Route CLI requests to cluster operations
-- Location: `pkg/cmd/kind/root.go`, `pkg/cmd/kind/{create,delete,load,build,export,get}/`
-- Contains: Command handlers for create, delete, get, load, build, export, version, completion
-- Depends on: Cluster provider, configuration encoding, logging
-- Used by: CLI layer
+**Cluster Management Layer:**
+- Purpose: Orchestrate cluster lifecycle operations (create, delete, list)
+- Location: `pkg/cluster/provider.go`, `pkg/cluster/createoption.go`
+- Contains: Provider struct, cluster operations, option builders
+- Depends on: Internal providers, internal cluster creation, node utilities, configuration
+- Used by: CLI layer commands, provides public API for programmatic use
 
-**Cluster Abstraction Layer:**
-- Purpose: Public API for cluster operations and provider selection
-- Location: `pkg/cluster/provider.go`
-- Contains: `Provider` struct with methods: Create, Delete, Export, GetKubeconfig
-- Depends on: Internal providers, internal create/delete logic
-- Used by: Command handlers
-
-**Provider Layer (abstraction):**
-- Purpose: Define interface for container runtime interactions
-- Location: `pkg/cluster/internal/providers/provider.go`
-- Contains: Provider interface with methods: Provision, ListClusters, ListNodes, DeleteNodes, GetAPIServerEndpoint, CollectLogs, Info
-- Depends on: None (interface definition)
-- Used by: All provider implementations
-
-**Provider Implementations:**
-- Purpose: Execute cluster operations via specific container runtimes
-- Location: `pkg/cluster/internal/providers/{docker,podman,nerdctl}/`
-- Contains: Docker, Podman, Nerdctl provider implementations with network, image, and node management
-- Depends on: Common utilities, exec package, configuration
-- Used by: Cluster abstraction layer
-
-**Creation Action Pipeline:**
-- Purpose: Orchestrate multi-step cluster initialization
+**Cluster Setup Layer:**
+- Purpose: Execute ordered setup steps during cluster creation
 - Location: `pkg/cluster/internal/create/create.go`, `pkg/cluster/internal/create/actions/`
-- Contains: Action interface with implementations: config, kubeadminit, kubeadjoin, installcni, installstorage, loadbalancer, waitforready
-- Depends on: Nodes, configuration, providers, kubectl execution
-- Used by: Cluster provider for cluster creation
+- Contains: Create orchestration logic, action execution engine, addon installation actions
+- Depends on: Providers, configuration, action context
+- Used by: Cluster management layer during create operation
+
+**Action System:**
+- Purpose: Implement sequential cluster setup operations
+- Location: `pkg/cluster/internal/create/actions/action.go` and action subdirectories
+- Contains: Action interface, ActionContext, per-addon implementations
+- Depends on: Nodes, providers, configuration, manifests
+- Used by: Cluster setup layer, executed in sequence during creation
+- Action examples: `installmetallb/`, `installenvoygw/`, `installmetricsserver/`, `installdashboard/`, `installcni/`, `installstorage/`, `installcorednstuning/`, `kubeadminit/`, `kubeadmjoin/`, `loadbalancer/`, `waitforready/`, `config/`
+
+**Provider Layer:**
+- Purpose: Abstract container runtime operations
+- Location: `pkg/cluster/internal/providers/provider.go`, `pkg/cluster/internal/providers/docker/`, `pkg/cluster/internal/providers/podman/`, `pkg/cluster/internal/providers/nerdctl/`
+- Contains: Provider interface definition, concrete implementations per runtime
+- Depends on: Node interface, configuration, CLI utilities
+- Used by: Cluster management layer, provider detection, cluster operations
 
 **Configuration Layer:**
-- Purpose: Define and validate cluster configuration schema
-- Location: `pkg/apis/config/v1alpha4/`, `pkg/internal/apis/config/`
-- Contains: Cluster, Node, Networking types; YAML encoding/decoding; defaults
-- Depends on: None (data structures)
-- Used by: All layers requiring cluster configuration
+- Purpose: Type-safe configuration representation and validation
+- Location: `pkg/internal/apis/config/`, `pkg/apis/config/`
+- Contains: Cluster struct, Node struct, Networking struct, Addons struct, validation logic
+- Depends on: Encoding utilities
+- Used by: All cluster operations, cluster creation actions
 
-**Utilities Layer:**
-- Purpose: Shared cross-cutting concerns
-- Location: `pkg/log/`, `pkg/cmd/{logger,iostreams}.go`, `pkg/exec/`, `pkg/fs/`, `pkg/errors/`
-- Contains: Logging interface, IO streams, command execution, file system ops, error handling
-- Depends on: Standard library
-- Used by: All other layers
+**Node Layer:**
+- Purpose: Abstract cluster node operations
+- Location: `pkg/cluster/nodes/types.go`, `pkg/cluster/nodeutils/`
+- Contains: Node interface, node utility functions
+- Depends on: Execution primitives
+- Used by: Provider implementations, actions, cluster operations
 
-**Build Layer:**
-- Purpose: Build custom node images for Kubernetes
-- Location: `pkg/build/nodeimage/`
-- Contains: Node image builders for release, file, URL sources
-- Depends on: Container management, kube tools, logger
-- Used by: Build command
+**Utility Layers:**
+- **Execution**: `pkg/exec/` - Command execution abstraction
+- **Logging**: `pkg/log/` - Logger interface (Info, Warn, Error, Verbosity levels)
+- **IO Streams**: `pkg/cmd/iostreams.go` - Standardized In/Out/ErrOut
+- **Error Handling**: `pkg/errors/` - Error wrapping, aggregation, stack traces
+- **Runtime Detection**: `pkg/internal/runtime/` - Provider selection from environment
+- **CLI Utilities**: `pkg/internal/cli/` - Status/spinner rendering, logger overrides
+- **File System**: `pkg/fs/` - File system operations
 
 ## Data Flow
 
 **Cluster Creation Flow:**
 
-1. User runs `kind create cluster --name my-cluster --config config.yaml`
-2. `Main()` in `cmd/kind/app/main.go` initializes logger and IO streams
-3. Root command handler in `pkg/cmd/kind/root.go` routes to create subcommand
-4. `pkg/cmd/kind/create/cluster/` handler reads YAML config and parses flags
-5. Config is validated and normalized via `pkg/apis/config/v1alpha4/`
-6. `Provider.Create()` in `pkg/cluster/provider.go` is called with config
-7. Provider selects runtime (Docker/Podman/Nerdctl) from `pkg/cluster/internal/providers/`
-8. Provider's `Provision()` method creates node containers
-9. Action pipeline executes in sequence:
-   - Apply config patches
-   - Initialize kubeadm control-plane
-   - Join worker nodes
-   - Install CNI
-   - Install storage
-   - Setup load balancer (if HA)
-   - Wait for readiness
-10. Kubeconfig is extracted and saved
-11. Cluster status returned to user
+1. **User Input** → CLI command receives flags and arguments
+2. **Provider Detection** → Detect available container runtime (Docker/Podman/nerdctl) or use override
+3. **Configuration Loading** → Read YAML config file or use defaults, merge with command flags
+4. **Validation** → Validate cluster configuration against rules
+5. **Provider.Provision()** → Container runtime creates nodes with networking
+6. **Sequential Actions** → Execute ordered setup steps:
+   - Load balancer setup
+   - Kubeadm config generation
+   - Kubeadm init on control plane
+   - CNI installation
+   - Storage class installation
+   - Worker node join
+   - Wait for cluster readiness
+7. **Addon Installation** → Conditionally install enabled addons:
+   - MetalLB (LoadBalancer support)
+   - Envoy Gateway (Gateway API)
+   - Metrics Server (kubectl top, HPA)
+   - CoreDNS Tuning (DNS optimization)
+   - Dashboard (Headlamp web UI)
+8. **Kubeconfig Export** → Write cluster credentials to user's kubeconfig file
+9. **User Notification** → Display token and access instructions
+
+**Cluster Deletion Flow:**
+
+1. User requests cluster deletion
+2. Kubeconfig cleanup from user's config file
+3. Provider.DeleteNodes() removes all container nodes
+4. Cluster records cleaned up
+
+**Get/List Cluster Flow:**
+
+1. User requests cluster or node information
+2. Provider.ListClusters() or Provider.ListNodes() queries container runtime
+3. Results formatted and displayed to user
 
 **State Management:**
-- Kubernetes cluster state stored as running containers in Docker/Podman/Nerdctl
-- Node information tracked via container labels and inspection
-- Configuration applied via kubeadm manifests and kubectl apply
-- State discovered dynamically via provider interface (no persistent state file)
+
+- **Cluster State**: Stored in container runtime (Docker/Podman containers and networks)
+- **Kubeconfig State**: Stored in user's kubeconfig file (typically ~/.kube/config)
+- **In-Memory State**: ActionContext caches node lists during cluster creation to avoid repeated queries
 
 ## Key Abstractions
 
-**Provider:**
-- Purpose: Abstract container runtime operations
-- Examples: `pkg/cluster/internal/providers/docker/provider.go`, `pkg/cluster/internal/providers/podman/provider.go`, `pkg/cluster/internal/providers/nerdctl/provider.go`
-- Pattern: Provider interface with multiple implementations; selected at runtime based on availability
+**Provider Interface:**
+- Purpose: Enables support for Docker, Podman, nerdctl, Finch
+- Location: `pkg/cluster/internal/providers/provider.go`
+- Pattern: Strategy pattern - different implementations for different runtimes
+- Examples: `pkg/cluster/internal/providers/docker/provider.go`, `pkg/cluster/internal/providers/podman/`, `pkg/cluster/internal/providers/nerdctl/`
+- Key Methods: Provision(), ListClusters(), ListNodes(), DeleteNodes(), GetAPIServerEndpoint()
 
-**Action:**
-- Purpose: Atomic step in cluster creation pipeline
-- Examples: `pkg/cluster/internal/create/actions/kubeadminit/`, `pkg/cluster/internal/create/actions/installcni/`
-- Pattern: Action interface with Execute method; context carries logger, config, provider, nodes
+**Action Interface:**
+- Purpose: Modular setup steps with shared context
+- Location: `pkg/cluster/internal/create/actions/action.go`
+- Pattern: Command pattern - encapsulates a setup step with dependencies
+- Methods: Execute(ctx *ActionContext) error
+- Context: ActionContext provides Logger, Status, Provider, Config, cached Nodes
 
-**Logger:**
-- Purpose: Unified logging interface with verbosity levels
+**Node Interface:**
+- Purpose: Abstract node-specific operations
+- Location: `pkg/cluster/nodes/types.go`
+- Pattern: Strategy pattern - different implementations per provider
+- Key Methods: Command() (run commands), Role(), IP(), SerialLogs()
+
+**Configuration Struct:**
+- Purpose: Strongly-typed representation of kind cluster config
+- Location: `pkg/internal/apis/config/types.go`
+- Fields: Cluster, Nodes, Networking, Addons, FeatureGates, RuntimeConfig, KubeadmConfigPatches
+- Validation: Validate() method checks constraints
+
+**Logger Interface:**
+- Purpose: Decoupled logging for testability and extensibility
 - Location: `pkg/log/types.go`
-- Pattern: Logger interface (Warn, Warnf, Error, Errorf, V) with NoopLogger default implementation
+- Pattern: Strategy pattern - different implementations (real, noop, test)
+- Methods: Warn()/Warnf(), Error()/Errorf(), V() for verbosity levels
 
-**Cluster Configuration:**
-- Purpose: Type-safe cluster definition with validation
-- Examples: `pkg/apis/config/v1alpha4/types.go` (public), `pkg/internal/apis/config/` (internal)
-- Pattern: Configuration versioning (v1alpha4), defaults, encoding/decoding, validation hooks
+**ProviderOption Pattern:**
+- Purpose: Functional options for Provider construction
+- Location: `pkg/cluster/provider.go` and option files in `pkg/cluster/`
+- Pattern: Builder pattern - chainable options (ProviderWithLogger, ProviderWithDocker, etc.)
+- Used by: NewProvider() constructor
 
 ## Entry Points
 
-**Binary Entry Point:**
+**Main Binary Entry Point:**
 - Location: `main.go`
-- Triggers: User execution of `kind` binary
-- Responsibilities: Stub main that calls `app.Main()`
+- Triggers: Binary execution by user or CI/CD
+- Responsibilities: Delegates to app.Main()
 
-**Application Entry Point:**
-- Location: `cmd/kind/app/main.go`
-- Triggers: Invoked by binary stub
-- Responsibilities: Initialize logger and IO streams, handle quiet flag, execute root command
+**App Main Entry Point:**
+- Location: `cmd/kind/app/main.go` - Main() function
+- Triggers: Invoked from main.go
+- Responsibilities:
+  - Creates logger and IO streams
+  - Detects quiet flag for output suppression
+  - Delegates to Run()
+  - Handles exit codes
 
-**Root Command:**
-- Location: `pkg/cmd/kind/root.go`
-- Triggers: User runs `kind` or `kind <subcommand>`
-- Responsibilities: Register all subcommands, set verbosity, establish command hierarchy
+**Root Command Entry Point:**
+- Location: `pkg/cmd/kind/root.go` - NewCommand() function
+- Triggers: Invoked from app.Run()
+- Responsibilities:
+  - Creates root Cobra command
+  - Registers subcommands (create, delete, get, load, build, completion, version)
+  - Configures persistent flags (verbosity, quiet)
+  - Handles pre-run setup
 
-**Create Command:**
-- Location: `pkg/cmd/kind/create/cluster/`
-- Triggers: User runs `kind create cluster`
-- Responsibilities: Parse config file, apply flag overrides, invoke cluster creation
-
-**Cluster Operations:**
-- Location: `pkg/cluster/provider.go`
-- Triggers: Command handlers via `cluster.Provider` methods
-- Responsibilities: Orchestrate provider selection, create/delete/export operations
+**Subcommand Entry Points:**
+- `pkg/cmd/kind/create/cluster/createcluster.go` - Create cluster command
+- `pkg/cmd/kind/delete/cluster/deletecluster.go` - Delete cluster command
+- `pkg/cmd/kind/get/clusters/getclusters.go` - List clusters command
+- `pkg/cmd/kind/get/nodes/getnodes.go` - List nodes command
+- `pkg/cmd/kind/get/kubeconfig/getkubeconfig.go` - Export kubeconfig command
+- `pkg/cmd/kind/export/logs/exportlogs.go` - Export logs command
+- `pkg/cmd/kind/build/nodeimage/buildnodeimage.go` - Build node image command
+- `pkg/cmd/kind/load/docker-image/load.go` - Load Docker image command
+- `pkg/cmd/kind/version/version.go` - Version command
 
 ## Error Handling
 
-**Strategy:** Error wrapping with context and stack trace capture
+**Strategy:** Explicit error wrapping with stack traces and aggregation
 
 **Patterns:**
-- Errors wrapped using `errors.Wrap(err, "context")` from `pkg/errors/`
-- Stack traces captured on error creation for debugging via `-v` flag
-- User-facing errors logged with `logger.Errorf()` with color support when available
-- Command output from failed exec included in error logs for diagnostics
-- Quiet flag (`-q`) suppresses error output to stderr except via `streams.Out`
+
+1. **Error Wrapping:**
+   ```go
+   if err != nil {
+       return errors.Wrap(err, "context about what failed")
+   }
+   ```
+   - Location: `pkg/errors/` - Wrap(), WithStack(), Cause()
+   - Preserves error chain and adds context at each layer
+
+2. **Error Aggregation:**
+   - Used when multiple errors can occur (e.g., multiple addon installation failures)
+   - Function: `errors.NewAggregate([]error)` - flattens and reduces error list
+   - Returns combined error with all failures
+
+3. **Stack Traces:**
+   - Automatically captured with `errors.WithStack()`
+   - Only printed when logger verbosity V(1) enabled
+   - Provides debugging information without normal output pollution
+
+4. **Run Error Extraction:**
+   - Command execution errors have output captured
+   - Accessible via `exec.RunErrorForError(err)`
+   - Output displayed separately from error message
+
+5. **Cleanup on Failure:**
+   - If cluster creation fails, nodes are deleted (unless --retain flag)
+   - Implemented in `pkg/cluster/internal/create/create.go`
 
 ## Cross-Cutting Concerns
 
-**Logging:** Implemented via `pkg/log/Logger` interface with verbosity levels V(0-3+); NoopLogger used by default; can be set writer/verbosity via `SetWriter`/`SetVerbosity` interface pattern in `pkg/cmd/kind/root.go`
+**Logging:**
+- Abstraction: `pkg/log/Logger` interface
+- Implementation: Kubernetes klog-compatible interface
+- Verbosity levels: V(0) normal, V(1) debug, V(2+) trace
+- Color support: Colors used when terminal supports it
+- Examples: Logger passed to all major components
 
-**Validation:** Configuration validation via `(*config.Cluster).Validate()` method called in create flow; schema enforced via struct tags in `pkg/apis/config/v1alpha4/types.go`
+**Validation:**
+- Configuration validation: `config.Cluster.Validate()`
+- Node image validation: Provider ensures images are pulled before provisioning
+- Cluster name validation: Maximum 50 characters (containers add "-control-plane" suffix)
+- Provider validation: `validateProvider()` in create flow
 
-**Authentication:** Provider capabilities reported via `Info()` method returning `ProviderInfo` (rootless, cgroup2, memory/pid/cpu limits support); no user auth - operates on local machine
+**Authentication:**
+- Kubeconfig generation and management: `pkg/cluster/internal/kubeconfig/`
+- Token extraction and display for dashboard access
+- API server endpoint detection and export
+
+**Status Display:**
+- CLI status/spinner: `pkg/internal/cli/status.go`
+- Progress indication during long operations
+- Output formatting and color support
+
+**Configuration Override Precedence:**
+1. Command line flags (highest priority)
+2. Environment variables (KIND_CLUSTER_NAME, KIND_EXPERIMENTAL_PROVIDER, etc.)
+3. Config file values
+4. Defaults (lowest priority)
+
+**Provider Detection:**
+- Sequence: Environment variable → try Docker → try Podman → try nerdctl → error
+- Configurable via KIND_EXPERIMENTAL_PROVIDER environment variable
+- Fallback to Docker for backward compatibility
 
 ---
 
-*Architecture analysis: 2026-03-01*
+*Architecture analysis: 2026-03-02*
