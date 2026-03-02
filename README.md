@@ -2,179 +2,116 @@
 
 # kinder — kind, but with everything you actually need.
 
-Please see [our documentation](https://kinder.patrykgolabek.dev) for more in-depth installation and usage.
+[![Documentation](https://img.shields.io/badge/docs-kinder.patrykgolabek.dev-00B8D4)](https://kinder.patrykgolabek.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-kinder is a tool for running local Kubernetes clusters using Docker container "nodes".
-Built on top of kind, kinder adds batteries-included addons and configuration for local development and CI.
+kinder is a batteries-included tool for running local Kubernetes clusters using Docker container "nodes". Built on top of [kind], it pre-installs production-ready addons so you can go from zero to a fully functional cluster in one command.
 
-If you have [go] 1.16+ and [docker], [podman] or [nerdctl] installed `go install sigs.k8s.io/kind@v0.31.0 && kind create cluster` is all you need!
+## What you get
 
-![](site/static/images/kind-create-cluster.png)
+| Addon | What it does |
+|-------|-------------|
+| [MetalLB](https://kinder.patrykgolabek.dev/addons/metallb/) | LoadBalancer services with real external IPs from your Docker/Podman subnet |
+| [Envoy Gateway](https://kinder.patrykgolabek.dev/addons/envoy-gateway/) | Gateway API routing with the `eg` GatewayClass pre-configured |
+| [Metrics Server](https://kinder.patrykgolabek.dev/addons/metrics-server/) | Enables `kubectl top` and Horizontal Pod Autoscaler support |
+| [CoreDNS Tuning](https://kinder.patrykgolabek.dev/addons/coredns/) | Autopath, verified pod records, and doubled cache TTL |
+| [Headlamp](https://kinder.patrykgolabek.dev/addons/headlamp/) | Web-based cluster dashboard accessible via port-forward |
 
-kind consists of:
-- Go [packages][packages] implementing [cluster creation][cluster package], [image build][build package], etc.
-- A command line interface ([`kind`][kind cli]) built on these packages.
-- Docker [image(s)][images] written to run systemd, Kubernetes, etc.
-- [`kubetest`][kubetest] integration also built on these packages (WIP)
+## Quick start
 
-kind bootstraps each "node" with [kubeadm][kubeadm]. For more details see [the design documentation][design doc].
+### Prerequisites
 
-**NOTE**: kind is still a work in progress, see the [1.0 roadmap].
+- [Go] 1.25.7+ &nbsp;|&nbsp; [Docker], [Podman], or [nerdctl] &nbsp;|&nbsp; [kubectl](https://kubernetes.io/docs/tasks/tools/)
 
-## Installation and usage
+### Install
 
-For a complete [install guide] see [the documentation here][install guide].
-
-You can install kind with `go install sigs.k8s.io/kind@v0.31.0`.
-
-**NOTE**: please use the latest go to do this. KIND is developed with the latest stable go, see [`.go-version`](./.go-version) for the exact version we're using.
-
-This will put `kind` in `$(go env GOPATH)/bin`. If you encounter the error
-`kind: command not found` after installation then you may need to either add that directory to your `$PATH` as
-shown [here](https://golang.org/doc/code.html#GOPATH) or do a manual installation by cloning the repo and run
-`make build` from the repository.
-
-Without installing go, kind can be built reproducibly with docker using `make build`.
-
-Stable binaries are also available on the [releases] page. Stable releases are
-generally recommended for CI usage in particular.
-To install, download the binary for your platform from "Assets" and place this
-into your `$PATH`:
-
-On Linux:
-
-```console
-# For AMD64 / x86_64
-[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-$(uname)-amd64
-# For ARM64
-[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-$(uname)-arm64
-chmod +x ./kind
-sudo mv ./kind /usr/local/bin/kind
+```sh
+git clone https://github.com/PatrykQuantumNomad/kinder.git
+cd kinder
+make install
 ```
 
-On macOS via Homebrew:
+### Create a cluster
 
-```console
-brew install kind
+```sh
+kinder create cluster
 ```
 
-On macOS via MacPorts:
+That's it. All addons are installed automatically.
 
-```console
-sudo port selfupdate && sudo port install kind
+### Verify
+
+```sh
+kubectl get nodes                          # node is Ready
+kubectl get pods -n metallb-system         # MetalLB running
+kubectl get pods -n envoy-gateway-system   # Envoy Gateway running
+kubectl top nodes                          # Metrics Server working
 ```
 
-On macOS via Bash:
+### Open the dashboard
 
-```console
-# For Intel Macs
-[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-darwin-amd64
-# For M1 / ARM Macs
-[ $(uname -m) = arm64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-darwin-arm64
-chmod +x ./kind
-mv ./kind /some-dir-in-your-PATH/kind
+```sh
+kubectl port-forward -n kube-system service/headlamp 8080:80
 ```
 
-On Windows:
+Open [http://localhost:8080](http://localhost:8080) and paste the token printed during cluster creation.
 
-```powershell
-curl.exe -Lo kind-windows-amd64.exe https://kind.sigs.k8s.io/dl/v0.31.0/kind-windows-amd64
-Move-Item .\kind-windows-amd64.exe c:\some-dir-in-your-PATH\kind.exe
+### Delete the cluster
 
-# OR via Chocolatey (https://chocolatey.org/packages/kind)
-choco install kind
+```sh
+kinder delete cluster
 ```
 
-To use kind, you will need to [install docker].
-Once you have docker running you can create a cluster with:
+## Configuration
 
-```console
-kind create cluster
+kinder uses the same `kind.x-k8s.io/v1alpha4` config format as kind. Existing kind config files work without modification.
+
+To disable specific addons:
+
+```yaml
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+addons:
+  dashboard: false
+  envoyGateway: false
 ```
 
-To delete your cluster use:
+See the full [Configuration Reference](https://kinder.patrykgolabek.dev/configuration/).
 
-```console
-kind delete cluster
-```
+## Why kinder over plain kind?
 
-<!--TODO(bentheelder): improve this part of the guide-->
-To create a cluster from Kubernetes source:
-- ensure that Kubernetes is cloned in `$(go env GOPATH)/src/k8s.io/kubernetes`
-- build a node image and create a cluster with:
-```console
-kind build node-image
-kind create cluster --image kindest/node:latest
-```
+- **One command** — no post-install scripts to wire up MetalLB, ingress, metrics, or a dashboard
+- **LoadBalancer support** — `type: LoadBalancer` works out of the box
+- **Gateway API** — Envoy Gateway ready without manual CRD installation
+- **Observability** — `kubectl top` and a web dashboard from the start
+- **100% compatible** — any kind config or workflow still works
 
-Multi-node clusters and other advanced features may be configured with a config
-file, for more usage see [the docs][user guide] or run `kind [command] --help`
+## Documentation
 
-## Community
+Full docs at **[kinder.patrykgolabek.dev](https://kinder.patrykgolabek.dev)**
 
-Please reach out for bugs, feature requests, and other issues!
-The maintainers of this project are reachable via:
+## Contributing
 
-- [Kubernetes Slack] in the [#kind] channel
-- [filing an issue] against this repo
-- The Kubernetes [SIG-Testing Mailing List]
+Issues and pull requests are welcome at [github.com/PatrykQuantumNomad/kinder](https://github.com/PatrykQuantumNomad/kinder).
 
-Current maintainers are [@aojea], [@BenTheElder], and [@stmcginnis] - feel free to
-reach out if you have any questions!
+## Acknowledgements
 
-Pull Requests are very welcome!
-If you're planning a new feature, please file an issue to discuss first.
+kinder is a fork of [kind] by the Kubernetes SIG-Testing community. All credit for the core cluster lifecycle, node images, and kubeadm bootstrapping goes to the original [kind maintainers](https://kind.sigs.k8s.io/).
 
-Check the [issue tracker] for `help wanted` issues if you're unsure where to
-start, or feel free to reach out to discuss. 🙂
+## License
 
-See also: our own [contributor guide] and the Kubernetes [community page].
+Apache 2.0 — see [LICENSE](LICENSE) for details.
 
-## Why kind?
+---
 
-- kind supports multi-node (including HA) clusters
-- kind supports building Kubernetes release builds from source
-  - support for make / bash or docker, in addition to pre-published builds
-- kind supports Linux, macOS and Windows
-- kind is a [CNCF certified conformant Kubernetes installer](https://landscape.cncf.io/?selected=kind)
-
-### Code of conduct
-
-Participation in the Kubernetes community is governed by the [Kubernetes Code of Conduct].
+<p align="center">
+  Built by <a href="https://patrykgolabek.dev">Patryk Golabek</a>
+</p>
 
 <!--links-->
-[go]: https://golang.org/
-[go-supported]: https://golang.org/doc/devel/release.html#policy
-[docker]: https://www.docker.com/
-[podman]: https://podman.io/
+[kind]: https://kind.sigs.k8s.io/
+[Go]: https://go.dev/
+[Docker]: https://www.docker.com/
+[Podman]: https://podman.io/
 [nerdctl]: https://github.com/containerd/nerdctl
-[community page]: https://kubernetes.io/community/
-[Kubernetes Code of Conduct]: code-of-conduct.md
-[Go Report Card Badge]: https://goreportcard.com/badge/sigs.k8s.io/kind
-[Go Report Card]: https://goreportcard.com/report/sigs.k8s.io/kind
-[conformance tests]: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/conformance-tests.md
-[packages]: ./pkg
-[cluster package]: ./pkg/cluster
-[build package]: ./pkg/build
-[kind cli]: ./main.go
-[images]: ./images
-[kubetest]: https://github.com/kubernetes/test-infra/tree/master/kubetest
-[kubeadm]: https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm/
-[design doc]: https://kind.sigs.k8s.io/docs/design/initial
-[user guide]: https://kind.sigs.k8s.io/docs/user/quick-start
-[SIG-Testing Mailing List]: https://groups.google.com/forum/#!forum/kubernetes-sig-testing
-[issue tracker]: https://github.com/kubernetes-sigs/kind/issues
-[filing an issue]: https://github.com/kubernetes-sigs/kind/issues/new
-[Kubernetes Slack]: http://slack.k8s.io/
-[#kind]: https://kubernetes.slack.com/messages/CEKK1KTN2/
-[1.0 roadmap]: https://kind.sigs.k8s.io/docs/contributing/1.0-roadmap
-[install docker]: https://docs.docker.com/install/
-[@BenTheElder]: https://github.com/BenTheElder
-[@munnerz]: https://github.com/munnerz
-[@aojea]: https://github.com/aojea
-[@amwat]: https://github.com/amwat
-[@stmcginnis]: https://github.com/stmcginnis
-[contributor guide]: https://kind.sigs.k8s.io/docs/contributing/getting-started
-[releases]: https://github.com/kubernetes-sigs/kind/releases
-[install guide]: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
-[modules]: https://github.com/golang/go/wiki/Modules
