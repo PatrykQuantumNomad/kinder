@@ -34,7 +34,7 @@ echo "Building in parallel for:"
 # GOOS / GOARCH
 # NOTE: disable SC2016 because we _intend_ for these to evaluate later
 # shellcheck disable=SC2016
-if xargs -0 -n1 -P "${PARALLELISM}" bash -c 'eval $0; make build KIND_BINARY_NAME=kind-${GOOS}-${GOARCH}'; then
+if xargs -0 -n1 -P "${PARALLELISM}" bash -c 'eval $0; make build KIND_BINARY_NAME=kinder-${GOOS}-${GOARCH}'; then
     echo "Cross build passed!" 1>&2
 else
     echo "Cross build failed!" 1>&2
@@ -50,6 +50,6 @@ EOF
 
 # add sha256 for binaries
 cd "${REPO_ROOT}"/bin
-for f in kind-*; do
+for f in kinder-*; do
     shasum -a 256 "$f" > "$f".sha256sum;
 done

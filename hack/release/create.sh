@@ -19,7 +19,7 @@
 # EG: create.sh 0.3.0 0.4.0
 set -o errexit -o nounset -o pipefail
 
-UPSTREAM='https://github.com/kubernetes-sigs/kind.git'
+UPSTREAM='https://github.com/PatrykQuantumNomad/kinder.git'
 
 # cd to the repo root
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
