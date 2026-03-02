@@ -29,10 +29,10 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 ### Landing Page
 
-- [ ] **LAND-01**: Hero section with kinder tagline, one-line description, and install command with copy button
-- [ ] **LAND-02**: Addon feature grid with cards for each of the 5 addons (icon, name, one-line description)
-- [ ] **LAND-03**: Before/after comparison section (kind vs kinder — what you get out of the box)
-- [ ] **LAND-04**: GitHub link and call-to-action to documentation
+- [x] **LAND-01**: Hero section with kinder tagline, one-line description, and install command with copy button
+- [x] **LAND-02**: Addon feature grid with cards for each of the 5 addons (icon, name, one-line description)
+- [x] **LAND-03**: Before/after comparison section (kind vs kinder — what you get out of the box)
+- [x] **LAND-04**: GitHub link and call-to-action to documentation
 
 ### Polish
 
@@ -80,10 +80,10 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 | DOCS-06 | Phase 11 | Complete (11-02) |
 | DOCS-07 | Phase 11 | Complete (11-02) |
 | DOCS-08 | Phase 11 | Complete (11-02) |
-| LAND-01 | Phase 12 | Pending |
-| LAND-02 | Phase 12 | Pending |
-| LAND-03 | Phase 12 | Pending |
-| LAND-04 | Phase 12 | Pending |
+| LAND-01 | Phase 12 | Complete (12-01) |
+| LAND-02 | Phase 12 | Complete (12-01) |
+| LAND-03 | Phase 12 | Complete (12-01) |
+| LAND-04 | Phase 12 | Complete (12-01) |
 | PLSH-01 | Phase 13 | Pending |
 | PLSH-02 | Phase 13 | Pending |
 | PLSH-03 | Phase 13 | Pending |
@@ -97,4 +97,4 @@ Requirements for the kinder website milestone. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-02 — DOCS-04 through DOCS-08 complete (Phase 11 Plan 02)*
+*Last updated: 2026-03-02 — LAND-01 through LAND-04 complete (Phase 12 Plan 01)*

@@ -59,7 +59,7 @@ completed: 2026-03-02
 1. **Task 1: Delete placeholder pages and create three top-level documentation files** - `d40a1305` (feat)
 2. **Task 2: Configure Starlight sidebar for top-level documentation pages** - `fd58c2ca` (feat)
 
-**Plan metadata:** (pending)
+**Plan metadata:** `a526dbe6` (docs: complete documentation core pages plan)
 
 ## Files Created/Modified
 - `kinder-site/src/content/docs/installation.md` - Installation guide: prerequisites, build from source via make install, verify

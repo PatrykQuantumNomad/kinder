@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 11 of 14 (Documentation Content) — COMPLETE
-Plan: 02/02 complete
-Status: Phase 11 complete — verified and gap-fixed
-Last activity: 2026-03-02 — Phase 11 verification passed (13/13). Fixed dashboard references (Kubernetes Dashboard → Headlamp) in quick-start and config.
+Phase: 12 of 14 (Landing Page) — COMPLETE
+Plan: 01/01 complete
+Status: Phase 12 complete — landing page built and site builds with zero errors
+Last activity: 2026-03-02 — Phase 12 Plan 01 complete. Landing page with hero, InstallCommand, Comparison, and 5 addon cards. 10-page build verified.
 
-Progress: [█████░░░░░] 42% (v1.1 — 5/12 plans complete)
+Progress: [██████░░░░] 50% (v1.1 — 6/12 plans complete)
 
 ## Performance Metrics
 
@@ -30,6 +30,7 @@ Progress: [█████░░░░░] 42% (v1.1 — 5/12 plans complete)
 - Phase 10 Plan 01: 2 min, 2 tasks, 3 files
 - Phase 11 Plan 01: 2 min, 2 tasks, 5 files (3 created, 1 modified, 2 deleted)
 - Phase 11 Plan 02: 2 min, 2 tasks, 6 files (5 created, 1 modified)
+- Phase 12 Plan 01: 2 min, 2 tasks, 3 files (2 created, 1 modified)
 
 ## Accumulated Context
 
@@ -44,6 +45,7 @@ Progress: [█████░░░░░] 42% (v1.1 — 5/12 plans complete)
 - Phase 10: Dark-only mode — removed theme toggle, no light mode support. Starlight component override pattern for ThemeSelect.
 - Phase 11 Plan 01: Build-from-source via `make install` is the only documented install method (binary distribution unconfirmed). apiVersion is `kind.x-k8s.io/v1alpha4` (confirmed from Go source). Sidebar uses slug-based entries for auto-sync with frontmatter titles.
 - Phase 11 Plan 02: Starlight sidebar groups use `{ label, items: [{ slug }] }` pattern. Addon config field for Headlamp is `dashboard` (not `headlamp`). Starlight admonition syntax: `:::caution[Title]`, `:::note`, `:::tip`.
+- Phase 12 Plan 01: `not-content` class required on custom Astro component roots to escape Starlight `.sl-markdown-content` styles. `CardGrid` without `stagger` for odd card counts (5). All addon links use root-relative paths with trailing slash.
 
 ### Blockers/Concerns
 
@@ -57,5 +59,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Phase 11 Plan 02 complete — Five addon pages written, Addons sidebar group added, 10-page build verified with Pagefind index.
+Stopped at: Phase 12 Plan 01 complete — Landing page with hero, InstallCommand clipboard component, Comparison grid, and 5 addon Cards. Site builds 10 pages, Pagefind index intact.
 Resume file: None
