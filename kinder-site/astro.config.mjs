@@ -31,7 +31,7 @@ export default defineConfig({
         },
       ],
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/patrykattc/kinder' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/PatrykQuantumNomad/kinder' },
       ],
       customCss: [
         './src/styles/theme.css',

@@ -27,7 +27,7 @@ go version
 Clone the kinder repository and build with `make install`:
 
 ```sh
-git clone https://github.com/patrykattc/kinder.git
+git clone https://github.com/PatrykQuantumNomad/kinder.git
 cd kinder
 make install
 ```
