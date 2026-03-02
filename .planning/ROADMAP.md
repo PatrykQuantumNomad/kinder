@@ -83,7 +83,9 @@ Plans:
   2. The addon feature grid displays all 5 addons as cards with name and description, each linking to the corresponding doc page
   3. The before/after comparison section communicates the difference between a bare kind cluster and a kinder cluster without additional explanation
   4. A user can reach the GitHub repository and the documentation from the landing page without scrolling
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 12-01-PLAN.md -- Create landing page with hero, install command, comparison section, and addon grid
 
 ### Phase 13: Assets and Identity
 **Goal**: The site has a complete visual identity with favicon, social sharing preview, and a useful 404 page
@@ -115,6 +117,6 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 9. Scaffold and Deploy Pipeline | v1.1 | 2/2 | Complete | 2026-03-01 |
 | 10. Dark Theme | v1.1 | 1/1 | Complete | 2026-03-01 |
 | 11. Documentation Content | v1.1 | 2/2 | Complete | 2026-03-02 |
-| 12. Landing Page | v1.1 | 0/TBD | Not started | - |
+| 12. Landing Page | v1.1 | 0/1 | Not started | - |
 | 13. Assets and Identity | v1.1 | 0/TBD | Not started | - |
 | 14. Polish and Validation | v1.1 | 0/TBD | Not started | - |
