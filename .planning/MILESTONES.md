@@ -1,5 +1,30 @@
 # Project Milestones: Kinder
 
+## v1.2 Branding & Polish (Shipped: 2026-03-02)
+
+**Delivered:** Distinct kinder visual identity, SEO discoverability, documentation rewrite, and dark-only theme enforcement — establishing kinder as its own project beyond the kind fork.
+
+**Phases completed:** 15-18
+
+**Key accomplishments:**
+- Kinder logo created from modified kind robot with "er" in cyan, exported as SVG, PNG, favicon.ico, and OG image
+- Original kind logo preserved unmodified in logo/ directory
+- SEO: llms.txt/llms-full.txt for AI crawlers, JSON-LD structured data, complete meta tags, author backlinks
+- Root README and kinder-site README rewritten from kind/boilerplate to kinder branding
+- Dark theme enforced site-wide with no light mode option
+- Kinder logo displayed in hero section of landing page
+
+**Stats:**
+- 17 requirements across 4 categories (Brand, SEO, Docs, Site)
+- 4 phases, all formalized from completed work
+- Assets created: logo.svg, logo.png, favicon.ico, og.png, llms.txt, llms-full.txt
+
+**Git range:** v1.2 formalized existing work
+
+**What's next:** TBD — potential v1.3 with animated terminal demo, contributing guide, or blog section
+
+---
+
 ## v1.1 Kinder Website (Shipped: 2026-03-02)
 
 **Delivered:** Standalone documentation website with dark terminal aesthetic, interactive landing page, and 10 documentation pages — live at kinder.patrykgolabek.dev via GitHub Pages.

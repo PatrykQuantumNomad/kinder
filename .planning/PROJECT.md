@@ -34,7 +34,15 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(None yet — define in next milestone)
+## Current Milestone: v1.2 Branding & Polish
+
+**Goal:** Establish kinder's visual identity, SEO presence, and documentation — distinct from kind.
+
+**Target features:**
+- Kinder logo (modified kind robot with cyan "er") as SVG, PNG, favicon, OG image
+- SEO: llms.txt, JSON-LD structured data, complete meta tags, author backlinks
+- README rewrite for kinder identity
+- Hero section with logo on landing page
 
 ### Out of Scope
 
@@ -90,4 +98,10 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | `make install` as only install method | Binary distribution unconfirmed; build-from-source is reliable | ✓ Good |
 
 ---
-*Last updated: 2026-03-02 after v1.1 milestone*
+| Kinder logo from modified kind robot | Distinct identity, "er" in cyan matches theme | ✓ Good |
+| favicon.ico over favicon.svg | SVG had font rendering issues; ICO universally supported | ✓ Good |
+| llms.txt for GEO | AI crawler discoverability; emerging standard | ✓ Good |
+| JSON-LD SoftwareApplication schema | Rich snippets in search, author attribution | ✓ Good |
+
+---
+*Last updated: 2026-03-02 after v1.2 milestone*
