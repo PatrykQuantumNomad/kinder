@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.1 Kinder Website — Phase 9: Scaffold and Deploy Pipeline
+**Current focus:** v1.1 Kinder Website — Phase 10: Dark Theme
 
 ## Current Position
 
-Phase: 9 of 14 (Scaffold and Deploy Pipeline) — COMPLETE
-Plan: 02/02 complete
+Phase: 10 of 14 (Dark Theme) — COMPLETE
+Plan: 01/01 complete
 Status: Phase complete, pending verification
-Last activity: 2026-03-01 — Phase 9 complete: site live at https://kinder.patrykgolabek.dev
+Last activity: 2026-03-01 — Phase 10 complete: dark-only cyan terminal theme applied site-wide
 
-Progress: [██░░░░░░░░] 17% (v1.1 — 2/12 plans complete)
+Progress: [███░░░░░░░] 25% (v1.1 — 3/12 plans complete)
 
 ## Performance Metrics
 
@@ -23,10 +23,11 @@ Progress: [██░░░░░░░░] 17% (v1.1 — 2/12 plans complete)
 - Total phases: 8
 
 **v1.1 (current):**
-- Plans completed: 2
-- Phases complete: 0/6 (Phase 9 pending verification)
+- Plans completed: 3
+- Phases complete: 1/6 (Phase 9 complete, Phase 10 pending verification)
 - Phase 9 Plan 01: 3 min, 2 tasks, 9 files created
 - Phase 9 Plan 02: ~5 min (user action), 2 checkpoint tasks
+- Phase 10 Plan 01: 2 min, 2 tasks, 3 files
 
 ## Accumulated Context
 
@@ -38,6 +39,7 @@ Progress: [██░░░░░░░░] 17% (v1.1 — 2/12 plans complete)
 - Phase 9: GitHub repo confirmed patrykattc/kinder (resolves prior inconsistency in ARCHITECTURE.md)
 - Phase 9: Deploy job gated to push only; PRs get build-check without deployment
 - Phase 9: DNS CNAME kinder.patrykgolabek.dev → patrykattc.github.io; GitHub Pages source = GitHub Actions
+- Phase 10: Dark-only mode — removed theme toggle, no light mode support. Starlight component override pattern for ThemeSelect.
 
 ### Blockers/Concerns
 
@@ -51,5 +53,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Phase 9 complete — all plans executed, site live at https://kinder.patrykgolabek.dev. Verification pending.
+Stopped at: Phase 10 complete — dark-only cyan terminal theme applied. Verification pending.
 Resume file: None
