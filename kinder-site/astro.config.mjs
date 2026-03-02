@@ -9,6 +9,9 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/patrykattc/kinder' },
       ],
+      customCss: [
+        './src/styles/theme.css',
+      ],
     }),
   ],
 });

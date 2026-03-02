@@ -1,0 +1,14 @@
+/* Dark mode overrides */
+:root {
+  --sl-color-accent-low: hsl(185, 54%, 15%);
+  --sl-color-accent: hsl(185, 100%, 45%);
+  --sl-color-accent-high: hsl(185, 100%, 75%);
+  --sl-color-black: hsl(220, 15%, 7%);
+}
+
+/* Light mode overrides */
+:root[data-theme='light'] {
+  --sl-color-accent-high: hsl(185, 80%, 22%);
+  --sl-color-accent: hsl(185, 90%, 40%);
+  --sl-color-accent-low: hsl(185, 88%, 88%);
+}
