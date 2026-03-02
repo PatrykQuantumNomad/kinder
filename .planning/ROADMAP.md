@@ -55,7 +55,9 @@ Plans:
   1. All Starlight pages display a near-black background with cyan accent colors matching the dark terminal aesthetic
   2. Loading or navigating to any page does not produce a white flash before the dark theme is applied
   3. The dark/light theme toggle persists the chosen mode across page navigations and browser sessions
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 10-01-PLAN.md -- Apply cyan terminal theme via CSS custom properties and verify visual appearance
 
 ### Phase 11: Documentation Content
 **Goal**: Every documentation page a user needs to install, configure, and use kinder is written and reachable via sidebar navigation and search
@@ -108,7 +110,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 |-------|-----------|----------------|--------|-----------|
 | 1-8. v1.0 Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
 | 9. Scaffold and Deploy Pipeline | v1.1 | 2/2 | Complete | 2026-03-01 |
-| 10. Dark Theme | v1.1 | 0/TBD | Not started | - |
+| 10. Dark Theme | v1.1 | 0/1 | Not started | - |
 | 11. Documentation Content | v1.1 | 0/TBD | Not started | - |
 | 12. Landing Page | v1.1 | 0/TBD | Not started | - |
 | 13. Assets and Identity | v1.1 | 0/TBD | Not started | - |
