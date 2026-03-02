@@ -58,4 +58,17 @@ const command = "git clone https://github.com/patrykattc/kinder.git && cd kinder
   .copy-btn:hover {
     background: var(--sl-color-accent-high);
   }
+
+  @media (max-width: 50rem) {
+    .install-command {
+      flex-direction: column;
+      align-items: stretch;
+      max-width: 100%;
+    }
+
+    .copy-btn {
+      width: 100%;
+      padding: 0.5rem 0.625rem;
+    }
+  }
 </style>

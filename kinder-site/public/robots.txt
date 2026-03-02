@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kinder.patrykgolabek.dev/sitemap-index.xml
