@@ -1,0 +1,14 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+---
+
+<StarlightPage frontmatter={{ title: 'Page Not Found', template: 'splash' }}>
+  <div style="text-align: center; padding: 4rem 1rem;">
+    <p style="font-size: 4rem; font-weight: 700; color: var(--sl-color-accent); margin: 0 0 1rem;">404</p>
+    <p style="font-size: 1.25rem; color: var(--sl-color-white); margin: 0 0 2rem;">This page doesn't exist.</p>
+    <a
+      href="/"
+      style="display: inline-block; padding: 0.75rem 1.5rem; background: var(--sl-color-accent); color: var(--sl-color-black); border-radius: 0.5rem; text-decoration: none; font-weight: 600;"
+    >Back to Home</a>
+  </div>
+</StarlightPage>
