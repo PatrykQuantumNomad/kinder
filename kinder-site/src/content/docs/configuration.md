@@ -34,7 +34,7 @@ The `addons` section controls which addons are installed when the cluster is cre
 | `envoyGateway` | `bool` | `true` | Install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API ingress |
 | `metricsServer` | `bool` | `true` | Install [Metrics Server](https://github.com/kubernetes-sigs/metrics-server) for `kubectl top` support |
 | `coreDNSTuning` | `bool` | `true` | Apply CoreDNS tuning for optimised local DNS caching |
-| `dashboard` | `bool` | `true` | Install [Kubernetes Dashboard](https://github.com/kubernetes/dashboard) web UI |
+| `dashboard` | `bool` | `true` | Install [Headlamp](https://headlamp.dev/) web dashboard |
 
 ## Disabling Addons
 

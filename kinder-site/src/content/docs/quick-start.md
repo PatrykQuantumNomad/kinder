@@ -15,7 +15,7 @@ The default cluster name is `kind`. You can choose a different name by passing `
 kinder create cluster
 ```
 
-kinder provisions a local Kubernetes node using your container runtime and automatically installs all default addons (MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Kubernetes Dashboard).
+kinder provisions a local Kubernetes node using your container runtime and automatically installs all default addons (MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp dashboard).
 
 ### Step 2: Verify the node is ready
 
@@ -48,21 +48,22 @@ kubectl get pods -n envoy-gateway-system
 
 All Envoy Gateway pods should be in `Running` state. Envoy Gateway provides a Gateway API-compatible ingress controller.
 
-### Step 5: Open the Kubernetes Dashboard
+### Step 5: Open the Headlamp dashboard
 
 ```sh
-kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
+kubectl port-forward -n kube-system service/headlamp 8080:80
 ```
 
-Then open [https://localhost:8443](https://localhost:8443) in your browser.
+Then open [http://localhost:8080](http://localhost:8080) in your browser.
 
-To generate a login token:
+kinder prints a dashboard token during cluster creation. If you need to retrieve it later:
 
 ```sh
-kubectl -n kubernetes-dashboard create token kubernetes-dashboard
+kubectl get secret kinder-dashboard-token -n kube-system \
+  -o jsonpath='{.data.token}' | base64 -d
 ```
 
-Copy the token and use it to log in.
+Paste the token to log in.
 
 ## What You Get
 
@@ -74,7 +75,7 @@ After these 5 steps you have a fully functional local cluster with:
 | Envoy Gateway | `envoy-gateway-system` | Gateway API ingress |
 | Metrics Server | `kube-system` | `kubectl top` support |
 | CoreDNS tuning | `kube-system` | Optimised DNS caching |
-| Kubernetes Dashboard | `kubernetes-dashboard` | Web UI for cluster inspection |
+| Headlamp | `kube-system` | Web UI for cluster inspection |
 
 To delete the cluster when you are done:
 
