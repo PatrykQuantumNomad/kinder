@@ -17,6 +17,7 @@ limitations under the License.
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -179,6 +180,14 @@ func ProviderWithNerdctl(binaryName string) ProviderOption {
 	return providerRuntimeOption(func(p *Provider) {
 		p.provider = nerdctl.NewProvider(p.logger, binaryName)
 	})
+}
+
+// Name returns the name of the active node provider backend ("docker", "podman", or "nerdctl").
+func (p *Provider) Name() string {
+	if s, ok := p.provider.(fmt.Stringer); ok {
+		return s.String()
+	}
+	return "unknown"
 }
 
 // Create provisions and starts a kubernetes-in-docker cluster
