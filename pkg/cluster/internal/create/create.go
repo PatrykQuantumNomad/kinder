@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installstorage"
@@ -109,6 +110,18 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 
 	// we're going to start creating now, tell the user
 	logger.V(0).Infof("Creating cluster %q ...\n", opts.Config.Name)
+
+	// Inject containerd config_path for local registry (must be before Provision).
+	// containerd certs.d hot-reload requires config_path to be set in config.toml
+	// at node creation time — it cannot be injected post-provisioning.
+	if opts.Config.Addons.LocalRegistry {
+		opts.Config.ContainerdConfigPatches = append(
+			opts.Config.ContainerdConfigPatches,
+			`[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+`,
+		)
+	}
 
 	// Create node containers implementing defined config Nodes
 	if err := p.Provision(status, opts.Config); err != nil {
@@ -196,6 +209,7 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	}
 
 	// Run addon actions in dependency order
+	runAddon("Local Registry", opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction())
 	runAddon("MetalLB", opts.Config.Addons.MetalLB, installmetallb.NewAction())
 	runAddon("Metrics Server", opts.Config.Addons.MetricsServer, installmetricsserver.NewAction())
 	runAddon("CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction())
