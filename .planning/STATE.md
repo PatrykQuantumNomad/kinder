@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 25 of 29 (Foundation)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-03 — v1.4 roadmap created (phases 25-29)
+Plan: 1 of 4 in current phase
+Status: Executing
+Last activity: 2026-03-03 — Completed Phase 25 Plan 01 (go module baseline)
 
 Progress: [████████░░░░░░░░░░░░] 40% (v1.0-v1.3 complete; v1.4 not started)
 
@@ -36,6 +36,8 @@ Progress: [████████░░░░░░░░░░░░] 40% (v1
 - [v1.4 entry]: Context in struct (not function param) — deliberate trade-off for minimal call-site churn; document in code
 - [v1.4 entry]: Wave-based parallel not full DAG — 7 addons with shallow deps; DAG adds 200+ lines for zero benefit
 - [v1.4 entry]: Linker -X flags must be updated when version pkg moves to pkg/internal/kindversion/
+- [Phase 25 Plan 01]: go directive settled at 1.24.0 (toolchain go1.26 enforces minimum; go 1.23 reverts on every tidy)
+- [Phase 25 Plan 01]: rand.Int31() used in buildcontext.go (math/rand v1 has no Int32; v2 not yet adopted)
 
 ### Pending Todos
 
@@ -50,5 +52,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: v1.4 roadmap created; ready to plan Phase 25
+Stopped at: Phase 25 Plan 01 complete; ready for Phase 25 Plan 02
 Resume file: None

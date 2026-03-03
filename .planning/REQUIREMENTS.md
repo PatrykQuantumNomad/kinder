@@ -9,11 +9,11 @@ Requirements for v1.4 Code Quality & Features milestone. Each maps to roadmap ph
 
 ### Foundation
 
-- [ ] **FOUND-01**: go.mod minimum bumped from 1.17/1.21 to 1.23
-- [ ] **FOUND-02**: golang.org/x/sys updated from v0.6.0 to v0.41.0
+- [x] **FOUND-01**: go.mod minimum bumped from 1.17/1.21 to 1.23 (settled at 1.24.0 due to toolchain go1.26)
+- [x] **FOUND-02**: golang.org/x/sys updated from v0.6.0 to v0.41.0
 - [ ] **FOUND-03**: golangci-lint upgraded from v1.62.2 to v2.10.1 with migrated config
 - [ ] **FOUND-04**: Version package moved from pkg/cmd/kind/version to pkg/internal/kindversion (layer violation fixed)
-- [ ] **FOUND-05**: rand.NewSource comment-gated dead code cleaned up after 1.23 bump
+- [x] **FOUND-05**: rand.NewSource comment-gated dead code cleaned up after 1.23 bump
 - [ ] **FOUND-06**: SHA-1 replaced with SHA-256 for subnet generation in all providers
 - [ ] **FOUND-07**: os.ModePerm (0777) replaced with 0755 for log directories
 - [ ] **FOUND-08**: Dashboard token log level changed from V(0) to V(1)
@@ -85,11 +85,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 25 | Pending |
-| FOUND-02 | Phase 25 | Pending |
+| FOUND-01 | Phase 25 | Complete |
+| FOUND-02 | Phase 25 | Complete |
 | FOUND-03 | Phase 25 | Pending |
 | FOUND-04 | Phase 25 | Pending |
-| FOUND-05 | Phase 25 | Pending |
+| FOUND-05 | Phase 25 | Complete |
 | FOUND-06 | Phase 25 | Pending |
 | FOUND-07 | Phase 25 | Pending |
 | FOUND-08 | Phase 25 | Pending |
