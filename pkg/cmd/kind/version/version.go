@@ -19,58 +19,13 @@ package version
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/internal/kindversion"
 	"sigs.k8s.io/kind/pkg/log"
 )
-
-// Version returns the kind CLI Semantic Version
-func Version() string {
-	return version(versionCore, versionPreRelease, gitCommit, gitCommitCount)
-}
-
-func version(core, preRelease, commit, commitCount string) string {
-	v := core
-	// add pre-release version info if we have it
-	if preRelease != "" {
-		v += "-" + preRelease
-		// If commitCount was set, add to the pre-release version
-		if commitCount != "" {
-			v += "." + commitCount
-		}
-		// if commit was set, add the + <build>
-		// we only do this for pre-release versions
-		if commit != "" {
-			// NOTE: use 14 character short hash, like Kubernetes
-			v += "+" + truncate(commit, 14)
-		}
-	}
-	return v
-}
-
-// DisplayVersion is Version() display formatted, this is what the version
-// subcommand prints
-func DisplayVersion() string {
-	return "kind v" + Version() + " " + runtime.Version() + " " + runtime.GOOS + "/" + runtime.GOARCH
-}
-
-// versionCore is the core portion of the kind CLI version per Semantic Versioning 2.0.0
-const versionCore = "0.3.0"
-
-// versionPreRelease is the base pre-release portion of the kind CLI version per
-// Semantic Versioning 2.0.0
-var versionPreRelease = "alpha"
-
-// gitCommitCount count the commits since the last release.
-// It is injected at build time.
-var gitCommitCount = ""
-
-// gitCommit is the commit used to build the kind binary, if available.
-// It is injected at build time.
-var gitCommit = ""
 
 // NewCommand returns a new cobra.Command for version
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
@@ -81,20 +36,13 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if logger.V(0).Enabled() {
 				// if not -q / --quiet, show lots of info
-				fmt.Fprintln(streams.Out, DisplayVersion())
+				fmt.Fprintln(streams.Out, kindversion.DisplayVersion())
 			} else {
 				// otherwise only show semver
-				fmt.Fprintln(streams.Out, Version())
+				fmt.Fprintln(streams.Out, kindversion.Version())
 			}
 			return nil
 		},
 	}
 	return cmd
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) < maxLen {
-		return s
-	}
-	return s[:maxLen]
 }
