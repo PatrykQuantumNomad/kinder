@@ -30,29 +30,29 @@ func Test_generateULASubnetFromName(t *testing.T) {
 	}{
 		{
 			name:   "kind",
-			subnet: "fc00:f853:ccd:e793::/64",
+			subnet: "fc00:4d57:1afd:1f1b::/64",
 		},
 		{
 			name:    "foo",
 			attempt: 1,
-			subnet:  "fc00:8edf:7f02:ec8f::/64",
+			subnet:  "fc00:3b86:d0fc:521c::/64",
 		},
 		{
 			name:    "foo",
 			attempt: 2,
-			subnet:  "fc00:9968:306b:2c65::/64",
+			subnet:  "fc00:2774:110d:111a::/64",
 		},
 		{
 			name:   "kind2",
-			subnet: "fc00:444c:147a:44ab::/64",
+			subnet: "fc00:724:8e67:eb33::/64",
 		},
 		{
 			name:   "kin",
-			subnet: "fc00:fcd9:c2be:8e23::/64",
+			subnet: "fc00:34fb:893a:fe4a::/64",
 		},
 		{
 			name:   "mysupernetwork",
-			subnet: "fc00:7ae1:1e0d:b4d4::/64",
+			subnet: "fc00:1567:8728:937b::/64",
 		},
 	}
 	for _, tc := range cases {

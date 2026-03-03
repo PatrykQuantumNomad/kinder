@@ -184,12 +184,12 @@ func TestGenerateULASubnetFromName(t *testing.T) {
 	}{
 		{
 			name:   "kind",
-			subnet: "fc00:f853:ccd:e793::/64",
+			subnet: "fc00:4d57:1afd:1f1b::/64",
 		},
 		{
 			name:    "foo",
 			attempt: 1,
-			subnet:  "fc00:8edf:7f02:ec8f::/64",
+			subnet:  "fc00:3b86:d0fc:521c::/64",
 		},
 	}
 	for _, tc := range cases {
