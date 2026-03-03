@@ -75,8 +75,8 @@ func extractTarball(tarPath, destDirectory string, logger log.Logger) (err error
 
 		if _, err := io.CopyN(f, tr, hdr.Size); err != nil {
 			f.Close()
-			if err == io.EOF {
-				break
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return fmt.Errorf("archive truncated: unexpected EOF while extracting %s", hdr.Name)
 			}
 
 			return fmt.Errorf("extracting image data: %w", err)

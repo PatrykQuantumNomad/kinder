@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/kind/pkg/log"
@@ -48,6 +49,64 @@ func writeTarGz(t *testing.T, entries []tarEntry) string {
 type tarEntry struct {
 	name string
 	body string
+}
+
+// writeTruncatedTarGz creates a tar.gz where the header declares a large file size
+// but only a few bytes of body data are present. This causes io.CopyN to return
+// io.EOF mid-extraction — the specific scenario covered by BUG-02.
+func writeTruncatedTarGz(t *testing.T) string {
+	t.Helper()
+	declaredSize := int64(4096) // header says 4096 bytes
+	actualBody := []byte("short")  // only 5 bytes written
+
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	hdr := &tar.Header{
+		Name: "bigfile.bin",
+		Mode: 0o644,
+		Size: declaredSize, // lie about size
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatalf("writing truncated tar header: %v", err)
+	}
+	if _, err := tw.Write(actualBody); err != nil {
+		t.Fatalf("writing truncated tar body: %v", err)
+	}
+	// Do NOT close the tar writer properly — this intentionally leaves the archive
+	// incomplete (body shorter than declared size).
+
+	// Gzip the raw (invalid) tar bytes so extractTarball can open the gzip reader.
+	var gzBuf bytes.Buffer
+	gw := gzip.NewWriter(&gzBuf)
+	if _, err := gw.Write(tarBuf.Bytes()); err != nil {
+		t.Fatalf("gzipping truncated tar: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("closing gzip writer: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "truncated.tar.gz")
+	if err := os.WriteFile(path, gzBuf.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing truncated tar.gz: %v", err)
+	}
+	return path
+}
+
+// TestExtractTarball_Truncated verifies that extractTarball returns a non-nil error
+// containing "truncat" when the tar header declares a larger size than the actual body.
+// This exercises the io.EOF path in io.CopyN that was previously silently ignored with break.
+func TestExtractTarball_Truncated(t *testing.T) {
+	truncatedPath := writeTruncatedTarGz(t)
+	destDir := t.TempDir()
+	logger := log.NoopLogger{}
+
+	gotErr := extractTarball(truncatedPath, destDir, logger)
+	if gotErr == nil {
+		t.Fatal("extractTarball returned nil error for truncated archive; expected non-nil error")
+	}
+	if !strings.Contains(gotErr.Error(), "truncat") {
+		t.Errorf("error message %q does not contain 'truncat'; expected a specific truncation error", gotErr.Error())
+	}
 }
 
 func TestExtractTarball_Normal(t *testing.T) {
