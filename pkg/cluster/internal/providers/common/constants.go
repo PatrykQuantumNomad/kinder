@@ -19,3 +19,7 @@ package common
 // APIServerInternalPort defines the port where the control plane is listening
 // _inside_ the node network
 const APIServerInternalPort = 6443
+
+// NodeRoleLabelKey is applied to each "node" container for categorization
+// of nodes by role
+const NodeRoleLabelKey = "io.x-k8s.kind.role"
