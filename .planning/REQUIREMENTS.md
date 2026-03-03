@@ -28,10 +28,10 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 ### Local Registry
 
-- [ ] **REG-01**: Create registry:2 container on kind network during cluster creation
-- [ ] **REG-02**: Patch containerd certs.d config on all nodes for localhost:5001
-- [ ] **REG-03**: Apply kube-public/local-registry-hosting ConfigMap for dev tool discovery
-- [ ] **REG-04**: Addon disableable via addons.localRegistry: false in cluster config
+- [x] **REG-01**: Create registry:2 container on kind network during cluster creation
+- [x] **REG-02**: Patch containerd certs.d config on all nodes for localhost:5001
+- [x] **REG-03**: Apply kube-public/local-registry-hosting ConfigMap for dev tool discovery
+- [x] **REG-04**: Addon disableable via addons.localRegistry: false in cluster config
 
 ### cert-manager
 
@@ -92,10 +92,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | CFG-01 | Phase 21 | Complete |
 | CFG-02 | Phase 21 | Complete |
 | CFG-03 | Phase 21 | Complete |
-| REG-01 | Phase 22 | Pending |
-| REG-02 | Phase 22 | Pending |
-| REG-03 | Phase 22 | Pending |
-| REG-04 | Phase 22 | Pending |
+| REG-01 | Phase 22 | Complete |
+| REG-02 | Phase 22 | Complete |
+| REG-03 | Phase 22 | Complete |
+| REG-04 | Phase 22 | Complete |
 | CERT-01 | Phase 23 | Pending |
 | CERT-02 | Phase 23 | Pending |
 | CERT-03 | Phase 23 | Pending |
@@ -112,4 +112,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 — Phase 21 Plan 01 complete: CFG-01, CFG-02, CFG-03 done; Phase 21 fully complete*
+*Last updated: 2026-03-03 — Phase 22 Plan 01 complete: REG-01, REG-02, REG-03, REG-04 done; Phase 22 fully complete*

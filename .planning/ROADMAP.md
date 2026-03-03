@@ -98,7 +98,7 @@ Plans:
   4. Setting addons.localRegistry: false in cluster config skips registry creation entirely — kinder create cluster completes without the registry container
 **Plans:** 1 plan
 Plans:
-- [ ] 22-01-PLAN.md — Implement installlocalregistry action package and wire into create.go
+- [x] 22-01-PLAN.md — Implement installlocalregistry action package and wire into create.go
 
 ### Phase 23: cert-manager Addon
 **Goal**: Users get a fully ready cert-manager installation with a self-signed ClusterIssuer so Certificate resources work immediately after cluster creation — no manual cert-manager setup required
@@ -133,7 +133,7 @@ Plans:
 | 19. Bug Fixes | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 20. Provider Code Deduplication | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 21. Config Type Additions | v1.3 | 1/1 | Complete | 2026-03-03 |
-| 22. Local Registry Addon | v1.3 | 0/1 | Not started | - |
+| 22. Local Registry Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |
 | 24. CLI Commands | v1.3 | 0/TBD | Not started | - |
 
