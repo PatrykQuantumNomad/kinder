@@ -97,9 +97,9 @@ func NewProvider(options ...ProviderOption) *Provider {
 	return p
 }
 
-// NoNodeProviderDetectedError indicates that we could not autolocate an available
+// ErrNoNodeProviderDetected indicates that we could not autolocate an available
 // NodeProvider backend on the host
-var NoNodeProviderDetectedError = errors.NewWithoutStack("failed to detect any supported node provider")
+var ErrNoNodeProviderDetected = errors.NewWithoutStack("failed to detect any supported node provider")
 
 // DetectNodeProvider allows callers to autodetect the node provider
 // *without* fallback to the default.
@@ -126,7 +126,7 @@ func DetectNodeProvider() (ProviderOption, error) {
 	if podman.IsAvailable() {
 		return ProviderWithPodman(), nil
 	}
-	return nil, errors.WithStack(NoNodeProviderDetectedError)
+	return nil, errors.WithStack(ErrNoNodeProviderDetected)
 }
 
 // ProviderOption is an option for configuring a provider

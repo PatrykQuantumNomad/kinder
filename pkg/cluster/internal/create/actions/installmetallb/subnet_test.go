@@ -17,6 +17,7 @@ limitations under the License.
 package installmetallb
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -94,7 +95,7 @@ func TestParseSubnetFromJSON(t *testing.T) {
 					return
 				}
 				if tc.errContains != "" {
-					if !contains(err.Error(), tc.errContains) {
+					if !strings.Contains(err.Error(), tc.errContains) {
 						t.Errorf("parseSubnetFromJSON() error = %q, want error containing %q", err.Error(), tc.errContains)
 					}
 				}
@@ -183,7 +184,7 @@ func TestCarvePoolFromSubnet(t *testing.T) {
 					return
 				}
 				if tc.errContains != "" {
-					if !contains(err.Error(), tc.errContains) {
+					if !strings.Contains(err.Error(), tc.errContains) {
 						t.Errorf("carvePoolFromSubnet(%q) error = %q, want error containing %q", tc.cidr, err.Error(), tc.errContains)
 					}
 				}
@@ -200,16 +201,3 @@ func TestCarvePoolFromSubnet(t *testing.T) {
 	}
 }
 
-// contains is a helper to check if s contains substr.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || containsStr(s, substr))
-}
-
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
