@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 25 of 29 (Foundation)
-Plan: 3 of 4 in current phase
-Status: Executing
-Last activity: 2026-03-03 — Completed Phase 25 Plan 03 (layer violation fix)
+Plan: 4 of 4 in current phase
+Status: Executing (awaiting phase verifier)
+Last activity: 2026-03-03 — Completed Phase 25 Plan 04 (code quality fixes)
 
 Progress: [████████░░░░░░░░░░░░] 40% (v1.0-v1.3 complete; v1.4 not started)
 
@@ -42,6 +42,9 @@ Progress: [████████░░░░░░░░░░░░] 40% (v1
 - [Phase 25 Plan 02]: golangci-lint v2 typecheck is always-active; remove from linters.enable or get fatal config error
 - [Phase 25 Plan 02]: errcheck for deferred Close calls suppressed with //nolint:errcheck (cannot meaningfully handle in defer context)
 - [Phase 25 Plan 02]: var-naming exclusions added for established package names (common, errors, log, version) to avoid mass rename refactor
+- [Phase 25 Plan 04]: SHA-256 replaces SHA-1 for subnet generation; subnet values change but clusters are transient so no impact
+- [Phase 25 Plan 04]: ErrNoNodeProviderDetected rename is technically breaking API but kinder is not consumed as a library
+- [Phase 25 Plan 04]: Dashboard token at V(1); other dashboard output (header, URL, instructions) remains at V(0) for user visibility
 
 ### Pending Todos
 
@@ -56,5 +59,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 25 Plans 02 and 03 complete (parallel wave); ready for Phase 25 Plan 04
+Stopped at: Phase 25 Plan 04 complete (all 4 plans done); awaiting phase verifier
 Resume file: None

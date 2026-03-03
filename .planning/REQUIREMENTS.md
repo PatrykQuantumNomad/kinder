@@ -14,11 +14,11 @@ Requirements for v1.4 Code Quality & Features milestone. Each maps to roadmap ph
 - [x] **FOUND-03**: golangci-lint upgraded from v1.62.2 to v2.10.1 with migrated config
 - [x] **FOUND-04**: Version package moved from pkg/cmd/kind/version to pkg/internal/kindversion (layer violation fixed)
 - [x] **FOUND-05**: rand.NewSource comment-gated dead code cleaned up after 1.23 bump
-- [ ] **FOUND-06**: SHA-1 replaced with SHA-256 for subnet generation in all providers
-- [ ] **FOUND-07**: os.ModePerm (0777) replaced with 0755 for log directories
-- [ ] **FOUND-08**: Dashboard token log level changed from V(0) to V(1)
-- [ ] **FOUND-09**: Error var renamed from NoNodeProviderDetectedError to ErrNoNodeProviderDetected
-- [ ] **FOUND-10**: Redundant contains helper removed from subnet_test.go
+- [x] **FOUND-06**: SHA-1 replaced with SHA-256 for subnet generation in all providers
+- [x] **FOUND-07**: os.ModePerm (0777) replaced with 0755 for log directories
+- [x] **FOUND-08**: Dashboard token log level changed from V(0) to V(1)
+- [x] **FOUND-09**: Error var renamed from NoNodeProviderDetectedError to ErrNoNodeProviderDetected
+- [x] **FOUND-10**: Redundant contains helper removed from subnet_test.go
 
 ### Architecture
 
@@ -90,11 +90,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-03 | Phase 25 | Complete (25-02) |
 | FOUND-04 | Phase 25 | Complete (25-03) |
 | FOUND-05 | Phase 25 | Complete |
-| FOUND-06 | Phase 25 | Pending |
-| FOUND-07 | Phase 25 | Pending |
-| FOUND-08 | Phase 25 | Pending |
-| FOUND-09 | Phase 25 | Pending |
-| FOUND-10 | Phase 25 | Pending |
+| FOUND-06 | Phase 25 | Complete (25-04) |
+| FOUND-07 | Phase 25 | Complete (25-04) |
+| FOUND-08 | Phase 25 | Complete (25-04) |
+| FOUND-09 | Phase 25 | Complete (25-04) |
+| FOUND-10 | Phase 25 | Complete (25-04) |
 | ARCH-01 | Phase 26 | Pending |
 | ARCH-02 | Phase 26 | Pending |
 | ARCH-03 | Phase 26 | Pending |

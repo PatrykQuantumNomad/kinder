@@ -71,7 +71,7 @@ Plans:
 - [x] 25-01-PLAN.md — Go ecosystem updates (go.mod 1.24.0, x/sys v0.41.0, dead rand code)
 - [x] 25-02-PLAN.md — golangci-lint v1 to v2 migration
 - [x] 25-03-PLAN.md — Layer violation fix (version package move to internal)
-- [ ] 25-04-PLAN.md — Code quality fixes (SHA-256, permissions, log level, naming, test helper)
+- [x] 25-04-PLAN.md — Code quality fixes (SHA-256, permissions, log level, naming, test helper)
 
 ### Phase 26: Architecture
 **Goal**: context.Context flows from create.go through ActionContext into every addon Execute() call and waitforready loop; a centralized AddonEntry registry replaces hard-coded runAddon calls in create.go
@@ -128,7 +128,7 @@ Plans:
 | 9-14. v1.1 phases | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. v1.2 phases | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
-| 25. Foundation | v1.4 | 3/4 | In Progress | - |
+| 25. Foundation | v1.4 | 4/4 | In Progress | - |
 | 26. Architecture | v1.4 | 0/? | Not started | - |
 | 27. Unit Tests | v1.4 | 0/? | Not started | - |
 | 28. Parallel Execution | v1.4 | 0/? | Not started | - |
