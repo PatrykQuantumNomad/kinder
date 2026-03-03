@@ -1,75 +1,115 @@
 # Requirements: Kinder
 
-**Defined:** 2026-03-02
+**Defined:** 2026-03-03
 **Core Value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
 
-## v1.2 Requirements
+## v1.3 Requirements
 
-### Branding
+Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
-- [x] **BRAND-01**: Kinder has its own logo (modified kind robot with "er" in cyan)
-- [x] **BRAND-02**: Logo available as SVG and PNG in kinder-logo/ directory
-- [x] **BRAND-03**: Original kind logo preserved unmodified in logo/ directory
-- [x] **BRAND-04**: Favicon.ico generated from kinder logo at multiple resolutions
-- [x] **BRAND-05**: OG image shows kinder logo with tagline on dark background
+### Bug Fixes
 
-### SEO
+- [ ] **BUG-01**: Fix defer-in-loop port leak in generatePortMappings across all 3 providers
+- [ ] **BUG-02**: Fix tar extraction silent data loss on truncated files (return error instead of break)
+- [ ] **BUG-03**: Fix ListInternalNodes missing defaultName() call for consistent cluster name resolution
+- [ ] **BUG-04**: Fix network sort comparator to use strict weak ordering
 
-- [x] **SEO-01**: llms.txt provides concise site summary for AI crawlers
-- [x] **SEO-02**: llms-full.txt provides full documentation content for LLM ingestion
-- [x] **SEO-03**: JSON-LD structured data with SoftwareApplication and WebSite schemas
-- [x] **SEO-04**: Complete Twitter Card meta tags (title, description, image)
-- [x] **SEO-05**: Author meta tag and rel=author link to patrykgolabek.dev
-- [x] **SEO-06**: Keywords meta tag with relevant Kubernetes/devtool terms
+### Provider Refactor
 
-### Documentation
+- [ ] **PROV-01**: Extract shared node.go to common/ package with binaryName parameter
+- [ ] **PROV-02**: Extract shared provision.go functions (generateMountBindings, generatePortMappings, createContainer) to common/
+- [ ] **PROV-03**: Update go.mod minimum to go 1.21.0 with toolchain go1.26.0
 
-- [x] **DOCS-01**: Root README rewritten for kinder (badges, quick start, addon table, acknowledgements)
-- [x] **DOCS-02**: kinder-site README updated from Starlight boilerplate to project README
-- [x] **DOCS-03**: Author backlink to patrykgolabek.dev on homepage footer
+### Config
 
-### Site
+- [ ] **CFG-01**: Add LocalRegistry *bool to v1alpha4 Addons struct with default true
+- [ ] **CFG-02**: Add CertManager *bool to v1alpha4 Addons struct with default true
+- [ ] **CFG-03**: Wire both fields through internal config types, conversion, and defaults (5 locations)
 
-- [x] **SITE-01**: Dark theme enforced with no light mode option
-- [x] **SITE-02**: Kinder logo displayed in hero section of landing page
-- [x] **SITE-03**: Favicon.ico configured in Astro (replacing removed favicon.svg)
+### Local Registry
+
+- [ ] **REG-01**: Create registry:2 container on kind network during cluster creation
+- [ ] **REG-02**: Patch containerd certs.d config on all nodes for localhost:5001
+- [ ] **REG-03**: Apply kube-public/local-registry-hosting ConfigMap for dev tool discovery
+- [ ] **REG-04**: Addon disableable via addons.localRegistry: false in cluster config
+
+### cert-manager
+
+- [ ] **CERT-01**: Embed and apply cert-manager v1.17.6 manifest via go:embed
+- [ ] **CERT-02**: Wait for all 3 components (controller, webhook, cainjector) to reach Available status
+- [ ] **CERT-03**: Bootstrap self-signed ClusterIssuer so Certificate resources work immediately
+- [ ] **CERT-04**: Addon enabled by default, disableable via addons.certManager: false
+
+### CLI Commands
+
+- [ ] **CLI-01**: kinder env command shows provider, cluster name, and kubeconfig path
+- [ ] **CLI-02**: kinder env output is machine-readable (eval-safe stdout, warnings to stderr)
+- [ ] **CLI-03**: kinder doctor checks binary prerequisites with actionable fix messages
+- [ ] **CLI-04**: kinder doctor uses structured exit codes (0=ok, 1=fail, 2=warn)
+
+## v1.4+ Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Registry Enhancements
+
+- **REG-05**: Pull-through cache (Docker Hub mirror) for local registry
+- **REG-06**: Registry web UI for browsing images
+
+### cert-manager Enhancements
+
+- **CERT-05**: trust-manager addon for distributing CA bundles
+- **CERT-06**: ACME/Let's Encrypt issuer support
+
+### CLI Enhancements
+
+- **CLI-05**: kinder env --shell flag for fish shell compatibility
+- **CLI-06**: kinder env shows enabled/disabled addon state
+- **CLI-07**: kinder doctor checks resource minimums (4GB RAM, 10GB disk)
+- **CLI-08**: kinder doctor --fix auto-remediation
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Animated terminal demo | Deferred to future milestone |
-| Contributing guide | Deferred to future milestone |
-| Blog section | Deferred to future milestone |
-| Light theme option | Dark-only is core identity |
+| Helm-based addon installation | Project constraint: static manifests + go:embed only |
+| k8s.io/client-go SDK | Architecture: all kubectl ops via node.Command inside containers |
+| Harbor registry | Too heavy for local dev; registry:2 is sufficient |
+| registry:3 image | v3 deprecated storage drivers; kind ecosystem on v2 |
+| ACME issuers | Requires internet; incompatible with offline local clusters |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BRAND-01 | Phase 15 | Complete |
-| BRAND-02 | Phase 15 | Complete |
-| BRAND-03 | Phase 15 | Complete |
-| BRAND-04 | Phase 15 | Complete |
-| BRAND-05 | Phase 15 | Complete |
-| SEO-01 | Phase 16 | Complete |
-| SEO-02 | Phase 16 | Complete |
-| SEO-03 | Phase 16 | Complete |
-| SEO-04 | Phase 16 | Complete |
-| SEO-05 | Phase 16 | Complete |
-| SEO-06 | Phase 16 | Complete |
-| DOCS-01 | Phase 17 | Complete |
-| DOCS-02 | Phase 17 | Complete |
-| DOCS-03 | Phase 17 | Complete |
-| SITE-01 | Phase 18 | Complete |
-| SITE-02 | Phase 18 | Complete |
-| SITE-03 | Phase 18 | Complete |
+| BUG-01 | Phase 19 | Pending |
+| BUG-02 | Phase 19 | Pending |
+| BUG-03 | Phase 19 | Pending |
+| BUG-04 | Phase 19 | Pending |
+| PROV-01 | Phase 20 | Pending |
+| PROV-02 | Phase 20 | Pending |
+| PROV-03 | Phase 20 | Pending |
+| CFG-01 | Phase 21 | Pending |
+| CFG-02 | Phase 21 | Pending |
+| CFG-03 | Phase 21 | Pending |
+| REG-01 | Phase 22 | Pending |
+| REG-02 | Phase 22 | Pending |
+| REG-03 | Phase 22 | Pending |
+| REG-04 | Phase 22 | Pending |
+| CERT-01 | Phase 23 | Pending |
+| CERT-02 | Phase 23 | Pending |
+| CERT-03 | Phase 23 | Pending |
+| CERT-04 | Phase 23 | Pending |
+| CLI-01 | Phase 24 | Pending |
+| CLI-02 | Phase 24 | Pending |
+| CLI-03 | Phase 24 | Pending |
+| CLI-04 | Phase 24 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 17 total
-- Mapped to phases: 17
+- v1.3 requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after v1.2 completion*
+*Requirements defined: 2026-03-03*
+*Last updated: 2026-03-03 after v1.3 milestone definition*
