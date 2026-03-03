@@ -56,7 +56,10 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
   2. Tar extraction returns an error on truncated files instead of silently stopping mid-archive
   3. ListInternalNodes resolves an empty cluster name to the default cluster name consistently across all three providers
   4. Network sort comparator satisfies strict weak ordering — identical networks compare equal, sort is deterministic
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 19-01-PLAN.md — Fix port leak (BUG-01) and tar truncation (BUG-02)
+- [ ] 19-02-PLAN.md — Fix empty cluster name (BUG-03) and network sort (BUG-04)
 
 ### Phase 20: Provider Code Deduplication
 **Goal**: Shared docker/podman/nerdctl logic lives in one common/ package; per-provider files are deleted; all three providers compile and pass their test suites unchanged
@@ -120,7 +123,7 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
 | 1-8. Batteries Included | v1.0 | 12/12 | Complete | 2026-03-01 |
 | 9-14. Kinder Website | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. Branding & Polish | v1.2 | 4/4 | Complete | 2026-03-02 |
-| 19. Bug Fixes | v1.3 | 0/TBD | Not started | - |
+| 19. Bug Fixes | v1.3 | 0/2 | Planning | - |
 | 20. Provider Code Deduplication | v1.3 | 0/TBD | Not started | - |
 | 21. Config Type Additions | v1.3 | 0/TBD | Not started | - |
 | 22. Local Registry Addon | v1.3 | 0/TBD | Not started | - |
