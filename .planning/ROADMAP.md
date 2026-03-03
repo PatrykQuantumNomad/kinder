@@ -108,7 +108,9 @@ Plans:
   1. The embedded cert-manager v1.17.6 manifest is applied during cluster creation and all three components (cert-manager, cert-manager-webhook, cert-manager-cainjector) reach Available status before the cluster is reported ready
   2. A self-signed ClusterIssuer named selfsigned-issuer exists in the cluster immediately after creation — kubectl apply of a Certificate resource referencing it succeeds without error
   3. Setting addons.certManager: false in cluster config skips cert-manager installation entirely — cluster creation is not delayed by webhook readiness waits
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 23-01-PLAN.md — Implement installcertmanager action package and wire into create.go
 
 ### Phase 24: CLI Commands
 **Goal**: Users have two diagnostic commands — kinder env for machine-readable cluster environment info and kinder doctor for prerequisite checking — both following the existing Cobra command patterns
@@ -134,7 +136,7 @@ Plans:
 | 20. Provider Code Deduplication | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 21. Config Type Additions | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 22. Local Registry Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
-| 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |
+| 23. cert-manager Addon | v1.3 | 0/1 | Planned | - |
 | 24. CLI Commands | v1.3 | 0/TBD | Not started | - |
 
 ---
