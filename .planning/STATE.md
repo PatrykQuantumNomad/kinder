@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.3 Harden & Extend — Phase 22: Local Registry Addon
+**Current focus:** v1.3 Harden & Extend — Phase 24: CLI Commands (complete)
 
 ## Current Position
 
-Phase: 23 of 24 (cert-manager Addon)
+Phase: 24 of 24 (CLI Commands — COMPLETE)
 Plan: 1 of 1 in current phase (phase complete)
-Status: Phase 23 complete
-Last activity: 2026-03-03 — Phase 23 Plan 01 complete (cert-manager addon: installcertmanager action + create.go wiring)
+Status: Phase 24 complete — v1.3 milestone complete
+Last activity: 2026-03-03 — Phase 24 Plan 01 complete (kinder env + kinder doctor CLI commands, Provider.Name())
 
-Progress: [██████░░░░] 40% (v1.3 — 5/6 phases complete, phase 23 1/1 done)
+Progress: [██████████] 100% (v1.3 — 6/6 phases complete, phase 24 1/1 done)
 
 ## Performance Metrics
 
@@ -29,6 +29,7 @@ Progress: [██████░░░░] 40% (v1.3 — 5/6 phases complete, ph
 **Phase 21, Plan 01:** 2 tasks, 5 modified + 1 created, ~10 min, 2026-03-03
 **Phase 22, Plan 01:** 2 tasks, 2 created + 1 modified, ~2 min, 2026-03-03
 **Phase 23, Plan 01:** 2 tasks, 2 created + 1 modified, ~10 min, 2026-03-03
+**Phase 24, Plan 01:** 2 tasks, 2 created + 2 modified, ~15 min, 2026-03-03
 
 ## Accumulated Context
 
@@ -45,6 +46,7 @@ Progress: [██████░░░░] 40% (v1.3 — 5/6 phases complete, ph
 - v1.3 Phase 21-01: LocalRegistry and CertManager both default to true (on-by-default opt-out, consistent with existing addon pattern); plain bool in internal types, *bool in v1alpha4 public API (matching MetalLB/Dashboard pattern)
 - v1.3 Phase 22-01: registry:2 (not :3); ContainerdConfigPatches injected in create.go before p.Provision() (cannot be done post-provisioning); ALL nodes patched with hosts.toml (not just control-plane); Podman rootless warn-and-continue; idempotent container ops via inspect-before-create/connect
 - v1.3 Phase 23-01: cert-manager v1.16.3 (v1.17.6 not yet released); --server-side apply required for 986KB manifest; webhook readiness gate — wait for all 3 deployments (300s) before applying ClusterIssuer to prevent "no endpoints available" errors
+- v1.3 Phase 24-01: Provider.Name() uses fmt.Stringer type assertion; kinder env reads env vars first then DetectNodeProvider() (zero runtime calls); os.Exit(1|2) in RunE for structured exit codes (Cobra always exits 1 for non-nil error); output keys: KINDER_PROVIDER, KIND_CLUSTER_NAME, KUBECONFIG
 
 ### Pending Todos
 
@@ -57,5 +59,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 23 Plan 01 complete — cert-manager addon phase done
+Stopped at: Phase 24 Plan 01 complete — v1.3 milestone complete (kinder env + kinder doctor)
 Resume file: None

@@ -42,10 +42,10 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 ### CLI Commands
 
-- [ ] **CLI-01**: kinder env command shows provider, cluster name, and kubeconfig path
-- [ ] **CLI-02**: kinder env output is machine-readable (eval-safe stdout, warnings to stderr)
-- [ ] **CLI-03**: kinder doctor checks binary prerequisites with actionable fix messages
-- [ ] **CLI-04**: kinder doctor uses structured exit codes (0=ok, 1=fail, 2=warn)
+- [x] **CLI-01**: kinder env command shows provider, cluster name, and kubeconfig path
+- [x] **CLI-02**: kinder env output is machine-readable (eval-safe stdout, warnings to stderr)
+- [x] **CLI-03**: kinder doctor checks binary prerequisites with actionable fix messages
+- [x] **CLI-04**: kinder doctor uses structured exit codes (0=ok, 1=fail, 2=warn)
 
 ## v1.4+ Requirements
 
@@ -100,10 +100,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | CERT-02 | Phase 23 | Complete |
 | CERT-03 | Phase 23 | Complete |
 | CERT-04 | Phase 23 | Complete |
-| CLI-01 | Phase 24 | Pending |
-| CLI-02 | Phase 24 | Pending |
-| CLI-03 | Phase 24 | Pending |
-| CLI-04 | Phase 24 | Pending |
+| CLI-01 | Phase 24 | Complete |
+| CLI-02 | Phase 24 | Complete |
+| CLI-03 | Phase 24 | Complete |
+| CLI-04 | Phase 24 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 22 total

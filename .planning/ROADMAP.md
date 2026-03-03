@@ -5,7 +5,7 @@
 - ✅ **v1.0 Batteries Included** - Phases 1-8 (shipped 2026-03-01)
 - ✅ **v1.1 Kinder Website** - Phases 9-14 (shipped 2026-03-02)
 - ✅ **v1.2 Branding & Polish** - Phases 15-18 (shipped 2026-03-02)
-- 🚧 **v1.3 Harden & Extend** - Phases 19-24 (in progress)
+- ✅ **v1.3 Harden & Extend** - Phases 19-24 (shipped 2026-03-03)
 
 ---
 
@@ -32,7 +32,7 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
 
 ---
 
-### 🚧 v1.3 Harden & Extend (In Progress)
+### ✅ v1.3 Harden & Extend (Shipped 2026-03-03)
 
 **Milestone Goal:** Fix critical bugs, reduce provider code duplication, and add local registry, cert-manager addons and CLI diagnostic tools.
 
@@ -43,7 +43,7 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
 - [x] **Phase 21: Config Type Additions** - Add LocalRegistry and CertManager fields to v1alpha4 and wire through config pipeline
 - [x] **Phase 22: Local Registry Addon** - Batteries-included local registry at localhost:5001 on the kind network
 - [x] **Phase 23: cert-manager Addon** - Embedded cert-manager with self-signed ClusterIssuer ready immediately
-- [ ] **Phase 24: CLI Commands** - kinder env and kinder doctor diagnostic commands
+- [x] **Phase 24: CLI Commands** - kinder env and kinder doctor diagnostic commands
 
 ## Phase Details
 
@@ -123,7 +123,7 @@ Plans:
   4. kinder doctor exits 0 when all checks pass, exits 1 on any hard failure, and exits 2 on warnings — scripts can distinguish warning from failure
 **Plans:** 1 plan
 Plans:
-- [ ] 24-01-PLAN.md — Create kinder env and kinder doctor commands with Provider.Name() method and root.go wiring
+- [x] 24-01-PLAN.md — Create kinder env and kinder doctor commands with Provider.Name() method and root.go wiring
 
 ## Progress
 
@@ -139,7 +139,7 @@ Plans:
 | 21. Config Type Additions | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 22. Local Registry Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 23. cert-manager Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
-| 24. CLI Commands | v1.3 | 0/1 | Not started | - |
+| 24. CLI Commands | v1.3 | 1/1 | Complete | 2026-03-03 |
 
 ---
 *Roadmap created: 2026-03-03 — v1.3 Harden & Extend roadmap added*
