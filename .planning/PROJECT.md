@@ -32,17 +32,25 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ Custom domain: kinder.patrykgolabek.dev via GitHub Pages — v1.1
 - ✓ Source lives in `kinder-site/` directory at repo root — v1.1
 
+- ✓ Kinder logo (modified kind robot with cyan "er") as SVG, PNG, favicon, OG image — v1.2
+- ✓ SEO: llms.txt, JSON-LD structured data, complete meta tags, author backlinks — v1.2
+- ✓ README rewrite for kinder identity — v1.2
+- ✓ Hero section with logo on landing page — v1.2
+
 ### Active
 
-## Current Milestone: v1.2 Branding & Polish
+## Current Milestone: v1.3 Harden & Extend
 
-**Goal:** Establish kinder's visual identity, SEO presence, and documentation — distinct from kind.
+**Goal:** Fix critical bugs, reduce provider code duplication, and add local registry, cert-manager addons and CLI diagnostic tools.
 
 **Target features:**
-- Kinder logo (modified kind robot with cyan "er") as SVG, PNG, favicon, OG image
-- SEO: llms.txt, JSON-LD structured data, complete meta tags, author backlinks
-- README rewrite for kinder identity
-- Hero section with logo on landing page
+- Fix critical bugs: defer-in-loop port leak, tar extraction data loss, ListInternalNodes default name, network sort
+- Provider code deduplication: extract shared docker/podman/nerdctl code to common package
+- Update go.mod minimum version and dependencies
+- Local registry addon (addons.localRegistry: true)
+- Cert-manager addon (addons.certManager: true)
+- `kinder env` command (show config, provider, node image info)
+- `kinder doctor` command (diagnose common issues)
 
 ### Out of Scope
 
@@ -61,6 +69,8 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Kinder is a fork of sigs.k8s.io/kind at commit 89ff06bd
 - Shipped v1.0 with ~1,950 LOC Go across 5 addon action packages
 - Shipped v1.1 with 878 LOC Astro/MDX/CSS/TS in kinder-site/
+- Shipped v1.2 with logo, SEO, branding polish
+- Codebase review identified 4 critical bugs, ~70-80% provider code duplication, and feature opportunities
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
@@ -103,5 +113,9 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | llms.txt for GEO | AI crawler discoverability; emerging standard | ✓ Good |
 | JSON-LD SoftwareApplication schema | Rich snippets in search, author attribution | ✓ Good |
 
+| Extract shared provider code to common/ | Eliminate ~70-80% duplication, prevent drift bugs | — Pending |
+| Local registry as addon, not shell script | Consistent with batteries-included ethos | — Pending |
+| Cert-manager alongside Envoy Gateway | Natural pairing; TLS commonly needed with Gateway API | — Pending |
+
 ---
-*Last updated: 2026-03-02 after v1.2 milestone*
+*Last updated: 2026-03-03 after v1.3 milestone start*

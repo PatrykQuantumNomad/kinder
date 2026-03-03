@@ -2,19 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-02)
+See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Planning next milestone
+**Current focus:** v1.3 Harden & Extend
 
 ## Current Position
 
-Phase: 18 of 18 complete
-Plan: N/A
-Status: v1.2 milestone shipped — ready for next milestone
-Last activity: 2026-03-02 — v1.2 Branding & Polish milestone complete
-
-Progress: [██████████] 100% (v1.0 + v1.1 + v1.2 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-03 — Milestone v1.3 started
 
 ## Performance Metrics
 
@@ -38,10 +36,12 @@ Progress: [██████████] 100% (v1.0 + v1.1 + v1.2 complete)
 - v1.0: Fork kind (not wrap), addons as creation actions, on-by-default opt-out, go:embed for manifests
 - v1.1: Astro + Starlight for website, kinder-site/ subdirectory, dark-only mode, npm for CI, make install as only documented install method
 - v1.2: Kinder logo from modified kind robot, favicon.ico over SVG, llms.txt for GEO, JSON-LD SoftwareApplication schema
+- v1.3: Extract shared provider code to common/, local registry as addon, cert-manager alongside Envoy Gateway
 
 ### Blockers/Concerns
 
-None.
+- Codebase review found 4 critical bugs (defer-in-loop, tar extraction, ListInternalNodes, network sort) — must fix before new features
+- Provider code duplication (~70-80%) is a maintenance hazard — refactor before adding more provider-aware code
 
 ### Pending Todos
 
@@ -49,6 +49,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: v1.2 milestone complete. Ready for next milestone.
+Last session: 2026-03-03
+Stopped at: v1.3 milestone started, defining requirements
 Resume file: None
