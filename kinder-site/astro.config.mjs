@@ -65,6 +65,7 @@ export default defineConfig({
             { slug: 'addons/headlamp' },
           ],
         },
+        { slug: 'changelog' },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/PatrykQuantumNomad/kinder' },
