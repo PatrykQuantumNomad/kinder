@@ -36,6 +36,7 @@ import (
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcni"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
@@ -215,6 +216,7 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	runAddon("CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction())
 	runAddon("Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction())
 	runAddon("Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction())
+	runAddon("Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction())
 
 	// Platform warning for MetalLB (FOUND-05)
 	if opts.Config.Addons.MetalLB {
