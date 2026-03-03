@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package main implements the kindnetd CNI configuration and networking daemon.
 package main
 
 import (
@@ -74,7 +75,7 @@ func computeBridgeMTU() (int, error) {
 			return inter.MTU, nil
 		}
 	}
-	return 0, errors.New("Found no eth0 device")
+	return 0, errors.New("found no eth0 device")
 }
 
 // cniConfigPath is where kindnetd will write the computed CNI config
@@ -145,8 +146,8 @@ func (c *CNIConfigWriter) Write(inputs CNIConfigInputs) error {
 
 	// actually write the config
 	if err := writeCNIConfig(f, cniConfigTemplate, inputs); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return err
 	}
 	_ = f.Sync()

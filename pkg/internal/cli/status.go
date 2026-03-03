@@ -78,7 +78,7 @@ func (s *Status) End(success bool) {
 
 	if s.spinner != nil {
 		s.spinner.Stop()
-		fmt.Fprint(s.spinner.writer, "\r")
+		fmt.Fprint(s.spinner.writer, "\r") //nolint:errcheck
 	}
 	if success {
 		s.logger.V(0).Infof(s.successFormat, s.status)

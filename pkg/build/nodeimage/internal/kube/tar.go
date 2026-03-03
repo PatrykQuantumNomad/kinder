@@ -34,7 +34,7 @@ func extractTarball(tarPath, destDirectory string, logger log.Logger) (err error
 	if err != nil {
 		return fmt.Errorf("opening tarball: %w", err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	gzipReader, err := gzip.NewReader(f)
 	if err != nil {
@@ -74,14 +74,14 @@ func extractTarball(tarPath, destDirectory string, logger log.Logger) (err error
 		}
 
 		if _, err := io.CopyN(f, tr, hdr.Size); err != nil {
-			f.Close()
+			_ = f.Close()
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return fmt.Errorf("archive truncated: unexpected EOF while extracting %s", hdr.Name)
 			}
 
 			return fmt.Errorf("extracting image data: %w", err)
 		}
-		f.Close()
+		_ = f.Close()
 
 		numFiles++
 	}

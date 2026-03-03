@@ -56,8 +56,8 @@ type tarEntry struct {
 // io.EOF mid-extraction — the specific scenario covered by BUG-02.
 func writeTruncatedTarGz(t *testing.T) string {
 	t.Helper()
-	declaredSize := int64(4096) // header says 4096 bytes
-	actualBody := []byte("short")  // only 5 bytes written
+	declaredSize := int64(4096)   // header says 4096 bytes
+	actualBody := []byte("short") // only 5 bytes written
 
 	var tarBuf bytes.Buffer
 	tw := tar.NewWriter(&tarBuf)

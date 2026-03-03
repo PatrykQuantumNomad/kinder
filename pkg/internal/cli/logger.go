@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package cli provides CLI helpers including logging, status display, and spinner.
 package cli
 
 import (

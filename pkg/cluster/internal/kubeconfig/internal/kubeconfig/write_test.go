@@ -36,7 +36,7 @@ func testWriteNoExistingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	kindConfig := &Config{
 		Clusters: []NamedCluster{

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package docker implements the docker cluster provider.
 package docker
 
 import (
@@ -242,7 +243,7 @@ func (p *provider) CollectLogs(dir string, nodes []nodes.Node) error {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
+			defer f.Close() //nolint:errcheck
 			return cmd.SetStdout(f).SetStderr(f).Run()
 		}
 	}

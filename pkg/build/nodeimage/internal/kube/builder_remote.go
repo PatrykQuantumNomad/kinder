@@ -68,7 +68,7 @@ func (b *remoteBuilder) Build() (Bits, error) {
 	success := false
 	defer func() {
 		if !success {
-			os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(tmpDir)
 		}
 	}()
 
@@ -118,7 +118,7 @@ func (b *remoteBuilder) downloadURL(url string, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("error creating file for download %q: %v", destPath, err)
 	}
-	defer output.Close()
+	defer output.Close() //nolint:errcheck
 
 	b.logger.V(0).Infof("Downloading %q", url)
 
@@ -151,7 +151,7 @@ func (b *remoteBuilder) downloadURL(url string, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("error doing HTTP fetch of %q: %v", url, err)
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() //nolint:errcheck
 
 	if response.StatusCode >= 400 {
 		return fmt.Errorf("error response from %q: HTTP %v", url, response.StatusCode)

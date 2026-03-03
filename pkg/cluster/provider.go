@@ -294,7 +294,7 @@ func collectNodeLogs(logger log.Logger, n nodes.Node, dir string) error {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
+			defer f.Close() //nolint:errcheck
 			return cmd.SetStdout(f).SetStderr(f).Run()
 		}
 	}
@@ -305,7 +305,7 @@ func collectNodeLogs(logger log.Logger, n nodes.Node, dir string) error {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
+			defer f.Close() //nolint:errcheck
 			return n.SerialLogs(f)
 		},
 		func() error {

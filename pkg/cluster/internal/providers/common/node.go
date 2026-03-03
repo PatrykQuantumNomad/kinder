@@ -37,6 +37,7 @@ func (n *Node) String() string {
 	return n.Name
 }
 
+// Role returns the role label value for this node container.
 func (n *Node) Role() (string, error) {
 	cmd := exec.Command(n.BinaryName, "inspect",
 		"--format", fmt.Sprintf(`{{ index .Config.Labels "%s"}}`, NodeRoleLabelKey),
@@ -52,6 +53,7 @@ func (n *Node) Role() (string, error) {
 	return lines[0], nil
 }
 
+// IP returns the IPv4 and IPv6 addresses of this node container.
 func (n *Node) IP() (ipv4 string, ipv6 string, err error) {
 	// retrieve the IP address of the node using container inspect
 	cmd := exec.Command(n.BinaryName, "inspect",
@@ -72,6 +74,7 @@ func (n *Node) IP() (ipv4 string, ipv6 string, err error) {
 	return ips[0], ips[1], nil
 }
 
+// Command returns an exec.Cmd to run the given command inside the node container.
 func (n *Node) Command(command string, args ...string) exec.Cmd {
 	return &nodeCmd{
 		binaryName: n.BinaryName,
@@ -81,6 +84,7 @@ func (n *Node) Command(command string, args ...string) exec.Cmd {
 	}
 }
 
+// CommandContext returns an exec.Cmd to run the given command inside the node container with a context.
 func (n *Node) CommandContext(ctx context.Context, command string, args ...string) exec.Cmd {
 	return &nodeCmd{
 		binaryName: n.BinaryName,
@@ -171,6 +175,7 @@ func (c *nodeCmd) SetStderr(w io.Writer) exec.Cmd {
 	return c
 }
 
+// SerialLogs writes the serial console logs of this node container to w.
 func (n *Node) SerialLogs(w io.Writer) error {
 	return exec.Command(n.BinaryName, "logs", n.Name).SetStdout(w).SetStderr(w).Run()
 }

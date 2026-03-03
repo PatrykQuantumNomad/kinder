@@ -73,7 +73,7 @@ func TestPathForMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	// create a fake homedir
 	homeDir := filepath.Join(dir, "fake-home")
@@ -90,7 +90,7 @@ func TestPathForMerge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create fake kubeconfig file: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	// test explicit kubeconfig
@@ -157,7 +157,7 @@ func TestHomeDir(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create tempdir: %v", err)
 		}
-		defer os.RemoveAll(dir)
+		defer os.RemoveAll(dir) //nolint:errcheck
 
 		// create the fake kubeconfig
 		fakeHomeDir := path.Join(dir, "fake-home")
@@ -169,7 +169,7 @@ func TestHomeDir(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create tempdir: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 
 		// this should return the fake kubeconfig
 		result := homeDir("windows", func(e string) string {
@@ -188,7 +188,7 @@ func TestHomeDir(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create tempdir: %v", err)
 		}
-		defer os.RemoveAll(fakeHomeDir)
+		defer os.RemoveAll(fakeHomeDir) //nolint:errcheck
 
 		// this should return the fake kubeconfig
 		result := homeDir("windows", func(e string) string {

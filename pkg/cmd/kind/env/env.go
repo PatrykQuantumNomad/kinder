@@ -62,9 +62,9 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	clusterName := flags.Name
 	kubeconfigPath := activeKubeconfigPath()
 
-	fmt.Fprintf(streams.Out, "KINDER_PROVIDER=%s\n", providerName)
-	fmt.Fprintf(streams.Out, "KIND_CLUSTER_NAME=%s\n", clusterName)
-	fmt.Fprintf(streams.Out, "KUBECONFIG=%s\n", kubeconfigPath)
+	fmt.Fprintf(streams.Out, "KINDER_PROVIDER=%s\n", providerName)  //nolint:errcheck
+	fmt.Fprintf(streams.Out, "KIND_CLUSTER_NAME=%s\n", clusterName) //nolint:errcheck
+	fmt.Fprintf(streams.Out, "KUBECONFIG=%s\n", kubeconfigPath)     //nolint:errcheck
 	return nil
 }
 

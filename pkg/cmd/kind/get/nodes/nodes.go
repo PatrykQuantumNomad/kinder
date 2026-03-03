@@ -103,7 +103,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	}
 
 	for _, node := range nodes {
-		fmt.Fprintln(streams.Out, node.String())
+		fmt.Fprintln(streams.Out, node.String()) //nolint:errcheck
 	}
 	return nil
 }

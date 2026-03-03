@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package create provides cluster creation logic and coordinates creation actions.
 package create
 
 import (
@@ -34,9 +35,9 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcni"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
-	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"

@@ -154,7 +154,7 @@ func testRemoveKINDTrivial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	// create an existing kubeconfig
 	const existingConfig = `clusters:
@@ -210,7 +210,7 @@ func testRemoveKINDKeepOther(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	// create an existing kubeconfig
 	const existingConfig = `clusters:

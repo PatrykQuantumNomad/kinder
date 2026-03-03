@@ -67,7 +67,7 @@ func read(configPath string) (*Config, error) {
 	} else if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	// otherwise read in and deserialize
 	cfg := &Config{}

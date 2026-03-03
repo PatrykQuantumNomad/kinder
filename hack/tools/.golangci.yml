@@ -1,33 +1,42 @@
+version: "2"
+
 run:
   timeout: 3m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - gochecknoinits
-    - gofmt
-    - revive # replaces golint for now
+    - revive
     - misspell
-    - exportloopref
     - unparam
+  settings:
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    rules:
+      # this requires renaming all unused parameters, we'd rather leave a preferred
+      # placeholder name in place when implementing an interface etc.
+      # we can revisit this later, right now it's generating a lot of new warnings
+      # after upgrading golangci-lint
+      - text: "^unused-parameter: .*"
+        linters:
+          - revive
+      # package names like 'common', 'errors', 'log', 'version' are established
+      # convention in this codebase; renaming would be a large refactor
+      - text: "^var-naming: avoid .* package names"
+        linters:
+          - revive
+      # test packages may use the same name as the package under test
+      - text: "^var-naming: avoid package names that conflict"
+        linters:
+          - revive
 
-linters-settings:
-  staticcheck:
-    checks:
-    - all
-
-issues:
-  exclude-rules:
-    # this requires renaming all unused parameters, we'd rather leave a preferred
-    # placeholder name in place when implementing an interface etc.
-    # we can revisit this later, right now it's generating a lot of new warnings
-    # after upgrading golangci-lint
-    - text: "^unused-parameter: .*"
-      linters:
-        - revive
+formatters:
+  enable:
+    - gofmt

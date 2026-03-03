@@ -395,7 +395,7 @@ func probeTCP(address string, timeout time.Duration) bool {
 
 	conn, err := net.DialTimeout("tcp", address, timeout)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		return true
 	}
 	if opErr, ok := err.(*net.OpError); ok {

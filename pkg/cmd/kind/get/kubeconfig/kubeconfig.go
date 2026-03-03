@@ -73,6 +73,6 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(streams.Out, cfg)
+	fmt.Fprintln(streams.Out, cfg) //nolint:errcheck
 	return nil
 }

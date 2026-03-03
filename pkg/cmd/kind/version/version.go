@@ -36,10 +36,10 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if logger.V(0).Enabled() {
 				// if not -q / --quiet, show lots of info
-				fmt.Fprintln(streams.Out, kindversion.DisplayVersion())
+				fmt.Fprintln(streams.Out, kindversion.DisplayVersion()) //nolint:errcheck
 			} else {
 				// otherwise only show semver
-				fmt.Fprintln(streams.Out, kindversion.Version())
+				fmt.Fprintln(streams.Out, kindversion.Version()) //nolint:errcheck
 			}
 			return nil
 		},

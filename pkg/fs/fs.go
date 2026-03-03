@@ -93,7 +93,7 @@ func copyFile(src, dst string, info os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer in.Close() //nolint:errcheck
 	// create dst file
 	// this is like f, err := os.Create(dst); os.Chmod(f.Name(), src.Mode())
 	out, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, info.Mode())

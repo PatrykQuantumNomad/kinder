@@ -45,5 +45,5 @@ func GetFreePort(listenAddr string) (int32, func(), error) {
 		return 0, nil, err
 	}
 	port := dummyListener.Addr().(*net.TCPAddr).Port
-	return int32(port), func() { dummyListener.Close() }, nil
+	return int32(port), func() { _ = dummyListener.Close() }, nil
 }

@@ -128,7 +128,7 @@ func (s *Spinner) Start() {
 					func() {
 						s.mu.Lock()
 						defer s.mu.Unlock()
-						fmt.Fprintf(s.writer, s.frameFormat, s.prefix, frame, s.suffix)
+						fmt.Fprintf(s.writer, s.frameFormat, s.prefix, frame, s.suffix) //nolint:errcheck
 					}()
 				}
 			}

@@ -111,11 +111,11 @@ func RunWithStdoutReader(cmd Cmd, readerFunc func(io.Reader) error) error {
 
 	return errors.AggregateConcurrent([]func() error{
 		func() error {
-			defer pr.Close()
+			defer pr.Close() //nolint:errcheck
 			return readerFunc(pr)
 		},
 		func() error {
-			defer pw.Close()
+			defer pw.Close() //nolint:errcheck
 			return cmd.Run()
 		},
 	})
@@ -131,11 +131,11 @@ func RunWithStdinWriter(cmd Cmd, writerFunc func(io.Writer) error) error {
 
 	return errors.AggregateConcurrent([]func() error{
 		func() error {
-			defer pw.Close()
+			defer pw.Close() //nolint:errcheck
 			return writerFunc(pw)
 		},
 		func() error {
-			defer pr.Close()
+			defer pr.Close() //nolint:errcheck
 			return cmd.Run()
 		},
 	})

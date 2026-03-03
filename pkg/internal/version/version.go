@@ -204,7 +204,7 @@ func (v *Version) String() string {
 		if i > 0 {
 			buffer.WriteString(".")
 		}
-		buffer.WriteString(fmt.Sprintf("%d", comp))
+		fmt.Fprintf(&buffer, "%d", comp)
 	}
 	if v.preRelease != "" {
 		buffer.WriteString("-")
@@ -302,8 +302,8 @@ func onlyZeros(array []uint) bool {
 // Versions are Semantic Versions, this will use the Semantic Version comparison
 // algorithm. Otherwise, it will compare only the numeric components, with non-present
 // components being considered "0" (ie, "1.4" is equal to "1.4.0").
-func (v *Version) AtLeast(min *Version) bool {
-	return v.compareInternal(min) != -1
+func (v *Version) AtLeast(minVersion *Version) bool {
+	return v.compareInternal(minVersion) != -1
 }
 
 // LessThan tests if a version is less than a given version. (It is exactly the opposite

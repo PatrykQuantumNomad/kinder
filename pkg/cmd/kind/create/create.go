@@ -38,7 +38,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return errors.New("Subcommand is required")
+			return errors.New("subcommand is required")
 		},
 	}
 	cmd.AddCommand(createcluster.NewCommand(logger, streams))

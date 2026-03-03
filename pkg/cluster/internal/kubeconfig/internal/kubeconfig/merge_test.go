@@ -238,7 +238,7 @@ func testWriteMergedNormal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	// create an existing kubeconfig
 	const existingConfig = `clusters:
@@ -358,7 +358,7 @@ func testWriteMergedBogusConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	err = WriteMerged(&Config{}, filepath.Join(dir, "bogus"))
 	assert.ExpectError(t, true, err)
@@ -370,7 +370,7 @@ func testWriteMergedNoExistingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create tempdir: %d", err)
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 
 	kindConfig := &Config{
 		Clusters: []NamedCluster{

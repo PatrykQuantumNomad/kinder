@@ -58,10 +58,10 @@ func WaitUntilLogRegexpMatches(logCtx context.Context, logCmd exec.Cmd, re *rege
 	logCmd.SetStdout(pw)
 	logCmd.SetStderr(pw)
 
-	defer pr.Close()
+	defer pr.Close() //nolint:errcheck
 	cmdErrC := make(chan error, 1)
 	go func() {
-		defer pw.Close()
+		defer pw.Close() //nolint:errcheck
 		cmdErrC <- logCmd.Run()
 	}()
 

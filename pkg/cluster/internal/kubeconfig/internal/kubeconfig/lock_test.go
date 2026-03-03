@@ -73,7 +73,7 @@ func TestLockStaleLockDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stale lock file: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Set the lock file's modification time to 10 minutes ago
 	staleTime := time.Now().Add(-10 * time.Minute)
@@ -115,7 +115,7 @@ func TestLockFreshLockNotRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create lock file: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// lockFile should fail because the lock is fresh (not stale)
 	if err := lockFile(filename); err == nil {
@@ -123,7 +123,7 @@ func TestLockFreshLockNotRemoved(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(lockPath)
+	_ = os.Remove(lockPath)
 }
 
 func TestLockCreatesDirectory(t *testing.T) {

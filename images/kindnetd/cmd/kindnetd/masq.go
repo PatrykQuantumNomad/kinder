@@ -65,7 +65,7 @@ func (ma *IPMasqAgent) SyncRulesForever(ctx context.Context, interval time.Durat
 		if err := ma.SyncRules(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to synchronize rules at %s: %v", time.Now(), err))
 			if len(errs) > 3 {
-				return fmt.Errorf("Can't synchronize rules after 3 attempts: %w", err)
+				return fmt.Errorf("can't synchronize rules after 3 attempts: %w", err)
 			}
 		} else {
 			errs = errs[:0]

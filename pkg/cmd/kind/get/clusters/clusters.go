@@ -58,7 +58,7 @@ func runE(logger log.Logger, streams cmd.IOStreams) error {
 		return nil
 	}
 	for _, cluster := range clusters {
-		fmt.Fprintln(streams.Out, cluster)
+		fmt.Fprintln(streams.Out, cluster) //nolint:errcheck
 	}
 	return nil
 }

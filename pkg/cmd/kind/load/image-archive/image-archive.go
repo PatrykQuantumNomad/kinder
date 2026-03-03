@@ -147,7 +147,7 @@ func loadImage(logger log.Logger, imageTarName string, node nodes.Node) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to open image")
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 	logger.V(2).Infof("Loading Docker Image from archive %s to node %s", imageTarName, node.String())
 	return nodeutils.LoadImageArchive(node, f)
 }

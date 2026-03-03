@@ -41,19 +41,25 @@ func lockFile(filename string) error {
 			if info, statErr := os.Stat(lockPath); statErr == nil {
 				if time.Since(info.ModTime()) > 5*time.Minute {
 					// Remove stale lock and retry once
-					os.Remove(lockPath)
+					if rmErr := os.Remove(lockPath); rmErr != nil {
+						return rmErr
+					}
 					f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL, 0)
 					if err != nil {
 						return err
 					}
-					f.Close()
+					if err := f.Close(); err != nil {
+						return err
+					}
 					return nil
 				}
 			}
 		}
 		return err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	return nil
 }
 

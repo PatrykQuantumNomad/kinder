@@ -89,7 +89,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []stri
 	// NOTE: the path is the output of this command to be captured by calling tools
 	// whereas "Exporting logs..." is info / debug (stderr)
 	logger.V(0).Infof("Exporting logs for cluster %q to:", flags.Name)
-	fmt.Fprintln(streams.Out, dir)
+	fmt.Fprintln(streams.Out, dir) //nolint:errcheck
 
 	// collect the logs
 	return provider.CollectLogs(flags.Name, dir)

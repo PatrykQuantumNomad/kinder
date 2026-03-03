@@ -110,12 +110,12 @@ func runE(streams cmd.IOStreams) error {
 	for _, r := range results {
 		switch r.status {
 		case "ok":
-			fmt.Fprintf(streams.ErrOut, "[ OK ] %s\n", r.name)
+			fmt.Fprintf(streams.ErrOut, "[ OK ] %s\n", r.name) //nolint:errcheck
 		case "warn":
-			fmt.Fprintf(streams.ErrOut, "[WARN] %s: %s\n", r.name, r.message)
+			fmt.Fprintf(streams.ErrOut, "[WARN] %s: %s\n", r.name, r.message) //nolint:errcheck
 			hasWarn = true
 		case "fail":
-			fmt.Fprintf(streams.ErrOut, "[FAIL] %s: %s\n", r.name, r.message)
+			fmt.Fprintf(streams.ErrOut, "[FAIL] %s: %s\n", r.name, r.message) //nolint:errcheck
 			hasFail = true
 		}
 	}
@@ -163,4 +163,3 @@ func checkKubectl() (found bool, working bool) {
 	}
 	return true, false
 }
-

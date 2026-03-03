@@ -302,7 +302,7 @@ func (c *buildContext) prePullImagesAndWriteManifests(bits kube.Bits, parsedVers
 			if err != nil {
 				return err
 			}
-			defer f.Close()
+			defer f.Close() //nolint:errcheck
 			return importer.LoadCommand().SetStdout(os.Stdout).SetStderr(os.Stderr).SetStdin(f).Run()
 			// we will rewrite / correct the tags in tagFns below
 		})

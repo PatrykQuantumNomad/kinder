@@ -175,7 +175,7 @@ func runE(logger log.Logger, flags *flagpole, args []string) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create tempdir")
 	}
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir) //nolint:errcheck
 	imagesTarPath := filepath.Join(dir, "images.tar")
 	// Save the images into a tar
 	err = save(imageNames, imagesTarPath)
@@ -201,7 +201,7 @@ func loadImage(imageTarName string, node nodes.Node) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to open image")
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 	return nodeutils.LoadImageArchive(node, f)
 }
 

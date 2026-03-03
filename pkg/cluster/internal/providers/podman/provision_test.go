@@ -148,7 +148,7 @@ func Test_generatePortMappings(t *testing.T) {
 				t.Errorf("arg[%d]: port %s not released after generatePortMappings returned (bind failed: %v) — indicates defer-in-loop bug", i, hostPort, bindErr)
 				continue
 			}
-			ln.Close()
+			_ = ln.Close()
 		}
 	})
 }
