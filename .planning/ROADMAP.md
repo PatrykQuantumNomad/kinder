@@ -39,7 +39,7 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
 ## Phases
 
 - [x] **Phase 19: Bug Fixes** - Fix four correctness bugs across all providers before any new work
-- [ ] **Phase 20: Provider Code Deduplication** - Extract shared docker/podman/nerdctl code to common/ package
+- [x] **Phase 20: Provider Code Deduplication** - Extract shared docker/podman/nerdctl code to common/ package
 - [ ] **Phase 21: Config Type Additions** - Add LocalRegistry and CertManager fields to v1alpha4 and wire through config pipeline
 - [ ] **Phase 22: Local Registry Addon** - Batteries-included local registry at localhost:5001 on the kind network
 - [ ] **Phase 23: cert-manager Addon** - Embedded cert-manager with self-signed ClusterIssuer ready immediately
@@ -73,7 +73,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 20-01-PLAN.md — Extract shared Node struct to common/node.go and update go.mod
-- [ ] 20-02-PLAN.md — Extract shared provision helpers to common/provision.go and restructure providers
+- [x] 20-02-PLAN.md — Extract shared provision helpers to common/provision.go and restructure providers
 
 ### Phase 21: Config Type Additions
 **Goal**: LocalRegistry and CertManager addon fields exist in the public v1alpha4 API and are wired through all five config pipeline locations so action packages can reference them at compile time
@@ -127,7 +127,7 @@ Plans:
 | 9-14. Kinder Website | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. Branding & Polish | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19. Bug Fixes | v1.3 | 2/2 | Complete | 2026-03-03 |
-| 20. Provider Code Deduplication | v1.3 | 1/2 | In progress | - |
+| 20. Provider Code Deduplication | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 21. Config Type Additions | v1.3 | 0/TBD | Not started | - |
 | 22. Local Registry Addon | v1.3 | 0/TBD | Not started | - |
 | 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |

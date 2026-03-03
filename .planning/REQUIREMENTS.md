@@ -17,7 +17,7 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 ### Provider Refactor
 
 - [x] **PROV-01**: Extract shared node.go to common/ package with binaryName parameter
-- [ ] **PROV-02**: Extract shared provision.go functions (generateMountBindings, generatePortMappings, createContainer) to common/
+- [x] **PROV-02**: Extract shared provision.go functions (generateMountBindings, generatePortMappings, createContainer) to common/
 - [x] **PROV-03**: Update go.mod minimum to go 1.21.0 with toolchain go1.26.0
 
 ### Config
@@ -87,7 +87,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | BUG-03 | Phase 19 | Complete |
 | BUG-04 | Phase 19 | Complete |
 | PROV-01 | Phase 20 | Complete |
-| PROV-02 | Phase 20 | Pending |
+| PROV-02 | Phase 20 | Complete |
 | PROV-03 | Phase 20 | Complete |
 | CFG-01 | Phase 21 | Pending |
 | CFG-02 | Phase 21 | Pending |
@@ -112,4 +112,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 — Phase 20 Plan 01 complete: PROV-01, PROV-03 done; BUG-03, BUG-04 marked complete*
+*Last updated: 2026-03-03 — Phase 20 Plan 02 complete: PROV-02 done; Phase 20 fully complete*

@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 20 of 24 (Provider Code Deduplication)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-03-03 — Phase 20 Plan 01 complete (provider node deduplication)
+Plan: 2 of 2 in current phase (phase complete)
+Status: Phase 20 complete
+Last activity: 2026-03-03 — Phase 20 Plan 02 complete (provision helper deduplication)
 
-Progress: [██░░░░░░░░] 21% (v1.3 — 1/6 phases complete, phase 20 plan 1/2 done)
+Progress: [███░░░░░░░] 25% (v1.3 — 2/6 phases complete, phase 20 2/2 done)
 
 ## Performance Metrics
 
@@ -25,6 +25,7 @@ Progress: [██░░░░░░░░] 21% (v1.3 — 1/6 phases complete, ph
 **Phase 19, Plan 01:** 2 tasks, 8 files modified, ~25 min, 2026-03-03
 **Phase 19, Plan 02:** 2 tasks, 4 files modified, ~4 min, 2026-03-03
 **Phase 20, Plan 01:** 2 tasks, 6 files modified + 3 deleted, ~15 min, 2026-03-03
+**Phase 20, Plan 02:** 2 tasks, 6 created + 4 deleted, ~15 min, 2026-03-03
 
 ## Accumulated Context
 
@@ -37,6 +38,7 @@ Progress: [██░░░░░░░░] 21% (v1.3 — 1/6 phases complete, ph
 - v1.3 Phase 19-01: Release port listeners immediately in generatePortMappings loops (not deferred); return truncation error from extractTarball instead of silent break
 - v1.3 Phase 19-02: All Provider methods accepting cluster name must wrap with defaultName(); sort.Slice primary/secondary key comparators must use != guard (not >-only) for strict weak ordering
 - v1.3 Phase 20-01: Use exported Node struct with BinaryName string field (not interface/callback) for provider dispatch; keep nodeCmd unexported; go.mod to go 1.21.0 with toolchain go1.26.0
+- v1.3 Phase 20-02: CreateContainer takes binaryName as first parameter to support both docker and nerdctl from a single common function; podman keeps its own generatePortMappings (lowercase protocol, :0 strip); docker and nerdctl provision.go deleted in favour of create.go files calling common helpers
 
 ### Pending Todos
 
@@ -50,5 +52,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 20 Plan 01 complete — provider node deduplication done, ready for Plan 02
+Stopped at: Phase 20 Plan 02 complete — provider code deduplication phase done
 Resume file: None
