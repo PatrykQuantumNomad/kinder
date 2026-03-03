@@ -121,7 +121,9 @@ Plans:
   2. kinder env writes all warnings and errors to stderr only, leaving stdout clean for machine consumption
   3. kinder doctor checks binary prerequisites (docker/podman/nerdctl, kubectl) and prints an actionable fix message for each missing or misconfigured binary
   4. kinder doctor exits 0 when all checks pass, exits 1 on any hard failure, and exits 2 on warnings — scripts can distinguish warning from failure
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 24-01-PLAN.md — Create kinder env and kinder doctor commands with Provider.Name() method and root.go wiring
 
 ## Progress
 
@@ -137,7 +139,7 @@ Plans:
 | 21. Config Type Additions | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 22. Local Registry Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 23. cert-manager Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
-| 24. CLI Commands | v1.3 | 0/TBD | Not started | - |
+| 24. CLI Commands | v1.3 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-03 — v1.3 Harden & Extend roadmap added*
