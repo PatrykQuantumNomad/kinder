@@ -81,6 +81,8 @@ type Addons struct {
 	MetricsServer bool
 	CoreDNSTuning bool
 	Dashboard     bool
+	LocalRegistry bool
+	CertManager   bool
 }
 
 // Node contains settings for a node in the `kind` Cluster.

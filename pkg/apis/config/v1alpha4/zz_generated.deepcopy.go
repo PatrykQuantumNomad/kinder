@@ -49,6 +49,16 @@ func (in *Addons) DeepCopyInto(out *Addons) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.LocalRegistry != nil {
+		in, out := &in.LocalRegistry, &out.LocalRegistry
+		*out = new(bool)
+		**out = **in
+	}
+	if in.CertManager != nil {
+		in, out := &in.CertManager, &out.CertManager
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 

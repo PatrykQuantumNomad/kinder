@@ -107,6 +107,12 @@ type Addons struct {
 	// Dashboard enables the Kubernetes Dashboard (Headlamp).
 	// +optional (default: true)
 	Dashboard *bool `yaml:"dashboard,omitempty" json:"dashboard,omitempty"`
+	// LocalRegistry enables a local container registry at localhost:5001.
+	// +optional (default: true)
+	LocalRegistry *bool `yaml:"localRegistry,omitempty" json:"localRegistry,omitempty"`
+	// CertManager enables cert-manager with a self-signed ClusterIssuer.
+	// +optional (default: true)
+	CertManager *bool `yaml:"certManager,omitempty" json:"certManager,omitempty"`
 }
 
 // TypeMeta partially copies apimachinery/pkg/apis/meta/v1.TypeMeta

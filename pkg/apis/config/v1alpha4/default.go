@@ -88,6 +88,8 @@ func SetDefaultsCluster(obj *Cluster) {
 	boolPtrTrue(&obj.Addons.MetricsServer)
 	boolPtrTrue(&obj.Addons.CoreDNSTuning)
 	boolPtrTrue(&obj.Addons.Dashboard)
+	boolPtrTrue(&obj.Addons.LocalRegistry)
+	boolPtrTrue(&obj.Addons.CertManager)
 }
 
 // SetDefaultsNode sets uninitialized fields to their default value.
