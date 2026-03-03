@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"sigs.k8s.io/kind/pkg/cmd/kind/version"
+	"sigs.k8s.io/kind/pkg/internal/kindversion"
 
 	"sigs.k8s.io/kind/pkg/cluster/constants"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
@@ -261,7 +261,7 @@ func (p *Provider) CollectLogs(name, dir string) error {
 	// write kind version
 	if err := os.WriteFile(
 		filepath.Join(dir, "kind-version.txt"),
-		[]byte(version.DisplayVersion()),
+		[]byte(kindversion.DisplayVersion()),
 		0666, // match os.Create
 	); err != nil {
 		return errors.Wrap(err, "failed to write kind-version.txt")

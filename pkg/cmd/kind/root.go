@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cmd/kind/get"
 	"sigs.k8s.io/kind/pkg/cmd/kind/load"
 	"sigs.k8s.io/kind/pkg/cmd/kind/version"
+	"sigs.k8s.io/kind/pkg/internal/kindversion"
 	"sigs.k8s.io/kind/pkg/log"
 )
 
@@ -53,7 +54,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       version.Version(),
+		Version:       kindversion.Version(),
 	}
 	cmd.SetOut(streams.Out)
 	cmd.SetErr(streams.ErrOut)
