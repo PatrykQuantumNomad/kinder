@@ -18,6 +18,7 @@ package docker
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"sigs.k8s.io/kind/pkg/internal/assert"
@@ -95,6 +96,35 @@ func Test_sortNetworkInspectEntries(t *testing.T) {
 			},
 		},
 		{
+			// BUG-04: network with more containers must sort first even when its ID
+			// is lexicographically greater than the network with fewer containers.
+			// The buggy comparator evaluates less(zzzz, aaaa): 1 > 0 = true, so it
+			// places zzzz before aaaa during that comparison. But less(aaaa, zzzz):
+			// 0 > 1 = false, falls through to "aaaa" < "zzzz" = true — meaning aaaa
+			// is also "less than" zzzz. This violates strict weak ordering and causes
+			// sort.Slice to place aaaa first when zzzz appears first in the input.
+			Name: "more containers wins over lower ID",
+			Networks: []networkInspectEntry{
+				{
+					// zzzz listed first, 1 container — should still sort first after fix
+					ID: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+					Containers: map[string]map[string]string{
+						"c1": {"Name": "node1"},
+					},
+				},
+				{ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			},
+			Sorted: []networkInspectEntry{
+				{
+					ID: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+					Containers: map[string]map[string]string{
+						"c1": {"Name": "node1"},
+					},
+				},
+				{ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			},
+		},
+		{
 			Name: "containers attached sort",
 			Networks: []networkInspectEntry{
 				{
@@ -158,5 +188,47 @@ func Test_sortNetworkInspectEntries(t *testing.T) {
 			sortNetworkInspectEntries(toSort)
 			assert.DeepEqual(t, tc.Sorted, toSort)
 		})
+	}
+}
+
+// Test_sortNetworkInspectEntries_Deterministic verifies that repeated sorting
+// of the same input always produces identical output — a requirement for stable
+// duplicate-network removal. A non-deterministic sort could pick different
+// "winner" networks across runs.
+func Test_sortNetworkInspectEntries_Deterministic(t *testing.T) {
+	t.Parallel()
+
+	input := []networkInspectEntry{
+		{ID: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+		{
+			ID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			Containers: map[string]map[string]string{
+				"c1": {"Name": "node-a"},
+			},
+		},
+		{ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{
+			ID: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+			Containers: map[string]map[string]string{
+				"c2": {"Name": "node-b"},
+			},
+		},
+		{ID: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+	}
+
+	// Perform the first sort to establish the canonical result.
+	first := make([]networkInspectEntry, len(input))
+	copy(first, input)
+	sortNetworkInspectEntries(first)
+
+	// Sort the same input 99 more times and confirm the result is identical.
+	for i := 0; i < 99; i++ {
+		run := make([]networkInspectEntry, len(input))
+		copy(run, input)
+		sortNetworkInspectEntries(run)
+		if !reflect.DeepEqual(first, run) {
+			t.Errorf("sort was non-deterministic: run %d produced different order", i+2)
+			return
+		}
 	}
 }

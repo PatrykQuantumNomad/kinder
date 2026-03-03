@@ -203,9 +203,14 @@ func sortedNetworksWithName(name string) ([]string, error) {
 
 func sortNetworkInspectEntries(networks []networkInspectEntry) {
 	sort.Slice(networks, func(i, j int) bool {
-		// we want networks with active containers first
-		if len(networks[i].Containers) > len(networks[j].Containers) {
-			return true
+		// we want networks with active containers first;
+		// use iLen != jLen guard to satisfy strict weak ordering — without it
+		// both less(i,j) and less(j,i) can return true when counts differ,
+		// causing undefined sort behaviour.
+		iLen := len(networks[i].Containers)
+		jLen := len(networks[j].Containers)
+		if iLen != jLen {
+			return iLen > jLen
 		}
 		return networks[i].ID < networks[j].ID
 	})
