@@ -1,258 +1,501 @@
-# Feature Landscape
+# Feature Research
 
-**Domain:** Kubernetes local development CLI tool — v1.3 Harden & Extend milestone
+**Domain:** Kubernetes local development CLI tool — code quality and new capabilities milestone
 **Researched:** 2026-03-03
-**Confidence:** HIGH (based on direct codebase analysis + official docs for kind, cert-manager, registry:2)
+**Confidence:** HIGH (codebase direct analysis + official docs + current tooling patterns)
 
 ---
 
-## Context
+## Context and Scope
 
-This research covers the **v1.3 milestone**, not the v1.1 website work. The four feature areas are:
+This research answers five specific questions about feature patterns for adding to the **existing** kinder codebase:
 
-1. **Local registry addon** — `addons.localRegistry: true`, replaces kind's external shell script pattern
-2. **cert-manager addon** — `addons.certManager: true`, TLS management for local services
-3. **`kinder env` command** — Show cluster environment/config info for debugging
-4. **`kinder doctor` command** — Diagnose common setup issues before they cause cluster creation failures
-5. **Provider code deduplication** — Extract shared docker/podman/nerdctl code to `common/` package
+1. Parallel addon/component installation with dependency ordering
+2. Structured JSON output (`--output=json`) for CLI commands
+3. Cluster presets/profiles
+4. Addon self-registration registry patterns
+5. Unit testing patterns for code that calls kubectl/applies manifests
 
-There are also **four bug fixes** that are table stakes for this milestone (not new features, but blocking quality). These are documented separately in PITFALLS.md.
-
-The existing Addons struct is `{MetalLB, EnvoyGateway, MetricsServer, CoreDNSTuning, Dashboard}`, all `*bool`. New addons follow the same `*bool` opt-out pattern.
+The existing implementation status:
+- 7 addons install **sequentially** in `create.go` via a `runAddon()` helper loop
+- CLI output is **human-only** (`fmt.Fprintf` / `logger.V(0).Infof`)
+- **No presets** — users must write full YAML config files
+- **Addon registration is hard-coded** in 4 places: `create.go` imports, `create.go` `runAddon()` calls, `config/v1alpha4/types.go` `Addons` struct, `internal/apis/config/types.go` `Addons` struct
+- **Unit tests exist only for pure functions** (subnet math, corefile text manipulation, log message formatting, timer logic) — no tests for the addon `Execute()` path that calls `node.Command()`
 
 ---
 
-## Table Stakes
+## Feature Landscape
 
-Features users expect from a batteries-included Kubernetes tool. Missing these makes v1.3 feel incomplete or unreliable.
+### Table Stakes (Users Expect These)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Local registry at `localhost:5001` | kind docs show this as the recommended pattern; every "kind + local dev" tutorial uses it; developers expect `docker push localhost:5001/myapp:tag` to just work | MEDIUM | Must create a `registry:2` container, configure containerd on every node via `/etc/containerd/certs.d/localhost:5001/hosts.toml`, create the `kind` network connection, and post the discovery ConfigMap to `kube-public/local-registry-hosting` |
-| ConfigMap discovery for local registry | Tilt, Skaffold, and other dev tools look for `kube-public/local-registry-hosting` ConfigMap to auto-detect the registry; without it, third-party tools won't auto-configure | LOW | A single ConfigMap apply after registry container is up; data key is `localRegistryHosting.v1` |
-| cert-manager installs and CRDs are ready | Users who enable `certManager: true` expect `kubectl apply -f my-certificate.yaml` to work immediately after cluster creation; CRD not-ready errors are silent killers | MEDIUM | cert-manager single-manifest install (all CRDs + controller in one YAML); must wait for webhook deployment readiness before cluster reported ready |
-| Self-signed ClusterIssuer bootstrapped | cert-manager alone is not useful; a `ClusterIssuer` named `selfsigned` must exist so users can immediately create certificates without any manual setup | LOW | Two-resource apply: `ClusterIssuer` (selfSigned) + a CA `Certificate` + a CA `Issuer`; or minimally just the `ClusterIssuer`; depends on target use case |
-| `kinder env` output machine-readable or clearly structured | CLI diagnostic commands must produce parseable output; mixing prose with data prevents scripting | LOW | Follow Go CLI convention: key=value lines or a clear table; support `--json` or structured format |
-| `kinder env` shows provider, node image, cluster name, config path | These are the four things developers look up when something goes wrong ("which docker am I using?", "what image version?") | LOW | All data available from existing provider detection + config loading code; no new infrastructure needed |
-| `kinder doctor` checks binary prerequisites | Checks that docker/podman/nerdctl is available and running before create; users expect an explicit diagnostic step, not cryptic "failed to list clusters" errors | LOW | Path lookup + a `docker info`/`podman info`/`nerdctl info` call; fail fast with actionable message |
-| `kinder doctor` checks resource availability | Memory and disk space warnings before cluster creation prevents confusing OOM failures mid-cluster-setup | MEDIUM | Platform-specific syscall or parsing `/proc/meminfo`; 4GB RAM and 10GB disk are reasonable minimum thresholds for kind clusters |
-| Provider code deduplication does not break existing behavior | Any refactoring of docker/podman/nerdctl providers must produce identical runtime behavior; this is pure internal quality work | HIGH | The three provider files share 70-80% logic; only the binary name and minor behavioral quirks differ; extract to `common/` without changing observable behavior |
-| Bug fixes ship in v1.3 | The four identified bugs (defer-in-loop port leak, tar extraction data loss, ListInternalNodes default name, network sort) are correctness issues; they must be fixed | LOW-MEDIUM | Each bug is self-contained; see PITFALLS.md for details |
+| JSON output for `kinder get clusters` and `kinder env` | Any tool used in CI/CD scripts must be machine-readable; users pipe output to `jq`; `--output=json` is the kubectl convention | LOW | Add `--output` flag defaulting to `text`; marshal struct to `encoding/json`; no new dependencies; `kinder env` already has structured data |
+| JSON output for `kinder doctor` | Automated setup scripts need parseable pass/fail per check; human text can't be reliably parsed | LOW | Same pattern: `--output json` marshals `[]result` struct; exit codes stay the same |
+| Unit tests for addon `Execute()` paths | Go projects with untested execution paths cannot be safely refactored; when adding parallel execution, tests prevent regressions; reviewers expect test coverage | HIGH | Requires mock `Node` interface implementing `exec.Cmder`; the `Node` type IS an interface already (in `pkg/cluster/nodes/types.go`) — this is the key insight; no monkey-patching needed |
+| Preset `--profile minimal` (no addons) | Developers creating scratch clusters for kubeadm testing don't want MetalLB/cert-manager/etc.; zero-addon cluster should be one flag, not a full YAML file | LOW | Named preset = pre-built `Addons{}` struct value; `--profile` flag applied before config is parsed; 3–5 built-in presets cover 90% of use cases |
+| Addon install summary with timing | Users waiting 3–5 minutes for addon installs want to know "which one is slow?"; `* MetalLB installed (8s)` vs `* cert-manager installed (47s)` | LOW | Already have `logAddonSummary()`; add `time.Since(start)` per addon; no arch change |
 
----
-
-## Differentiators
-
-Features that go beyond what kind offers or what users minimally expect. These are what make kinder's batteries-included promise feel complete.
+### Differentiators (Competitive Advantage)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Registry addon integrated with containerd config patches | kind's official local registry guide is a 50-line shell script that users must run manually; kinder does it via `addons.localRegistry: true` in YAML — same interface as all other addons | MEDIUM | Uses `ContainerdConfigPatches` mechanism already in kind config to inject `config_path` into containerd; then patches each node's `/etc/containerd/certs.d/` directory post-creation |
-| cert-manager as default-enabled addon (or easy opt-in) | No other kind-based tool ships cert-manager integrated; developers doing TLS work spend 30-60 minutes manually setting it up for every cluster | MEDIUM | Must embed the cert-manager release manifest (currently v1.17.x, ~1.5MB YAML); wait for cert-manager webhook pod readiness before proceeding |
-| `kinder doctor` checks addon-specific prerequisites | MetalLB requires subnet detection (macOS/Windows warning is already implemented); cert-manager requires cert-manager CRDs to be ready; a doctor command should surface these in advance | MEDIUM | Requires knowing which addons are enabled in the current config; doctor should accept a `--config` flag or infer from default config location |
-| `kinder env` shows which addons are enabled | When debugging a cluster, knowing "did cert-manager actually get installed?" is the first question; `kinder env` should show the enabled/disabled state of each addon | LOW | Requires reading the config that was used to create the cluster; consider storing config summary in a cluster label or file |
-| Pull-through cache mode for local registry | Configuring the registry as a Docker Hub mirror eliminates rate limiting in CI and speeds up iterative development; kind has an open issue requesting this | HIGH | Requires passing mirror config to containerd; adds complexity to registry setup; defer to v1.4 unless trivially composable |
-| `kinder doctor` output has exit codes | Scripts testing infrastructure rely on `kinder doctor && kinder create cluster`; non-zero exit code on failure enables this pattern | LOW | Standard CLI convention; just ensure `os.Exit(1)` on any failed check |
+| Parallel addon installation with dependency graph | cert-manager and MetalLB have no dependencies on each other; installing them concurrently cuts total create time by ~40–50s; no comparable kind-based tool does this | MEDIUM | Use `errgroup` from `golang.org/x/sync`; model dependencies as `[]string` field on each addon descriptor; toposort into waves; run each wave with `errgroup.Go()`; thread-safety concern: `cli.Status` and `logger` must be goroutine-safe |
+| Addon self-registration via `init()` | Adding a new addon currently requires edits in 4 files; self-registration cuts this to 1 file (the new addon package); minikube uses a dual-registry approach; the Go `init()` + map pattern is the standard for this | MEDIUM | Central `registry.go` with `var registry map[string]AddonDescriptor`; each addon package calls `Register()` in `init()`; blank imports in `create.go` trigger registration; `Addons` struct becomes `map[string]bool` or is generated from registry; this is the most architecturally significant change |
+| Preset `--profile gateway` (MetalLB + Envoy + cert-manager) | API gateway development workflow is the most common advanced use case; a single flag enabling the right 3 addons is a DX win | LOW | Extends the same preset map; just an `Addons{}` with `EnvoyGateway: true, MetalLB: true, CertManager: true` |
+| Preset `--profile ci` (no dashboard, no registry) | CI environments don't need UI or push targets; a CI preset disables the heavy addons that slow cluster creation | LOW | Same preset map; `Dashboard: false, LocalRegistry: false`; headless cluster creation |
+| Architecture: `--addons` flag as CLI override | minikube supports `minikube start --addons=ingress,dashboard`; kinder could support `kinder create cluster --addons=metallb,cert-manager` to override config-file defaults | MEDIUM | Parses comma-separated list; maps to `Addons` struct fields; must be composable with `--profile` |
 
----
+### Anti-Features (Commonly Requested, Often Problematic)
 
-## Anti-Features
-
-Features that seem relevant but should explicitly not be built in v1.3.
-
-| Anti-Feature | Why Requested | Why Problematic | What to Do Instead |
-|--------------|---------------|-----------------|-------------------|
-| Harbor as local registry | Harbor has a UI, scanning, RBAC, replication — "proper" registry | Harbor requires Helm; requires 3+ pods; 500MB+ images; defeats local dev zero-config goal | Use `registry:2` (Docker Distribution); it's 25MB, zero config, sufficient for local push/pull |
-| ACME/Let's Encrypt issuer in cert-manager addon | "Real" TLS for local services | ACME requires internet reachability and public DNS; local clusters can't get Let's Encrypt certs | Ship with self-signed `ClusterIssuer` only; document that ACME issuers require additional setup |
-| cert-manager trust-manager addon | Distributes CA certs across namespaces automatically | Adds another CRD bundle and controller; cross-namespace trust is an edge case for local dev | Document that users needing cross-namespace trust can install trust-manager separately |
-| Interactive `kinder doctor --fix` | Auto-fixing detected issues (e.g., starting Docker daemon) | Side effects without user consent are dangerous; "fix" for one issue may break something else | Print clear instructions for how to fix each issue; leave execution to the user |
-| `kinder doctor` as an ongoing health monitor | Polling cluster health | This is `kubectl get componentstatuses` territory; doctor is a pre-creation diagnostic tool, not a monitoring agent | Keep doctor as a point-in-time check; document `kubectl get nodes` and `kubectl cluster-info` for runtime health |
-| Registry UI (docker registry UI) | Visual interface for browsing pushed images | Adds a second container; requires port mapping; not standard in kind-like tools | Use `docker images` or `curl localhost:5001/v2/_catalog` for introspection; document in addon docs |
-| Helm-based cert-manager install | Helm gives more configuration options | Kinder has explicitly avoided Helm as a dependency (PROJECT.md constraint); Helm install adds complexity | Embed the official cert-manager `kubectl apply` manifest; pin a specific version |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Full DAG-based parallel with cycle detection | Terraform/helmfile do this for large dependency graphs | Kinder has 7 addons with shallow dependencies; a 50-line DAG implementation for 7 nodes is over-engineering; cycle detection adds 200+ lines for zero real benefit | Use wave-based parallelism: pre-defined dependency layers (wave 1: MetalLB + LocalRegistry; wave 2: EnvoyGateway + CertManager; etc.); no runtime graph construction needed |
+| Plugin system for external addons | Users want to add their own addons without rebuilding | Requires plugin ABI stability, versioning, security review, documentation; this is a 2+ sprint feature | Provide clear guidelines for contributing addons upstream; the `init()` self-registration pattern makes adding new addons trivial for contributors |
+| Async (non-blocking) addon install | "Don't wait, let me use the cluster while addons install" | MetalLB must be ready before Envoy Gateway needs LoadBalancer IPs; cert-manager webhook must be ready before Certificate resources work; async install violates these dependencies silently | Parallel WITHIN dependency waves, synchronous BETWEEN waves; faster without the complexity or silent failure modes |
+| Dynamic output format switching per subcommand | Different `--format` options for each command (e.g., `--format wide` for nodes, `--format json` for env) | Inconsistent flag names across commands confuse users; kubectl standardized on `-o`/`--output` | Use `--output` (matching kubectl convention) with values `text|json`; keep it to two modes only |
+| YAML output (`--output=yaml`) | YAML is human-readable structured output | kinder's output types are not Kubernetes resources; marshaling to YAML adds a gopkg.in/yaml.v2 dependency for minimal benefit; `jq` works on JSON anyway | JSON only; document `yq` for users who need YAML |
+| Interactive TUI for addon selection | "Let me check boxes for which addons I want" | Requires terminal capability detection, arrow-key handling, escape codes; fundamentally incompatible with CI usage | Presets cover the 90% case; YAML config covers the 10% case |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Local Registry Addon
-    requires──> ContainerdConfigPatches mechanism (already in kind/kinder config)
-    requires──> Provider.Provision() completes (nodes must exist before patching containerd)
-    requires──> Network connection between registry container and kind network
-    enables──> cert-manager addon can pull images from registry (optional but nice)
-    enables──> Any future CI/CD addon that needs a push target
+Parallel Addon Installation
+    requires──> Addon self-registration registry (to know which addons exist and their deps)
+    OR
+    requires──> Hard-coded wave definitions in create.go (simpler path, less arch change)
+    requires──> goroutine-safe logger (verify: kind's logger IS goroutine-safe per sync.Mutex in cli.Status)
+    requires──> goroutine-safe cli.Status (verify before enabling parallel)
+    enhances──> Cluster creation time (40–50s faster for full addon suite)
+    conflicts──> Sequential runAddon() loop in create.go (must be replaced)
 
-cert-manager Addon
-    requires──> Cluster is running (CRDs applied via kubectl)
-    requires──> waitforready action completes (apiserver must be up)
-    enables──> Envoy Gateway TLS termination (existing addon gains TLS capability)
-    enables──> any user Certificate resources
-    ordering──> Must come AFTER Envoy Gateway addon (so cert-manager can issue certs
-                for Gateway routes if desired; Gateway CRDs must exist first)
+Addon Self-Registration Registry
+    requires──> New AddonDescriptor type (Name, Dependencies []string, Enabled func(*config.Addons) bool, Action func() actions.Action)
+    requires──> Central registry.go file
+    requires──> Each addon package gets an init() calling Register()
+    requires──> Blank imports in create.go trigger init() calls
+    enables──> Parallel installation (registry has dependency metadata)
+    enables──> --addons CLI flag (registry knows addon names)
+    conflicts──> Current hard-coded Addons struct (must be updated or generated)
+    WARNING──> Breaking change to config API if Addons struct changes shape
 
-kinder env command
-    requires──> Existing provider detection code (already in pkg/cluster/provider.go)
-    requires──> Config loading machinery (already in pkg/internal/apis/config/encoding/)
-    no new infrastructure needed
+JSON Output
+    requires──> --output flag added to affected commands (get clusters, get nodes, env, doctor)
+    requires──> Struct-based return values from underlying functions (already true for doctor/env)
+    no dependency on──> Self-registration or parallel install
 
-kinder doctor command
-    requires──> Binary detection code (same as provider detection)
-    enhanced by──> Reading config file to know which addons to check
-    depends on──> kinder env output (may share underlying data gathering)
+Cluster Presets
+    requires──> --profile flag on `kinder create cluster`
+    requires──> Pre-built Addons{} preset map in code
+    no dependency on──> Self-registration or parallel install (presets just set Addons{} values)
+    enhances──> UX of parallel install (presets give users fast paths to common configs)
 
-Provider Deduplication
-    requires──> Understanding all three provider implementations (done: analysis above)
-    blocks──> Adding Binary() method uniformly to all providers (nerdctl already has it;
-              docker and podman hardcode the binary name as a const)
-    enables──> Local registry addon (registry container management reuses provider binary)
-    enables──> Easier future provider additions
-    risk──> Must not change observable behavior; needs tests for all three providers
+Unit Tests for Addon Execute()
+    requires──> Mock Node implementation (Node IS an interface; write fakeNode{} with FakeCmd behavior)
+    requires──> Extract pure logic from Execute() for separate unit testing
+    enhances──> Safety of parallel install refactor
+    no conflict with──> Any other feature
 ```
 
 ### Dependency Notes
 
-- **Provider deduplication should come first:** The local registry addon needs to manage a registry container using whichever container runtime is active (docker/podman/nerdctl). If provider code is consolidated first, the registry addon can use the provider's binary uniformly. If not, registry will hardcode the binary or add its own detection.
-- **cert-manager requires embedded manifest:** At ~1.5MB, the cert-manager YAML is larger than MetalLB (~300KB). The `go:embed` approach (already used for all other addons) handles this without issue. The file must be version-pinned.
-- **Local registry is provider-aware:** On Docker, the registry container connects to the `kind` Docker network. On Podman, networking differences may apply (Podman uses a different network model for rootless). On nerdctl, the network is nerdctl-specific. The registry addon must use the detected provider binary consistently.
-- **`kinder doctor` is additive:** It adds a new top-level command alongside `create`, `delete`, `get`. It follows the existing Cobra command pattern in `pkg/cmd/kind/`.
+- **Self-registration is not required for parallel install.** Wave-based parallelism (hard-coded dependency layers) can be implemented without changing the addon registry architecture. This is the pragmatic path: ship parallel install first, self-registration as a follow-on.
+- **JSON output is independent.** It can be added to any command without touching addon install or presets. Start here — lowest complexity, highest CI value.
+- **Presets are independent.** A `--profile` flag with a `map[string]Addons{}` constant map takes ~50 lines. No architecture change needed.
+- **Unit tests are independent.** Write `fakeNode{}` once; use it across all addon test files. The existing test in `installcorednstuning/corefile_test.go` proves the pattern: test pure functions without a running cluster. The addon `Execute()` can be split into pure functions + one integration entry point.
+- **The safest order is: unit tests → JSON output → presets → parallel install → self-registration (optional)**. Each step is independently shippable and tested.
 
 ---
 
-## MVP Definition for v1.3
+## How Similar Tools Implement These Features
 
-### Must Ship (v1.3)
+### (1) Parallel Addon Installation with Dependency Ordering
 
-The minimum changes that fulfill the milestone promise.
+**minikube:** Sequential. Each `EnableOrDisableAddon` callback runs synchronously. Dependency checks are pre-flight validations (e.g., `isRuntimeContainerd`), not ordering mechanisms. No parallel installation.
 
-- Bug fixes (defer-in-loop, tar extraction, ListInternalNodes default name, network sort) — correctness, not optional
-- Provider code deduplication — precondition for registry addon; also reduces drift risk
-- Local registry addon (`addons.localRegistry: true`) with registry container, containerd config, and discovery ConfigMap
-- cert-manager addon (`addons.certManager: true`) with embedded manifest and self-signed ClusterIssuer
-- `kinder env` command showing provider, node image, cluster name, addon states
-- `kinder doctor` command checking binary availability, daemon running, resource minimums
-- Updated `go.mod` minimum version and dependency pins
+**helmfile:** Uses a true DAG — topological sort of release dependencies, then concurrent execution within dependency waves using goroutines. Overkill for 7 addons.
 
-### Explicitly Out of Scope for v1.3
+**Terraform:** Full DAG with up to N parallel operations (`-parallelism` flag). Each node unblocks downstream nodes when complete.
 
-- Pull-through cache mode for local registry — added complexity, defer to v1.4
-- trust-manager alongside cert-manager — edge case, defer
-- `kinder doctor --fix` auto-remediation — too risky
-- ACME/Let's Encrypt issuer — requires internet, not suitable for local dev
+**Recommended pattern for kinder (LOW complexity, HIGH value):**
+
+```go
+// Wave-based parallel install — no DAG needed for 7 addons
+type addonWave []struct {
+    name    string
+    enabled bool
+    action  actions.Action
+}
+
+waves := []addonWave{
+    // Wave 1: independent addons (no deps on each other)
+    {{"Local Registry", cfg.Addons.LocalRegistry, installlocalregistry.NewAction()},
+     {"MetalLB", cfg.Addons.MetalLB, installmetallb.NewAction()},
+     {"Metrics Server", cfg.Addons.MetricsServer, installmetricsserver.NewAction()},
+     {"CoreDNS Tuning", cfg.Addons.CoreDNSTuning, installcorednstuning.NewAction()}},
+    // Wave 2: depends on Wave 1 (EnvoyGateway needs MetalLB for LB IPs)
+    {{"Envoy Gateway", cfg.Addons.EnvoyGateway, installenvoygw.NewAction()},
+     {"Cert Manager", cfg.Addons.CertManager, installcertmanager.NewAction()}},
+    // Wave 3: depends on Wave 2 (Dashboard can start after networking is up)
+    {{"Dashboard", cfg.Addons.Dashboard, installdashboard.NewAction()}},
+}
+
+for _, wave := range waves {
+    g := errgroup.Group{}
+    for _, a := range wave {
+        a := a // capture
+        g.Go(func() error {
+            return runAddon(ctx, a.name, a.enabled, a.action)
+        })
+    }
+    if err := g.Wait(); err != nil { /* warn and continue */ }
+}
+```
+
+**Key concern:** `cli.Status` in `ActionContext` uses a spinner/progress indicator. Concurrent writes to it will interleave output. Solution: each goroutine gets its own status line, or use a mutex-protected aggregator, or suppress per-addon status and collect results.
+
+**Confidence:** HIGH (pattern from helmfile/terraform; errgroup is stdlib-adjacent; wave approach is proven in Go CI tooling)
 
 ---
 
-## Complexity Assessment
+### (2) Structured JSON Output (`--output=json`)
 
-| Feature | Estimated Complexity | Primary Risk |
-|---------|---------------------|--------------|
-| Bug fixes (4 bugs) | LOW each | Regression if not tested |
-| Provider deduplication | HIGH | Breaking behavioral changes in one of three providers |
-| Local registry addon | MEDIUM | Networking differences across Docker/Podman/nerdctl providers |
-| cert-manager addon | MEDIUM | Webhook readiness timing; large embedded manifest |
-| `kinder env` command | LOW | None; purely read-only data display |
-| `kinder doctor` command | LOW-MEDIUM | Platform-specific resource checks (disk/memory differ by OS) |
+**kubectl convention:** `-o json` / `--output=json`. Two modes only: human text and JSON. No YAML (for CLI output; YAML is for Kubernetes manifests).
+
+**GitHub CLI pattern (from `cli/go-gh`):** Uses a `tableprinter` that detects TTY and switches between human-readable table and TSV automatically. For JSON: marshal a struct.
+
+**Recommended pattern for kinder:**
+
+```go
+// In flagpole:
+type flagpole struct {
+    Name   string
+    Output string // "text" or "json"
+}
+
+// In command setup:
+cmd.Flags().StringVarP(&flags.Output, "output", "o", "text", "output format: text|json")
+
+// In runE:
+type clusterInfo struct {
+    Provider  string   `json:"provider"`
+    Name      string   `json:"name"`
+    Kubeconfig string  `json:"kubeconfig"`
+    // ...
+}
+
+if flags.Output == "json" {
+    enc := json.NewEncoder(streams.Out)
+    enc.SetIndent("", "  ")
+    return enc.Encode(clusterInfo{...})
+}
+// else: fmt.Fprintf human text
+```
+
+**Commands to update:** `kinder get clusters`, `kinder get nodes`, `kinder env`, `kinder doctor`.
+
+**Doctor JSON output structure:**
+```json
+{
+  "checks": [
+    {"name": "docker", "status": "ok", "message": ""},
+    {"name": "kubectl", "status": "fail", "message": "kubectl not found — install from https://..."}
+  ],
+  "overall": "fail"
+}
+```
+
+**Anti-pattern to avoid:** Adding `--json` bool flag (not `--output string`). The `--output string` form is composable (`--output=json` or `-o json`) and matches kubectl, making it intuitive for Kubernetes users.
+
+**Confidence:** HIGH (directly observed in kubectl, gh CLI, AWS CLI; trivially implemented in Go with `encoding/json`)
 
 ---
 
-## Implementation Notes
+### (3) Cluster Presets/Profiles
 
-### Local Registry Addon — Key Technical Details
+**minikube approach:** `minikube profile <name>` creates named clusters (isolated state directories). Each profile is a named cluster with its own config, not a template. Not what kinder needs.
 
-The official kind local registry guide (https://kind.sigs.k8s.io/docs/user/local-registry/) establishes the pattern. The addon must:
+**skaffold approach:** Named profiles that overlay the base config via JSON Patch. Activate with `-p profile-name`. Useful for build/deploy environments, not cluster topology.
 
-1. Create a `registry:2` container (e.g., named `kinder-registry`) on the host
-2. Connect it to the kind docker/podman/nerdctl network
-3. Patch containerd config on every node to enable `config_path = "/etc/containerd/certs.d"`
-4. Create `/etc/containerd/certs.d/localhost:5001/hosts.toml` on each node:
-   ```
-   [host."http://kinder-registry:5000"]
-   ```
-5. Apply the discovery ConfigMap to `kube-public` namespace:
-   ```yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: local-registry-hosting
-     namespace: kube-public
-   data:
-     localRegistryHosting.v1: |
-       host: "localhost:5001"
-       help: "https://kinder.patrykgolabek.dev/docs/addons/local-registry"
-   ```
+**k3d approach:** YAML config files only. No named presets. Users write their own YAML and reference it with `--config`.
 
-Port mapping: host `localhost:5001` → registry container `5000`. Image push command: `docker push localhost:5001/myapp:tag`.
+**What kinder needs:** Named shorthand for common `Addons{}` configurations. This is much simpler than minikube profiles or skaffold overlays.
 
-**Provider difference:** The registry container itself needs to be created using the same container runtime as the cluster nodes. The `Binary()` method (already present on nerdctl provider, absent from docker/podman) must be uniformly available post-deduplication.
+**Recommended pattern for kinder:**
 
-### cert-manager Addon — Key Technical Details
+```go
+// In pkg/cluster/presets.go (new file, ~50 lines):
+var builtinProfiles = map[string]config.Addons{
+    "full": {
+        MetalLB: true, EnvoyGateway: true, MetricsServer: true,
+        CoreDNSTuning: true, Dashboard: true, LocalRegistry: true,
+        CertManager: true,
+    },
+    "minimal": {
+        MetalLB: false, EnvoyGateway: false, MetricsServer: false,
+        CoreDNSTuning: false, Dashboard: false, LocalRegistry: false,
+        CertManager: false,
+    },
+    "gateway": {
+        MetalLB: true, EnvoyGateway: true, CertManager: true,
+        MetricsServer: true, CoreDNSTuning: true,
+        Dashboard: false, LocalRegistry: false,
+    },
+    "ci": {
+        MetalLB: true, MetricsServer: true, CoreDNSTuning: true,
+        Dashboard: false, LocalRegistry: false,
+        EnvoyGateway: false, CertManager: false,
+    },
+}
 
-Standard installation via `kubectl apply -f cert-manager.yaml` using go:embed. Current stable: v1.17.x (check releases for exact pin). The addon must:
+// In createcluster.go flagpole:
+Profile string // --profile flag
 
-1. Apply the single-file cert-manager manifest (all CRDs + namespace + controllers)
-2. Wait for the cert-manager webhook deployment to be ready (webhook not ready = certificate requests fail silently)
-3. Apply a `ClusterIssuer` for self-signed usage:
-   ```yaml
-   apiVersion: cert-manager.io/v1
-   kind: ClusterIssuer
-   metadata:
-     name: selfsigned
-   spec:
-     selfSigned: {}
-   ```
+// Applied after config load, before validation:
+if flags.Profile != "" {
+    preset, ok := builtinProfiles[flags.Profile]
+    if !ok { return fmt.Errorf("unknown profile %q; available: full, minimal, gateway, ci") }
+    opts.Config.Addons = preset
+}
+```
 
-The webhook readiness wait is the critical step — cert-manager is known for failing silently if you create a `Certificate` resource before the webhook pod is ready. Wait pattern: same as existing addons (check deployment rollout).
+**Flag placement:** `kinder create cluster --profile minimal`. The `--profile` flag overrides the YAML config's `addons` block, so YAML addons + `--profile` interacts predictably (flag wins).
 
-### Provider Deduplication — Key Technical Details
+**Names matter:** "minimal", "full", "gateway", "ci" are self-documenting. Avoid "dev" (ambiguous) or "production" (local tool, no production).
 
-From direct code analysis, docker and nerdctl `provider.go` files are structurally identical except:
-- nerdctl passes `binaryName string` through all functions (where docker hardcodes `"docker"`)
-- podman has a different JSON port parsing path for its API versioning history
-- `dockerInfo` struct is duplicated verbatim in both docker and nerdctl
+**Confidence:** HIGH (pattern derived from how all similar tools handle shorthand configs; the implementation is simple)
 
-The `info()` function, `dockerInfo` struct, `CollectLogs()`, `ListClusters()`, `ListNodes()`, `DeleteNodes()`, `GetAPIServerEndpoint()`, and `GetAPIServerInternalEndpoint()` are all near-identical across the three providers.
+---
 
-The `common/` package already exists (`pkg/cluster/internal/providers/common/`). The refactoring strategy is: extract all binary-agnostic shared logic to `common/`, pass `binaryName string` as a parameter. Podman's unique path-parsing logic stays in `podman/`.
+### (4) Addon Self-Registration Registry Pattern
 
-### `kinder env` Command — Key Technical Details
+**minikube approach:** Two parallel maps in source code — `assets.Addons` (metadata + embedded manifests) and `addons.Addons` (validation + callbacks). Both maps are populated at package init time. New addons require editing both maps. The approach works but requires discipline.
 
-Placement: `pkg/cmd/kind/env/env.go` (new directory following existing command pattern).
+**Go standard pattern (register-on-init):** Each plugin package has an `init()` function that calls `Register()` on a central registry. The main package imports the plugin packages with blank imports (`_ "..."`) to trigger `init()`. The registry is a `map[string]T` with a mutex for thread safety.
 
-Data sources:
-- Provider: from `cluster.DetectNodeProvider()` or stored in cluster
-- Node image: from cluster node containers (inspect labels)
-- Config path: from `--config` flag or default `~/.kinder/config.yaml`
-- Addon state: from the config that was used to create the cluster
+**Current kinder problem:** Adding an addon requires changes in:
+1. `pkg/cluster/internal/create/create.go` — new import + new `runAddon()` call
+2. `pkg/apis/config/v1alpha4/types.go` — new `*bool` field in `Addons` struct
+3. `pkg/internal/apis/config/types.go` — new `bool` field in internal `Addons` struct
+4. `pkg/internal/apis/config/convert_v1alpha4.go` — conversion code
 
-Output format: structured key-value for easy grepping; optional `--json` for scripting.
+**Recommended pattern for kinder (if pursuing self-registration):**
 
-### `kinder doctor` Command — Key Technical Details
+```go
+// pkg/cluster/internal/create/addonregistry/registry.go
+type AddonDescriptor struct {
+    Name         string
+    DefaultEnabled bool
+    DependsOn    []string  // names of addons this one needs to run first
+    NewAction    func() actions.Action
+    IsEnabled    func(cfg *config.Cluster) bool  // reads from config
+}
 
-Placement: `pkg/cmd/kind/doctor/doctor.go` (new directory).
+var (
+    mu       sync.Mutex
+    registry = map[string]*AddonDescriptor{}
+)
 
-Checks to implement (ordered by severity):
-1. Container runtime binary found in PATH
-2. Container runtime daemon is running (`docker info`, `podman info`, `nerdctl info`)
-3. Minimum memory available (warn at < 4GB, error at < 2GB)
-4. Minimum disk space available (warn at < 10GB free)
-5. `kubectl` binary found in PATH (warn, not error — kinder bundles its own kubectl calls)
-6. Existing cluster name conflict check (if `--name` flag provided)
+func Register(d *AddonDescriptor) {
+    mu.Lock()
+    defer mu.Unlock()
+    registry[d.Name] = d
+}
 
-Exit codes: 0 = all checks passed, 1 = any check failed, 2 = any check warns (if distinguishing warnings from errors).
+func All() []*AddonDescriptor {
+    mu.Lock()
+    defer mu.Unlock()
+    // return sorted copy
+}
+
+// pkg/cluster/internal/create/actions/installmetallb/metallb.go (new)
+func init() {
+    addonregistry.Register(&addonregistry.AddonDescriptor{
+        Name:           "MetalLB",
+        DefaultEnabled: true,
+        DependsOn:      nil,
+        NewAction:      NewAction,
+        IsEnabled:      func(cfg *config.Cluster) bool { return cfg.Addons.MetalLB },
+    })
+}
+```
+
+**Honest assessment:** This is an architectural refactor, not a feature addition. The `Addons` struct in the config API is the core problem — it's a fixed set of named fields, not a dynamic map. Self-registration without changing the config API is half-measures (you still need to add the bool field). Full self-registration requires changing the config API to `Addons map[string]bool`, which is a breaking change to the public-facing YAML format.
+
+**Pragmatic alternative:** Keep the config struct as-is. Move the `runAddon()` dispatch table into a single slice/map in `create.go` (consolidating from scattered calls). This reduces the 4-place edit to 2 places (struct + dispatch table) without a config API break.
+
+**Confidence:** MEDIUM (pattern is well-established in Go; applicability to kinder's config-struct constraint requires architectural decision)
+
+---
+
+### (5) Unit Testing Patterns for Code That Calls kubectl/Applies Manifests
+
+**The core problem in kinder:** Addon `Execute()` methods call `node.Command("kubectl", ...)`. The `node` is a `nodes.Node` interface. Interfaces in Go are trivially mockable without any framework.
+
+**Existing kinder exec interface:**
+```go
+// pkg/exec/types.go — already exists
+type Cmd interface {
+    Run() error
+    SetEnv(...string) Cmd
+    SetStdin(io.Reader) Cmd
+    SetStdout(io.Writer) Cmd
+    SetStderr(io.Writer) Cmd
+}
+
+type Cmder interface {
+    Command(string, ...string) Cmd
+    CommandContext(context.Context, string, ...string) Cmd
+}
+
+// pkg/cluster/nodes/types.go — already exists
+type Node interface {
+    exec.Cmder   // <-- Node IS a Cmder; Command() returns a Cmd
+    String() string
+    Role() (string, error)
+    IP() (string, string, error)
+    SerialLogs(io.Writer) error
+}
+```
+
+**Recommended pattern — write fakeNode in test files:**
+
+```go
+// In installmetallb/metallb_test.go:
+
+type fakeCmd struct {
+    args    []string
+    stdin   string
+    runErr  error
+}
+
+func (c *fakeCmd) Run() error                    { return c.runErr }
+func (c *fakeCmd) SetEnv(...string) exec.Cmd     { return c }
+func (c *fakeCmd) SetStdout(io.Writer) exec.Cmd  { return c }
+func (c *fakeCmd) SetStderr(io.Writer) exec.Cmd  { return c }
+func (c *fakeCmd) SetStdin(r io.Reader) exec.Cmd {
+    b, _ := io.ReadAll(r)
+    c.stdin = string(b)
+    return c
+}
+
+type fakeNode struct {
+    commands []*fakeCmd
+    idx      int
+}
+
+func (n *fakeNode) Command(name string, args ...string) exec.Cmd {
+    cmd := &fakeCmd{args: append([]string{name}, args...)}
+    n.commands = append(n.commands, cmd)
+    return cmd
+}
+// ... implement rest of Node interface returning zero values
+
+// Test:
+func TestMetalLBAction_AppliesManifest(t *testing.T) {
+    node := &fakeNode{}
+    // inject node into action context
+    // call action.Execute()
+    // assert node.commands[0].args contains "kubectl", "apply"
+    // assert node.commands[0].stdin contains "metallb"
+}
+```
+
+**What to test vs. not test:**
+
+| Test Category | Test It | Don't Test It |
+|--------------|---------|---------------|
+| Manifest is applied (kubectl apply called) | YES | Exact manifest content (use contains check) |
+| Wait conditions are issued | YES | kubectl output parsing |
+| Error from kubectl propagates correctly | YES | Network/container state |
+| Addon skipped when disabled in config | YES | — |
+| Manifest embedded content is non-empty | YES | — |
+| Actual cluster behavior | NO | NO |
+
+**Existing proven patterns in kinder (HIGH confidence, direct observation):**
+- `create_addon_test.go`: tests `logAddonSummary()` with `testLogger` — pure log output, no Node mock needed
+- `subnet_test.go`: tests `parseSubnetFromJSON()` and `carvePoolFromSubnet()` — pure math, table-driven
+- `corefile_test.go`: tests `patchCorefile()` — string manipulation, table-driven
+- `waitforready_test.go`: tests `tryUntil()` — timing logic, no external calls
+
+**Pattern: Extract pure logic first.** All existing tests in kinder test pure functions extracted from the action, not the action `Execute()` itself. This is correct — the Execute() method is an integration boundary. The right approach:
+
+1. Extract logic from `Execute()` into pure functions (e.g., `buildMetalLBCR(subnet string) string`)
+2. Unit test those pure functions (no mock needed — pure input/output)
+3. For the `Execute()` itself, write a thin integration test using `fakeNode{}` to assert the sequence of kubectl calls
+
+**k8s.io/utils/exec/testing.FakeExec:** Exists and works for code using `k8s.io/utils/exec.Interface`. Kinder uses its own `sigs.k8s.io/kind/pkg/exec` package with identical interface contracts — so `FakeExec` from k8s.io/utils cannot be used directly. Kinder needs its own `fakeNode{}` and `fakeCmd{}` implementations (25–30 lines total, shared across test files via a `testutil` package).
+
+**Confidence:** HIGH (Node is a Go interface; fakeNode pattern is standard Go; existing tests confirm the project style)
+
+---
+
+## MVP Definition
+
+### Must Ship (Next Milestone)
+
+- [ ] **Unit tests for addon Execute() paths** — fakeNode + fakeCmd implementation; tests for MetalLB, CertManager, LocalRegistry, and the runAddon dispatch logic; prerequisite for safe parallel refactor
+- [ ] **JSON output for `kinder env`** — `--output json` flag; marshal `EnvInfo` struct; no new dependencies
+- [ ] **JSON output for `kinder doctor`** — `--output json` flag; marshal `[]result` struct; exit codes unchanged
+- [ ] **Cluster presets via `--profile`** — `minimal`, `full`, `gateway`, `ci` presets; ~50 lines of new code; zero architecture change
+
+### Add After Core Quality Is Proven
+
+- [ ] **Wave-based parallel addon install** — requires unit tests in place first (to verify no regression); errgroup-based; wave definitions in `create.go`; timing output in addon summary
+- [ ] **JSON output for `kinder get clusters` and `kinder get nodes`** — same pattern as env/doctor; lower priority because these are less CI-critical
+
+### Future Consideration
+
+- [ ] **Addon self-registration via init()** — only valuable if kinder grows beyond ~10 addons; requires config API decision (Addons map vs struct); architectural; defer until the pain is felt
+- [ ] **`--addons` CLI flag** — comma-separated addon enable/disable; useful complement to presets; depends on how addon names are exposed; after registry pattern is settled
+- [ ] **Pull-through cache for local registry** — high complexity; niche use case; defer
+
+---
+
+## Feature Prioritization Matrix
+
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Unit tests for addon Execute() | HIGH (enables safe refactoring) | MEDIUM (fakeNode pattern) | P1 |
+| JSON output for env + doctor | HIGH (CI scripting) | LOW (encoding/json) | P1 |
+| Cluster presets (`--profile`) | HIGH (DX, zero-config goal) | LOW (~50 lines) | P1 |
+| Parallel addon install (wave-based) | MEDIUM (speed improvement) | MEDIUM (errgroup + wave design) | P2 |
+| JSON output for get clusters/nodes | MEDIUM (scripting) | LOW | P2 |
+| Addon self-registration | LOW (contributor DX only) | HIGH (arch change) | P3 |
+| `--addons` CLI flag | MEDIUM (power user DX) | MEDIUM | P3 |
+
+---
+
+## Competitor Feature Analysis
+
+| Feature | minikube | k3d | skaffold | kinder (current) | kinder (target) |
+|---------|----------|-----|----------|-----------------|-----------------|
+| Parallel addon install | No (sequential) | N/A (k3s bundles addons) | N/A (not a cluster tool) | No (sequential) | Yes (wave-based) |
+| JSON output | `minikube status --output json` YES | `k3d cluster list --output json` YES | N/A | No | Yes (`--output json`) |
+| Named presets/profiles | Yes (full cluster profiles, not addon presets) | No (YAML only) | Yes (build/deploy profiles) | No | Yes (`--profile minimal/full/gateway/ci`) |
+| Addon self-registration | Yes (dual-registry map, compile-time) | N/A | N/A | No (4-place hard-code) | Optional future |
+| Unit tests for addon installs | Limited (most tests are integration) | Limited | N/A | Limited (pure functions only) | Yes (fakeNode pattern) |
+| `--addons` CLI flag | `minikube start --addons=dashboard,ingress` | No | N/A | No | Future |
 
 ---
 
 ## Sources
 
-- [kind Local Registry Guide](https://kind.sigs.k8s.io/docs/user/local-registry/) — HIGH confidence (official docs; defines the canonical pattern kinder should automate)
-- [cert-manager Installation via kubectl](https://cert-manager.io/docs/installation/kubectl/) — HIGH confidence (official cert-manager docs)
-- [cert-manager SelfSigned Issuer Configuration](https://cert-manager.io/docs/configuration/selfsigned/) — HIGH confidence (official docs)
-- [cert-manager GitHub Releases](https://github.com/cert-manager/cert-manager/releases) — HIGH confidence (for version pinning)
-- [Docker Distribution (registry:2) Pull-Through Cache](https://distribution.github.io/distribution/recipes/mirror/) — HIGH confidence (official CNCF distribution docs)
-- [MicroK8s cert-manager addon](https://microk8s.io/docs/addon-cert-manager) — MEDIUM confidence (precedent for cert-manager as a batteries-included addon)
-- Kinder codebase direct analysis (`pkg/cluster/internal/providers/*/provider.go`, `provision.go`, `network.go`) — HIGH confidence (first-party source)
-- Kinder `.planning/PROJECT.md` and `.planning/codebase/` docs — HIGH confidence (project documentation)
+- Kinder codebase direct analysis (`pkg/cluster/internal/create/`, `pkg/cluster/nodes/`, `pkg/exec/`, `pkg/cmd/kind/`) — HIGH confidence (first-party source, read files directly)
+- [minikube addon system architecture (DeepWiki)](https://deepwiki.com/kubernetes/minikube/5-addon-system) — MEDIUM confidence (derived docs; confirmed sequential execution)
+- [minikube profile system (DeepWiki)](https://deepwiki.com/kubernetes/minikube/2.4-profile-and-configuration-management) — MEDIUM confidence (derived docs; confirmed file-based profiles, not addon presets)
+- [k3d configuration system (DeepWiki)](https://deepwiki.com/k3d-io/k3d/3.2-advanced-configuration) — MEDIUM confidence (no named presets confirmed)
+- [Skaffold profiles documentation](https://skaffold.dev/docs/environment/profiles/) — HIGH confidence (official docs; confirmed overlay pattern)
+- [helmfile dependency ordering (DeepWiki)](https://deepwiki.com/helmfile/helmfile/3.3-dependencies) — HIGH confidence (confirmed DAG + wave pattern for parallel execution)
+- [golang.org/x/sync errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) — HIGH confidence (official Go package)
+- [k8s.io/utils/exec/testing FakeExec](https://pkg.go.dev/k8s.io/utils/exec/testing) — HIGH confidence (confirmed interface; not directly usable with kinder's own exec package but confirms pattern)
+- Go init() self-registration pattern — HIGH confidence (standard Go idiom; multiple sources confirm)
+- [b1-88er.github.io: mocking exec.Cmd in Go](https://b1-88er.github.io/posts/testing-exec-cmd-in-go/) — MEDIUM confidence (pattern applies; kinder's interface makes it simpler than the article's approach)
 
 ---
 
-*Feature research for: kinder v1.3 Harden & Extend milestone*
+*Feature research for: kinder code quality and new capabilities milestone*
 *Researched: 2026-03-03*

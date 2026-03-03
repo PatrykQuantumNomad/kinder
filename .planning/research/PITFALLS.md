@@ -1,556 +1,471 @@
-# Domain Pitfalls: Kinder v1.3
+# Pitfalls Research
 
-**Domain:** Go Kubernetes tool — adding local registry addon, cert-manager addon, CLI diagnostic commands, and provider code deduplication to an existing kind fork
+**Domain:** Go CLI tool — adding code quality improvements, architecture fixes, unit tests, and new features to an existing kind fork (~28K LOC)
 **Researched:** 2026-03-03
-**Confidence:** HIGH (sourced from actual kinder codebase review, official kind/containerd/cert-manager docs, verified community issues)
+**Confidence:** HIGH (sourced from direct codebase analysis, official Go documentation, verified community issues, cert-manager official docs)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause cluster breakage, data loss, or require rewrites.
-
----
-
-### Pitfall C1: defer-in-Loop Port Release — Ports Held Until Function Returns
+### Pitfall 1: go.mod Minimum Version Bump — Toolchain Directive Breaks CI
 
 **What goes wrong:**
-The `generatePortMappings` function in all three provider packages (docker, podman, nerdctl) calls `defer releaseHostPortFn()` inside a `for` loop over `portMappings`. Go's defer stack executes at function return, not at loop iteration end. The dummy TCP listener that holds the free port open is not closed until the entire function returns — after all ports have already been reserved. The result: if you have two port mappings that both request random ports (HostPort=0), the first port is still held when the second port probe runs, preventing collision. This is accidentally correct. However, if the cluster creation fails partway through and the function returns early, none of the port-holding listeners are released before the function exits — they leak until garbage collected. On high-node-count clusters with many port mappings, this manifests as transient "bind: address already in use" errors on the next creation attempt.
+Bumping the `go` directive in `go.mod` from `1.17` to `1.21+` causes `go mod tidy` (on Go 1.21+) to automatically inject a `toolchain` directive. Any CI environment or developer machine still running Go 1.20 or earlier will then fail with `unknown directive: toolchain` because older toolchains do not recognize it. The `toolchain` directive also silently promotes which Go binary is downloaded when GOTOOLCHAIN=auto — the team may not realize the build environment has been upgraded until a version-specific behavior change surfaces.
+
+The go.mod currently reads `go 1.21.0` with `toolchain go1.26.0`. If these are changed separately (e.g., a contributor bumps `go` but not `toolchain`, or vice versa), the tool downloads a mismatched toolchain.
+
+Additionally, the comment in `create.go:276` says:
+```go
+// NOTE: explicit seeding is required while the module minimum is Go 1.17.
+// Once the minimum Go version is bumped to 1.20+, this can be simplified
+// to just rand.Intn() since the global source is auto-seeded.
+```
+This means the `rand.New(rand.NewSource(...))` call in `logSalutation()` should be removed after a go.mod bump. Failing to do so leaves dead code and a misleading comment that future readers will trust.
 
 **Why it happens:**
-The pattern `if releaseHostPortFn != nil { defer releaseHostPortFn() }` appears identically in all three providers (docker/provision.go:397, podman/provision.go:406, nerdctl/provision.go:363). This is copy-paste drift — the original code likely worked accidentally because it was written for a single port mapping. It was copied without understanding that defers accumulate on the stack.
+The go.mod already has `go 1.21.0` and `toolchain go1.26.0`, which is correct. The pitfall arises when a code quality pass bumps `go` without updating `toolchain`, or bumps both but leaves comment-gated code that referenced the old minimum.
 
-**Actual code (identical in docker, podman, nerdctl):**
-```go
-hostPort, releaseHostPortFn, err := common.PortOrGetFreePort(pm.HostPort, pm.ListenAddress)
-if err != nil {
-    return nil, errors.Wrap(err, "failed to get random host port for port mapping")
-}
-if releaseHostPortFn != nil {
-    defer releaseHostPortFn()  // BUG: runs at function return, not iteration end
-}
-```
+**How to avoid:**
+- Always bump `go` and `toolchain` together; document the effective minimum Go version required for contributors in the README
+- After bumping, run `grep -rn "1.17\|1.20\|rand.NewSource\|rand\.New\|time\.Now.*UnixNano" pkg/` to find comment-gated code that should be cleaned up
+- Run `go mod tidy` with the new toolchain and verify the resulting go.mod/go.sum are checked in together
+- Add `go version` to the CI check matrix to catch environment mismatches early
 
-**Consequences:**
-- Port listeners accumulate in memory across all iterations before release
-- On error return, listeners may be GC'd non-deterministically, causing race with the container runtime attempting to bind those ports
-- When provider deduplication extracts this into shared code, the bug must be fixed before extraction — otherwise the shared function inherits it and it becomes harder to trace
+**Warning signs:**
+- CI passes on developers' machines but fails on others with "unknown directive: toolchain"
+- `go mod tidy` silently changes `toolchain` to a different version after each run on different machines
+- Comments in code referencing `1.17`, `1.20` after the version bump
 
-**Prevention:**
-Wrap the port acquisition and use in an immediately-invoked function literal:
-
-```go
-if err := func() error {
-    hostPort, releaseHostPortFn, err := common.PortOrGetFreePort(pm.HostPort, pm.ListenAddress)
-    if err != nil {
-        return errors.Wrap(err, "failed to get random host port for port mapping")
-    }
-    if releaseHostPortFn != nil {
-        defer releaseHostPortFn()  // now defers to the inner function, runs per-iteration
-    }
-    // ... use hostPort ...
-    return nil
-}(); err != nil {
-    return nil, err
-}
-```
-
-**Detection:**
-- `go vet` with `loopclosure` linter
-- `staticcheck` SA9003 / SA2001 warnings
-- Manual grep: `defer.*releaseHostPort` inside any `for` loop
-
-**Phase to address:** Phase 1 (bug fixes) — must be fixed in all three providers BEFORE provider deduplication begins; fixing it after extraction means the fix propagates automatically but finding it is harder
+**Phase to address:** Phase 1 (go.mod and dependency updates) — do the version bump first, then clean up comment-gated code in the same commit
 
 ---
 
-### Pitfall C2: tar Extraction Treating io.EOF as Success — Silent Data Truncation
+### Pitfall 2: Dependency Update Cascade — Transitive Deps Expand and Break Tests
 
 **What goes wrong:**
-In Go's `archive/tar` package, `tr.Next()` returns `io.EOF` at the end of a well-formed archive. Any other error from `tr.Next()` signals a malformed or truncated archive. The pattern `if err == io.EOF { break }` is correct. The silent failure bug is when code uses `if err != nil { break }` or doesn't check `err` from the reader at all — both treat a mid-archive truncation identically to a clean end-of-archive. The extracted output is silently incomplete.
+Running `go get -u ./...` after a go.mod version bump updates direct dependencies, but Go 1.17+ lists ALL transitive (indirect) dependencies explicitly in go.mod. Updating one direct dependency (e.g., `github.com/spf13/cobra`) can pull in a new major version of `golang.org/x/sys`, which the providers use for OS-level operations. The update may break provider tests on specific platforms (e.g., `golang.org/x/sys` behavior differs between Linux and macOS at a minor version boundary).
 
-**Why it matters here:**
-The kinder CONCERNS.md notes "Entire tar archives processed sequentially and synchronously" (pkg/cluster/nodeutils/util.go line 67). Any tar extraction code that treats a non-EOF error as a break condition (rather than returning the error) will silently extract a partial tarball when the underlying stream is interrupted — for example, when extracting an image layer during cluster creation over a slow or dropped connection.
+Additionally, the `go.sum` file after a full `go get -u` may contain checksums for packages that are no longer actually imported, causing `go mod tidy` to remove them, which then causes `go get -u` to re-add them — creating an unstable loop.
 
-**Correct pattern:**
-```go
-for {
-    header, err := tr.Next()
-    if err == io.EOF {
-        break  // clean end of archive
-    }
-    if err != nil {
-        return fmt.Errorf("tar extraction error: %w", err)  // must NOT break silently
-    }
-    // process header...
-}
-```
-
-**Consequences:**
-- Partial image extraction produces containers that appear to start but fail at runtime with missing binaries or configs
-- The failure is non-deterministic: only triggered when the source stream truncates
-- Extremely hard to debug because the extracted filesystem looks superficially correct
-
-**Prevention:**
-- Audit every `archive/tar` usage site with `grep -n "tr.Next\|tar.Next" --include="*.go" -r .`
-- Enforce the pattern: only `io.EOF` is a break condition; all other errors are returned
-- Add a test that feeds a truncated tar stream and verifies an error is returned (not nil)
-
-**Detection:**
-- `errcheck` linter flags ignored errors from `tr.Next()`
-- Manual code review of every tar read loop
-
-**Phase to address:** Phase 1 (bug fixes) — before any new addon that ships files via tar extraction
-
----
-
-### Pitfall C3: ListInternalNodes Missing defaultName() Call — Wrong Cluster Targeted
-
-**What goes wrong:**
-If `ListInternalNodes` (or the equivalent cluster lookup) does not call `defaultName()` to resolve an empty cluster name to the configured default, commands with no explicit `--name` flag silently target the wrong cluster or fail with a confusing "no cluster found" error. The user experience is: `kinder env` with no flags fails when multiple clusters exist, even though one is named "kind" (the default).
+The kinder codebase depends on `github.com/pkg/errors`, which is in maintenance mode. An update pass may surface deprecation warnings or removal of an API used in `pkg/errors/errors.go`.
 
 **Why it happens:**
-The pattern in the existing codebase uses `defaultName()` to coerce an empty string to the configured default cluster name before any lookup. When new code paths are added (like `kinder env` or `kinder doctor`) that call internal node listing functions directly, missing the `defaultName()` normalization produces commands that only work when the cluster name is explicitly passed.
+Developers run `go get -u ./...` intending to update direct dependencies but inadvertently trigger transitive cascades. The kinder codebase has 10 direct deps and ~15 indirect — manageable, but each indirect dep pin prevents cascade at the cost of staleness.
 
-**Consequences:**
-- `kinder env` and `kinder doctor` appear broken for the default cluster case
-- Confusing error: "cluster not found" when the cluster clearly exists
-- Intermittent: works when user passes `--name kind`, fails without it
+**How to avoid:**
+- Update dependencies one at a time, not with `go get -u ./...`; start with direct dependencies, verify tests pass, commit, then move to the next
+- Run `go test ./...` after each individual update before moving to the next
+- Keep `github.com/pkg/errors` pinned and note in code that migration to `fmt.Errorf` wrapping is a separate task
+- Check `golang.org/x/sys` version explicitly — it is used by the provider layer for OS calls; verify the new version's changelog
 
-**Prevention:**
-In every new CLI command that accepts an optional `--name` flag:
+**Warning signs:**
+- `go mod tidy` changes go.sum on a machine that didn't run `go get -u` — indicates stale sums
+- Provider integration tests fail on Linux but pass on macOS (or vice versa) after a `golang.org/x/sys` update
+- `go build ./...` errors about `undefined: errors.StackTrace` after a `pkg/errors` update
+
+**Phase to address:** Phase 1 (dependency updates) — update incrementally, not bulk; run tests after each change
+
+---
+
+### Pitfall 3: context.Context Retrofitting — Adding ctx to Existing Interfaces Breaks Implementations
+
+**What goes wrong:**
+The `Action` interface is:
 ```go
-clusterName = provider.ByName(clusterName).defaultName()
-```
-Or use the existing helper pattern found in other commands:
-```go
-if clusterName == "" {
-    clusterName = kind.DefaultClusterName
+type Action interface {
+    Execute(ctx *ActionContext) error
 }
 ```
-Apply the normalization as the very first step after flag parsing, before any provider interaction.
+The `ActionContext` struct does not embed `context.Context`. Adding `context.Context` to `Execute` or to `ActionContext` is a breaking change: every addon action file must be updated simultaneously, and any external implementations of the `Action` interface (if any exist) break.
 
-**Detection:**
-- Integration test: run `kinder env` without `--name` on a cluster named "kind" — must succeed
-- Unit test: assert that the name resolver is called before any provider lookup
+The Go idiom is to add context via a new parallel function or to embed it in the existing context struct. Embedding a `context.Context` inside `ActionContext` appears natural but violates the [official Go guidance](https://go.dev/blog/context-and-structs): "Do not store Contexts inside a struct type; instead, pass a Context explicitly to each function that needs it."
 
-**Phase to address:** Phase 3 (kinder env/doctor CLI commands) — build the normalization in from the start; do not assume the caller will always pass a name
-
----
-
-### Pitfall C4: Network Sort Comparator — Incorrect Stable Sort Ordering
-
-**What goes wrong:**
-The `sortNetworkInspectEntries` function in docker/network.go uses a comparator that has a logical error. The intent is "networks with more containers are preferred (sorted first), with ID as tiebreaker." The current implementation:
-
+The anti-pattern:
 ```go
-sort.Slice(networks, func(i, j int) bool {
-    if len(networks[i].Containers) > len(networks[j].Containers) {
-        return true
-    }
-    return networks[i].ID < networks[j].ID
-})
-```
-
-This is not a strict weak ordering when `len(networks[i].Containers) < len(networks[j].Containers)` — the function returns `false` but then falls through to the ID comparison, which may return `true`. This means that for two networks where `i` has fewer containers than `j`, the comparator may incorrectly say `i < j` based on ID. The sort result is non-deterministic across Go versions (sort.Slice does not guarantee stability; the behavior depends on the internal sort algorithm's comparison calls).
-
-**Correct comparator:**
-```go
-sort.Slice(networks, func(i, j int) bool {
-    ci, cj := len(networks[i].Containers), len(networks[j].Containers)
-    if ci != cj {
-        return ci > cj  // more containers = higher priority (sort first)
-    }
-    return networks[i].ID < networks[j].ID  // stable tiebreaker
-})
-```
-
-**Consequences:**
-- Duplicate network cleanup may delete the wrong network (the one with active containers)
-- Cluster nodes lose connectivity after the wrong network is deleted
-- Non-deterministic: may work correctly 90% of the time and silently fail the rest
-
-**Prevention:**
-Always write sort comparators as strict weak orderings: for every pair (i, j), exactly one of `less(i,j)` or `less(j,i)` is true, or neither (equal). Test with at least 3 elements including ties.
-
-**Detection:**
-- Unit test with networks of [0, 1, 2] containers and verify the expected ordering
-- `go test -race` on the network sort function with concurrent invocations
-
-**Phase to address:** Phase 1 (bug fixes) — fix before any new code relies on network selection order
-
----
-
-## Critical Integration Pitfall: Provider Deduplication Masking Provider-Specific Behavior
-
-### Pitfall C5: Shared Code Hiding Divergent Provider Semantics
-
-**What goes wrong:**
-The three provider packages (docker, podman, nerdctl) are 70-80% identical by line count, but the ~20-30% that differs is not cosmetic — it encodes fundamental behavioral differences:
-
-| Function | Docker | Podman | Nerdctl |
-|----------|--------|--------|---------|
-| `commonArgs` | Has `--restart=on-failure:1`, `--cgroupns=private`, `--init=false` | Has `--cgroupns=private`, `-e container=podman` (no init flag) | Has `--restart=on-failure:1`, `--init=false` (no cgroupns) |
-| `runArgsForNode` | `--volume /var` (anonymous) | `--volume $varVolume:/var:suid,exec,dev` (named pre-created) | `--volume /var` (anonymous, same as docker) |
-| Port format | `host:port/tcp` | Strips trailing `:0` → `host:/protocol` (Podman random port quirk) | `host:port/protocol` (lowercase, same as docker) |
-| Image name | Used directly | Sanitized via `sanitizeImage()` | Used directly |
-| Network env var | `KIND_EXPERIMENTAL_DOCKER_NETWORK` | `KIND_EXPERIMENTAL_PODMAN_NETWORK` | `KIND_EXPERIMENTAL_DOCKER_NETWORK` |
-| Subnet inspection | Docker template format | JSON parsing of Podman v3/v4 structure | Docker template format |
-| IP masquerade | Yes: `com.docker.network.bridge.enable_ip_masquerade=true` | N/A | No: comment says "Not supported in nerdctl yet" |
-
-**Why it matters:**
-When extracting shared code to a `common` package or a shared helper, it is tempting to unify all of the above. Doing so produces a generic implementation that works for Docker but silently breaks Podman (wrong volume flags, wrong port format) and nerdctl (wrong network options). The failure is not a compile error — it's a runtime failure when users with those runtimes create clusters.
-
-**Prevention strategy:**
-1. Extract shared code only for genuinely identical logic (the easy 70%)
-2. For divergent logic, define a `ProviderBehavior` interface or strategy struct that each provider implements:
-
-```go
-type ProviderBehavior interface {
-    ContainerArgs() []string              // provider-specific container flags
-    VolumeArgs(volName string) []string   // provider-specific volume mount args
-    FormatPortMapping(host, port, proto string) string
-    NetworkEnvVar() string
+// WRONG: context stored in struct
+type ActionContext struct {
+    Ctx      context.Context  // bad
+    Logger   log.Logger
+    ...
 }
 ```
 
-3. Run all three providers' existing tests after each extraction step — before moving to the next
-4. Never merge provider-specific env var names, volume semantics, or port formatting into shared code
+The correct pattern:
+```go
+// RIGHT: context passed as first function parameter
+func (a *action) Execute(ctx context.Context, ac *ActionContext) error { ... }
+```
+But this changes the `Action` interface and breaks every existing addon.
 
-**Detection:**
-- Each provider package must retain its own `provision_test.go`
-- Cross-provider integration test: create a cluster with each provider after deduplication and verify node connectivity
-- Review diff of shared code: any reference to "docker", "podman", or "nerdctl" strings in shared code is a red flag
+**Why it happens:**
+The `ActionContext` struct name creates the temptation to embed a `context.Context` there. Developers retrofitting context in a large codebase often choose the struct-embedding shortcut to minimize call-site changes — which is exactly what the official guide warns against.
 
-**Phase to address:** Phase 2 (provider deduplication) — define the interface before writing any shared code; do not start with "extract what looks the same"
+**How to avoid:**
+- Add `context.Context` as the first parameter of `Execute`, accepting that every addon file gets a one-line signature change
+- Or, for a minimal-impact approach matching the database/sql pattern: add `ExecuteContext(ctx context.Context, ac *ActionContext) error` alongside the existing `Execute(*ActionContext) error`, and migrate callers incrementally
+- Do not store `context.Context` inside `ActionContext`
+- The `exec.Cmder` interface already has `CommandContext(context.Context, ...)` — use this, not `Command()`, in all future code
 
----
+**Warning signs:**
+- Any struct definition that has a field of type `context.Context` — flag for immediate review
+- `context.Background()` or `context.TODO()` calls inside `Execute` methods — these are placeholders that mean "we forgot to propagate context"
+- `timeout` or `deadline` logic that duplicates what `context.WithTimeout` would provide
 
-## Critical Pitfall: Local Registry Addon
-
-### Pitfall C6: Registry Container Network Connectivity — localhost Means Different Things
-
-**What goes wrong:**
-When a local registry is started on the host at `localhost:5000`, it is accessible from the host but NOT from inside kind node containers. Inside each kind node, `localhost` refers to the container's own loopback interface, not the host. Requests to `localhost:5000` from inside a node will fail with "connection refused."
-
-The official kind local registry workaround requires:
-1. The registry container must be on the same Docker network as the kind nodes (network named "kind")
-2. The registry must be referenced by its container name (e.g., `kind-registry:5000`), not `localhost:5000`, from inside node containers
-3. containerd inside each node must be configured to treat `kind-registry:5000` as a valid mirror host via `containerdConfigPatches`
-
-**For Podman:**
-Podman's rootless mode uses a different networking stack (pasta/slirp4netns). Joining a container to the "kind" network requires explicit `--network kind` at creation. The container DNS resolution behavior differs from Docker's embedded DNS.
-
-**For nerdctl:**
-nerdctl uses CNI networking, not Docker's networking stack. The "kind" network created by nerdctl uses CNI bridge plugins. Container name DNS resolution works differently and the `nerdctl network connect` equivalent may not work identically.
-
-**Prevention:**
-- Registry container must be created with `--network kind` (or equivalent for each provider)
-- containerd config patch must be applied to every node after the registry is connected
-- After applying the patch, containerd must be restarted inside each node: `systemctl restart containerd`
-- The registry hostname used in the patch must match exactly the container name on the kind network
-
-**Detection:**
-- After registry setup: `docker exec <node-name> curl http://kind-registry:5000/v2/` should return `{}`
-- After containerd restart: `docker exec <node-name> crictl pull kind-registry:5000/test:latest` should succeed
-
-**Phase to address:** Phase 4 (local registry addon)
+**Phase to address:** Phase 2 (architecture improvements) — define the migration strategy before writing any context-aware code; do not allow `context.Context` in structs
 
 ---
 
-### Pitfall C7: containerd Config Patches Not Surviving Cluster Restart
+### Pitfall 4: Testing kubectl-Based Addon Code Without a Real Cluster — Interface Boundary Confusion
 
 **What goes wrong:**
-The containerd config patch that configures the local registry as an insecure mirror is applied to `/etc/containerd/config.toml` inside each node. When the Docker host reboots, kind node containers restart (due to `--restart=on-failure:1`). However, the `/etc/containerd/config.toml` changes written during addon setup DO survive the restart IF they were written to the container filesystem (not a tmpfs mount).
+Every addon action calls `node.Command("kubectl", ...).Run()` where `node` is `nodes.Node`, which embeds `exec.Cmder`. The `exec.Cmder` interface is:
+```go
+type Cmder interface {
+    Command(string, ...string) Cmd
+    CommandContext(context.Context, string, ...string) Cmd
+}
+```
+This interface is the seam for testing. However, in practice addon actions obtain `node` from `ctx.Nodes()` which calls `ctx.Provider.ListNodes()` — a real Docker/Podman call. Tests need to inject a fake node that implements `nodes.Node` without a running cluster.
 
-The pitfall is that containerd itself may be restarted by systemd during node startup without re-reading the patched config if the service unit is mis-configured or if the config was applied at a path not monitored by containerd's config-drop-in system.
+The pitfall: developers write tests that call `action.Execute()` directly and pass a real `ActionContext` created with a nil provider, causing a nil pointer panic when `ctx.Nodes()` is called. Or they mock the provider but their `FakeNode.Command()` returns a `FakeCmd` that doesn't properly capture stdin piped via `SetStdin()` — making tests pass even though the real `kubectl apply -f -` behavior is broken.
 
-A subtler variant: if the registry container stops but the kind cluster nodes continue running, the containerd config still references a hostname (`kind-registry`) that no longer resolves on the kind network. Image pulls fail silently because the mirror is unavailable but containerd does not fallback to the original registry (depending on containerd version and mirror configuration).
+A second pitfall: `Status.Start()` / `Status.End()` in every addon's `Execute()` writes to a spinner. In tests with a nil status, these calls panic.
 
-**Prevention:**
-- Write the registry config to `/etc/containerd/certs.d/<registry-host>/hosts.toml` (containerd v2 directory-based config) rather than patching `config.toml` — the directory-based config is the supported extension mechanism
-- Use `containerd v2` config format when the cluster's containerd version supports it
-- The registry addon's `Teardown()` method must remove the config drop-in, not just stop the registry container
-- Add a health check in `kinder doctor` that verifies registry connectivity from each node
+**Why it happens:**
+The `ActionContext` is a concrete struct, not an interface. Unit testing requires constructing an `ActionContext` with mocked dependencies, but the constructor `NewActionContext()` requires a real `providers.Provider`. Tests that skip this end up either testing nothing useful or requiring a live cluster.
 
-**Detection:**
-- After host reboot: push a test image to the registry, then `kubectl run test --image=kind-registry:5000/test:latest` — must succeed without manual intervention
-- Verify with: `docker exec <node> cat /etc/containerd/certs.d/kind-registry:5000/hosts.toml`
-
-**Phase to address:** Phase 4 (local registry addon)
-
----
-
-### Pitfall C8: Insecure Registry Configuration Diverges Between Docker and Podman Hosts
-
-**What goes wrong:**
-The registry runs as HTTP (no TLS) for local development. Each container runtime on the HOST needs to be configured to allow insecure communication with the registry:
-
-- **Docker host:** requires `"insecure-registries": ["kind-registry:5000"]` in `/etc/docker/daemon.json` and a Docker daemon restart — OR the registry container must be on the `kind` bridge network (same network as the kind nodes) so Docker's own daemon does not validate TLS
-- **Podman host:** uses `registries.conf` and the `[registries.insecure]` stanza, in `/etc/containers/registries.conf`
-- **nerdctl host:** inherits containerd's configuration
-
-The pitfall is writing an addon that only handles one of these cases. On a Podman host, the Docker-style insecure registry setup does nothing, and the registry addon appears to install successfully but image pushes from the HOST fail.
-
-**Prevention:**
-- The registry addon must detect the active provider and emit provider-appropriate host configuration instructions in its output
-- The containerd-inside-node config (for image pulls BY PODS) is the same across all providers — only the host-side push configuration differs
-- Document the host-side requirement explicitly; do not attempt to automate it (requires daemon restart and root access)
-
-**Phase to address:** Phase 4 (local registry addon)
-
----
-
-## Cert-Manager Addon Pitfalls
-
-### Pitfall C9: cert-manager CRDs Must Install Before cert-manager Pods Are Ready
-
-**What goes wrong:**
-cert-manager requires its Custom Resource Definitions (CRDs) to be installed before the cert-manager controller, webhook, and cainjector pods can function. If the addon applies the cert-manager Helm chart or manifest without first ensuring CRDs are in `Established` state, the webhook server starts but cannot process `Certificate` objects. Attempts to create a `ClusterIssuer` immediately after manifest application fail with "no kind Certificate is registered."
-
-**Prevention:**
-- Apply CRDs first: `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.x.y/cert-manager.crds.yaml`
-- Wait for CRD establishment before applying the main manifest:
-  ```bash
-  kubectl wait --for condition=established --timeout=60s crd/certificates.cert-manager.io
+**How to avoid:**
+- Create a `FakeNode` type in a `testutil` package that implements `nodes.Node` using a command script map:
+  ```go
+  type FakeNode struct {
+      Commands map[string]FakeCmdOutput  // keyed by first arg (e.g., "kubectl")
+  }
   ```
-- Only then apply cert-manager deployment manifests
+- Create a `FakeProvider` that returns `[]nodes.Node{fakeNode}` from `ListNodes()`
+- Use `cli.StatusForLogger(log.NoopLogger{})` for the status field — the NoopLogger already exists in the codebase
+- Test the logical behavior (does the addon call `kubectl apply --server-side`? does it wait for deployment availability?) not the kubectl output format
+- Never test by asserting kubectl stderr — that's the cluster's concern, not the addon's
 
-**Phase to address:** Phase 5 (cert-manager addon)
+**Warning signs:**
+- Test file imports `testing` but also `os/exec` directly — usually means the test is accidentally running real commands
+- Test that passes when `$KUBECONFIG` is not set but fails when it is — means test is leaking into real cluster
+- `defer ctx.Status.End(false)` called in test with a nil Status — panic on test run
 
----
-
-### Pitfall C10: Envoy Gateway Addon Dependency — cert-manager Must Be Ready Before Gateway Provisions TLS
-
-**What goes wrong:**
-The cert-manager addon must be fully ready (all three pods: controller, webhook, cainjector) before the Envoy Gateway addon attempts to create `Certificate` resources. The Envoy Gateway integration uses cert-manager's mutating webhook to inject certificate data. If Envoy Gateway's `Gateway` resource is created before the cert-manager webhook is ready, the Gateway object is created without TLS, and cert-manager's reconciliation does not retroactively fix it — you must delete and recreate the Gateway.
-
-**Specific failure mode:**
-cert-manager's webhook requires a valid TLS certificate for itself (its own webhook). During initial cert-manager installation, there is a bootstrapping window (typically 30-90 seconds) where the webhook pod is running but its own certificate is not yet provisioned. Any cert-manager API request during this window returns a webhook timeout error.
-
-**Prevention:**
-- The cert-manager addon must wait for ALL THREE components: `deployment/cert-manager`, `deployment/cert-manager-webhook`, `deployment/cert-manager-cainjector`
-- Wait with: `kubectl rollout status deployment cert-manager-webhook -n cert-manager --timeout=120s`
-- Add an additional check: create a test `Certificate` resource and wait for it to reach `Ready=True` before declaring the addon healthy
-- In `kinder doctor`, check cert-manager webhook readiness separately from pod running state
-
-**Phase to address:** Phase 5 (cert-manager addon) — install ordering is critical
+**Phase to address:** Phase 3 (unit tests for addon actions) — build the FakeNode / FakeProvider test infrastructure first, then write addon tests on top of it
 
 ---
 
-### Pitfall C11: cert-manager Installed Twice — Duplicate CRD Registration
+### Pitfall 5: Addon Registration Refactoring — Import Cycle When Moving to Registry Pattern
 
 **What goes wrong:**
-If cert-manager is installed as a standalone addon AND also pulled in as a dependency of another addon (e.g., Envoy Gateway's Helm chart may bundle cert-manager), CRDs are applied twice. The second application of CRDs fails if the versions differ. The cert-manager pods then run in a state where the actual CRD version in the cluster does not match what the controller expects.
+The current hard-coded addon list in `create.go` imports each addon package directly:
+```go
+import (
+    "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
+    "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+    ...
+)
+```
+A registry pattern moves addon registration to a central `registry.go` that maps addon names to factory functions. The pitfall: if the registry package lives in the `actions/` directory and each addon package imports from `actions/` (to get the `Action` interface and `ActionContext`), then the registry importing each addon and each addon importing `actions/` creates a cycle:
 
-**Prevention:**
-- The cert-manager addon must check for existing cert-manager CRDs before installing: `kubectl get crd certificates.cert-manager.io`
-- If cert-manager is already installed, the addon must skip installation and log a warning
-- Do not bundle cert-manager inside other addon Helm charts — declare it as a prerequisite instead
-
-**Phase to address:** Phase 5 (cert-manager addon)
-
----
-
-## Provider Deduplication Pitfalls
-
-### Pitfall C12: Extracting Shared Code Without Tests Running First
-
-**What goes wrong:**
-The provider packages (docker, podman, nerdctl) have separate test files. The standard approach to deduplication is: (1) identify identical code, (2) move to shared location, (3) update callers. The pitfall is doing step 2 before verifying all existing tests pass. The existing tests are the only specification of what the provider must do — if they fail after extraction, the refactor broke something.
-
-**Specifically for kinder:**
-- `pkg/cluster/internal/providers/docker/provision_test.go` (exists)
-- `pkg/cluster/internal/providers/podman/provision_test.go` (exists)
-- `pkg/cluster/internal/providers/nerdctl/provision_test.go` (exists)
-- `pkg/cluster/internal/providers/podman/images_test.go` (exists)
-- `pkg/cluster/internal/providers/nerdctl/network_test.go` (exists)
-
-These tests must all pass on main BEFORE extraction begins. If they don't currently pass, fix them first. If they pass before extraction and fail after, the extraction changed behavior.
-
-**Prevention:**
-```bash
-# Run before starting any deduplication work
-go test ./pkg/cluster/internal/providers/... -v
-# Must exit 0; any failure must be resolved before touching shared code
+```
+actions/registry → actions/installcertmanager → actions/ (for ActionContext)
 ```
 
-Commit after each individual function extraction, not in batch. Use `git bisect` if a test starts failing.
+This is a compile error. Go's `internal/` boundary does not prevent cycles — it only prevents external access.
 
-**Phase to address:** Phase 2 (provider deduplication) — run tests first, commit atomically
+The second pitfall: the `Addons` struct in the config API (`pkg/internal/apis/config/types.go`) is a plain struct with boolean fields. A registry pattern that maps config field names to addon constructors must reference the config struct — creating a dependency from the registry down to the config package, which is fine, but if the config package is later moved, all registration code breaks.
+
+**Why it happens:**
+Developers design the registry as a "hub" that knows about all addons, not realizing that the Action/ActionContext types are in the package the addons also depend on. The classic solution is to put the interface in a separate package from its implementations and from the registry.
+
+**How to avoid:**
+- Keep the `Action` interface and `ActionContext` in a leaf package with no addon dependencies (they already are in `pkg/cluster/internal/create/actions/`)
+- Put the registry in `create.go` itself (the caller), not in a sub-package — a simple `map[string]func() actions.Action` defined in `create.go` eliminates the cycle
+- Alternatively: use `init()` registration where each addon package registers itself into a package-level map in `actions/` on import — but this requires blank imports (`_ "...installcertmanager"`) in `create.go`, which is an unusual pattern that confuses code readers
+- The safest refactor: replace the hard-coded `runAddon(...)` sequence with a `[]addonEntry{name, enabled, factory}` slice in `create.go` — no new packages required, no cycles possible
+
+**Warning signs:**
+- `go build` error: "import cycle not allowed" immediately after introducing a registry package
+- Registry package that contains `import "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/install..."` — every such import is a dependency the registry must manage
+- `init()` functions in addon packages that register into a global — global state, hard to test
+
+**Phase to address:** Phase 2 (architecture improvements) — design the data structure for the registry in `create.go` before creating any new packages; verify no cycles with `go build ./...` after each step
 
 ---
 
-### Pitfall C13: Podman Port Mapping Quirk — Trailing :0 Stripped for Random Ports
+### Pitfall 6: Parallel Addon Execution — Race Conditions and Dependency Ordering Violations
 
 **What goes wrong:**
-Podman requires that a random port mapping be expressed as `host::container/proto` (empty host port, not `host:0:container/proto`). The Docker and nerdctl providers use `host:0:container/proto` to request a random port. If the shared `generatePortMappings` function is extracted without preserving the Podman-specific stripping of `:0`, Podman clusters will fail to start with a parse error from the Podman CLI.
+The current sequential addon execution has an implicit dependency ordering:
+```
+LocalRegistry → MetalLB → MetricsServer → CoreDNSTuning → EnvoyGateway → Dashboard → CertManager
+```
+EnvoyGateway depends on MetalLB being ready (it needs LoadBalancer IPs for its services). CertManager is last, and while it doesn't depend on the others structurally, it is the heaviest operation (300s wait for webhooks).
 
-**Actual divergence in current code:**
+If addons are parallelized naively:
+1. EnvoyGateway starts before MetalLB's `IPAddressPool` is created — EnvoyGateway's LoadBalancer service gets no external IP, Gateway never becomes ready
+2. CertManager's webhook is applied and immediately another goroutine attempts a `ClusterIssuer` — but the webhook is not yet ready, causing "connection refused" errors that are mistaken for success (because `kubectl apply` treats webhook timeout as an error but the addon's error handling may swallow it)
+3. The `ActionContext.cache` stores nodes in a `sync.RWMutex`-protected cache, but if two addons concurrently call `ctx.Nodes()` for the first time, both pass the nil check and make concurrent `ListNodes()` calls — this is a data race on the cache even though a mutex is present (the check-then-set is not atomic)
+
+The existing `cachedData` struct in `action.go`:
 ```go
-// docker/provision.go — does NOT strip :0
-args = append(args, fmt.Sprintf("--publish=%s:%d/%s", hostPortBinding, pm.ContainerPort, protocol))
-
-// podman/provision.go — strips trailing :0 for random ports
-if strings.HasSuffix(hostPortBinding, ":0") {
-    hostPortBinding = strings.TrimSuffix(hostPortBinding, "0")
+func (ac *ActionContext) Nodes() ([]nodes.Node, error) {
+    cachedNodes := ac.cache.getNodes()  // RLock
+    if cachedNodes != nil {
+        return cachedNodes, nil
+    }
+    n, err := ac.Provider.ListNodes(ac.Config.Name)
+    // ... setNodes — Lock
 }
-args = append(args, fmt.Sprintf("--publish=%s:%d/%s", hostPortBinding, pm.ContainerPort, strings.ToLower(protocol)))
 ```
+This is a TOCTOU (time-of-check/time-of-use) race: two goroutines can both see `cachedNodes == nil`, both call `ListNodes`, and both call `setNodes`. The result is duplicated provider calls (benign) but the mutex does not prevent the race between the nil check and the set.
 
-Note also: Podman uses `strings.ToLower(protocol)` but Docker does not. A unified function that omits either behavior is wrong for one of them.
+Additionally, the `Status` spinner is not goroutine-safe for concurrent `Start()`/`End()` calls from multiple addons — the spinner writes to a single writer and is designed for sequential use.
 
-**Prevention:**
-This behavior must stay provider-specific. If extracting `generatePortMappings` to shared code, pass a `PortFormatter` function as a parameter:
+**Why it happens:**
+Sequential code that works correctly is parallelized by wrapping each addon in a goroutine and using `errors.AggregateConcurrent()` (which already exists in the codebase). The dependency ordering is implicit — not encoded anywhere — so parallelization appears to work in testing but fails in production when addons take different amounts of time.
 
-```go
-type PortFormatter func(hostPortBinding string, containerPort int32, protocol string) string
-```
+**How to avoid:**
+- Map out explicit dependencies before writing any parallel code:
+  ```
+  Group A (no deps): LocalRegistry, MetricsServer, CoreDNSTuning
+  Group B (needs Group A done): MetalLB
+  Group C (needs MetalLB): EnvoyGateway
+  Group D (no deps, independent): CertManager
+  Group E (no deps, independent): Dashboard
+  ```
+- Execute groups sequentially; within each group, execute in parallel with `errors.AggregateConcurrent()`
+- Fix the `Nodes()` cache TOCTOU before enabling parallel execution: use `sync.Once` instead of check-then-set:
+  ```go
+  type cachedData struct {
+      once  sync.Once
+      nodes []nodes.Node
+      err   error
+  }
+  ```
+- For the Status spinner: each addon should report status through a channel to a single goroutine that owns the spinner, or use separate log lines per addon (no spinner in parallel mode)
+- Run `go test -race ./...` explicitly after any parallelism is introduced
 
-Each provider supplies its own formatter. Never merge the Podman `:0` stripping into the Docker or nerdctl path.
+**Warning signs:**
+- `go test -race` reports data races in `action.go` or any addon package after parallelization
+- Cluster creation with `--addons all` succeeds in testing but EnvoyGateway Gateway has no external IP
+- CertManager installation reports success but `kubectl get clusterissuer` shows `NotReady`
 
-**Phase to address:** Phase 2 (provider deduplication)
+**Phase to address:** Phase 4 (parallel addon execution) — document dependency DAG first; implement group-sequential execution before full parallelism; enable `-race` in CI
 
 ---
 
-### Pitfall C14: Podman Anonymous Volume Creation vs Docker Anonymous Volume
+### Pitfall 7: JSON Output — stdout Contamination Breaking Machine-Readable Output
 
 **What goes wrong:**
-In `podman/provision.go`, the `/var` volume is created as a named anonymous volume BEFORE the container is created (`createAnonymousVolume(name)`), then mounted as `--volume $varVolume:/var:suid,exec,dev`. In Docker and nerdctl, the volume is declared inline as `--volume /var` (Docker manages the anonymous volume lifecycle).
+All existing commands write human-readable output to `logger.V(0).Infof(...)` which writes to the logger's writer (typically stderr or stdout depending on setup). Adding `--output json` to commands like `kinder get clusters` requires that ONLY valid JSON goes to stdout when the flag is set. Any progress line, salutation, or warning that leaks to stdout breaks JSON consumers (`jq` fails with parse error on the first non-JSON line).
 
-The Podman approach uses `suid,exec,dev` mount options which are required for Podman's security model. The Docker approach does not need these because Docker uses different defaults for container capabilities.
+The kinder codebase mixes output destinations:
+- `logger.V(0).Infof(...)` → logger writer (could be stdout)
+- `fmt.Fprintln(streams.Out, cluster)` → `streams.Out` (explicitly stdout)
+- `ctx.Status.Start(...)` → spinner writer
 
-If the shared `runArgsForNode` function is extracted and uses Docker's inline `--volume /var` syntax for Podman containers, the Podman nodes will fail to run workloads that require SUID binaries or device access inside `/var`.
+In the existing `get clusters` command, output is via `fmt.Fprintln(streams.Out, cluster)`. Adding JSON output means replacing this with `json.NewEncoder(streams.Out).Encode(result)`. But if any other code path writes to `streams.Out` before or after (e.g., "Creating cluster" progress lines that someone left routing to Out instead of Err), the JSON is broken.
 
-**Prevention:**
-- Do not extract `runArgsForNode` to shared code — it is the most divergent function
-- If extraction is required, use a `NodeVolumeArgs(name string) []string` method on the provider behavior interface
-- The Podman provider must always pre-create the volume and clean it up on node deletion
+Additionally, `json.Encoder.Encode()` appends a trailing newline after each value. If the caller naively JSON-encodes multiple items in a loop, they get JSON Lines (one JSON object per line), not a JSON array. The consumer expecting a JSON array will fail.
 
-**Phase to address:** Phase 2 (provider deduplication)
+**Why it happens:**
+The human-readable path was built first and only uses the logger. JSON output is added later as a flag, but the developer forgets that logger.V(0) writes to the same writer that JSON must exclusively own. The fix (route logger to stderr, JSON to stdout) requires changing how the logger is initialized at command startup — a wider change than it appears.
+
+**How to avoid:**
+- When `--output json` is active, the logger's writer MUST be `os.Stderr`, not `os.Stdout`; enforce this at the command entry point, not deep in the action layer
+- Use `json.NewEncoder(streams.Out).Encode([]item{...})` once with a full array — do not encode individual items in a loop
+- Add a golden-file test: run the command with `--output json` and pipe through `jq empty` — if jq exits non-zero, the JSON is malformed
+- Define the JSON schema (which fields, what types) before implementation; use a struct with `json:"..."` tags, not `map[string]interface{}`
+- Respect POSIX convention: errors → stderr, data → stdout; apply this regardless of output format
+
+**Warning signs:**
+- `kinder get clusters --output json | jq .` fails with "parse error: Invalid numeric literal at line 2"
+- Logger output includes spinner frames interleaved with JSON (the spinner writes carriage returns that corrupt JSON)
+- Output changes between `--verbosity 0` and `--verbosity 1` when `--output json` is set (should be identical)
+
+**Phase to address:** Phase 5 (JSON output) — define the stream routing rule (logger → stderr, data → stdout) as a pre-condition; write the golden-file test before the implementation
 
 ---
 
-## CLI Diagnostic Command Pitfalls
-
-### Pitfall C15: kinder env/doctor Commands Assuming All Providers Are Available
+### Pitfall 8: Package Movement (Layer Violations) — Compile Succeeds but Upstream Sync Breaks
 
 **What goes wrong:**
-`kinder doctor` checks environment health. A common mistake is implementing checks that assume Docker is available when the user might be running Podman or nerdctl. For example:
+The `pkg/fs/` package is marked as a layer violation (it is public API but should be `pkg/internal/fs/`). Moving it requires updating every import path in the codebase. The Go compiler enforces this correctly — `go build ./...` will fail if any import is missed.
 
-- Running `docker info` to check container runtime status — fails on Podman-only systems
-- Checking `/var/run/docker.sock` for socket availability — irrelevant for nerdctl
-- Hard-coding Docker-specific JSON output parsing in diagnostic output
+However, kinder's module path is `sigs.k8s.io/kind` (not `sigs.k8s.io/kinder`). Any package movement must be reflected in import paths that still say `sigs.k8s.io/kind/pkg/fs/...`. This is correct for kinder's purposes, but any future attempt to sync upstream kind changes will encounter conflicts: upstream kind will have its own `pkg/fs/` unchanged, while kinder has moved it to `pkg/internal/fs/`. A cherry-pick or merge will produce import path conflicts that must be resolved manually.
 
-**Prevention:**
-- `kinder doctor` must detect the active provider FIRST (using the existing `DetectNodeProvider()` function in `pkg/cluster/provider.go`)
-- All provider-specific checks must be gated on the detected provider
-- Checks that apply to all providers (e.g., "can we list clusters?") must use the provider interface, not raw CLI calls
+The second layer violation is `pkg/internal/cli` importing from `pkg/cluster/internal/` — moving these packages changes the visibility of `internal` to external packages. Go's `internal` package rules apply per-tree: code in `pkg/internal/` cannot be imported by code outside `pkg/`. If the refactor moves a package from `internal` to public, the change may be noticed by upstream kind reviewers on any future PRs. If it moves from public to `internal`, existing code that referenced the old path stops compiling.
 
-**Detection:**
-- Run `kinder doctor` on a machine with only Podman installed — must not error with "docker: command not found"
-- Run `kinder doctor` on a machine with only nerdctl — same requirement
+**Why it happens:**
+Package organization in a fork is rarely updated because of the merge conflict cost. The original kind codebase has these "violations" as well — they accumulated over time and were never fixed upstream. In a fork, fixing them creates divergence that makes upstream syncs harder.
 
-**Phase to address:** Phase 3 (kinder env/doctor commands)
+**How to avoid:**
+- Before moving any package: `grep -rn "pkg/fs\b" --include="*.go" .` to find every import site; update them all atomically in one commit
+- Use `gorename` or a simple `sed` script to update all import paths at once; do not do it manually file by file
+- After the move: `go build ./...` and `go test ./...` must both pass
+- Document the package move in a comment in the new location: `// Moved from pkg/fs/ in kinder v1.4; upstream kind still uses pkg/fs/`
+- Accept that moving packages increases upstream sync difficulty; only move packages where the benefit (cleaner architecture) outweighs the merge cost
 
----
+**Warning signs:**
+- `go build ./...` fails with "use of internal package sigs.k8s.io/kind/pkg/internal/... not allowed" after a move
+- A cherry-picked upstream kind commit fails because import paths no longer match
+- IDE shows "import cycle" warnings after a move (the move introduced a cycle that was not present before)
 
-### Pitfall C16: kinder env Output Format — Machine-Readable vs Human-Readable Conflict
-
-**What goes wrong:**
-`kinder env` is typically used in shell scripts via `eval $(kinder env)` to set environment variables. If the output includes human-readable text (progress lines, warnings, header comments) mixed with the `export VAR=value` lines, `eval` will fail with a syntax error.
-
-Conversely, if the output is ONLY machine-readable with no way to get human-readable output, the command is hard to debug interactively.
-
-**Prevention:**
-- By default, emit only `export VAR=value` lines — nothing else to stdout
-- Warnings go to stderr only
-- Add a `--shell` flag (default: auto-detect from `$SHELL`) and a `--no-export` flag for fish shell compatibility (fish uses `set -x VAR value`)
-- Add a `--human` or `--verbose` flag that adds comments and headers for interactive use
-
-**Detection:**
-- Test: `eval $(kinder env)` in bash must succeed when a cluster exists
-- Test: `kinder env` when no cluster exists must exit non-zero and emit a human-readable error to stderr (not stdout)
-
-**Phase to address:** Phase 3 (kinder env/doctor commands)
+**Phase to address:** Phase 2 (architecture improvements) — do package moves in isolated commits; never combine a package move with a behavioral change; verify with `go build` and `go vet` immediately
 
 ---
 
-## Bug Fix Regression Pitfalls
+## Technical Debt Patterns
 
-### Pitfall C17: Fixing One Provider's Bug Without Fixing All Three
+Shortcuts that seem reasonable but create long-term problems.
 
-**What goes wrong:**
-All four bugs identified (defer-in-loop, tar extraction, ListInternalNodes, network sort) exist because of copy-paste replication across providers. The risk: fix the bug in `docker/provision.go` but forget `podman/provision.go` and `nerdctl/provision.go`. The fixed provider passes tests, but the other two remain broken.
-
-**Prevention:**
-- For each bug fix, search for the identical pattern in all three providers: `grep -rn "releaseHostPortFn\|defer.*release" pkg/cluster/internal/providers/`
-- Write a test that covers the fix for each provider, not just docker
-- Use the checklist: docker fixed? podman fixed? nerdctl fixed? each test added?
-
-**Detection:**
-- Run `go vet ./pkg/cluster/internal/providers/...` after each fix
-- If the same test exists in all three providers' test files, all three must pass
-
-**Phase to address:** Phase 1 (bug fixes)
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Store `context.Context` in `ActionContext` struct | Fewer function signature changes | Violates Go idiom; contexts cannot be cancelled per-call; misleads future developers | Never |
+| Parallelize all addons at once | Simple implementation | Hidden dependency violations cause intermittent failures | Never — use dependency-group sequential execution |
+| `go get -u ./...` bulk update | One command | Cascading test failures across multiple deps; hard to bisect | Never in one step; update one dep at a time |
+| `fmt.Println` for JSON output | Quick to implement | Breaks machine parsing when any other code writes to stdout | Never for JSON output |
+| `init()` registration for addon registry | No changes to `create.go` | Global state, untestable, import order-dependent | Acceptable if no alternative, but document it clearly |
+| Move package + change behavior in one commit | Fewer PRs | Impossible to bisect; refactor vs. bug fix confusion | Never — always separate moves from logic changes |
 
 ---
 
-### Pitfall C18: Bug Fixes That Change Provider External Behavior
+## Integration Gotchas
 
-**What goes wrong:**
-The network sort comparator fix (Pitfall C4) changes which network is selected as the "primary" when duplicates exist. This could break existing clusters if they were relying on the old (incorrect) selection order. Similarly, fixing the defer-in-loop changes the timing of port release, which could theoretically affect port allocation behavior.
+Common mistakes when connecting the new features to existing system.
 
-**Prevention:**
-- For the network sort fix: the new sort produces a STABLE ordering (more containers first, then ID). The old sort was non-deterministic. The fix cannot produce a worse outcome than random selection.
-- For the defer-in-loop fix: ports should be released AFTER the container is created, not BEFORE. The fix (IIFE pattern) releases ports at the end of each iteration — still before the next iteration's port probe. This is safe.
-- Document the behavioral change in the commit message for each bug fix
-- Add a regression test that exercises the fixed scenario
-
-**Phase to address:** Phase 1 (bug fixes)
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| ActionContext + context.Context | Add `Ctx context.Context` field to ActionContext | Pass `ctx context.Context` as first param to `Execute()` |
+| Addon registry + config API | Registry references config struct field names as strings | Registry receives enabled bool, not config field name; boolean is determined at the call site |
+| JSON output + logger | Logger writes to streams.Out (stdout) | When JSON mode active, force logger writer to os.Stderr before any output |
+| Parallel addons + spinner | Multiple goroutines call Status.Start() concurrently | Use a dedicated goroutine for status output; addons send events via channel |
+| go.mod version bump + rand | Bump go directive but leave `rand.NewSource(time.Now().UnixNano())` | After bumping to 1.20+, simplify to `rand.Intn(len(salutations))` |
+| Package move + internal boundary | Move pkg/fs to pkg/internal/fs without checking callers | Use `grep` to find all import sites; update atomically |
+| Fake node tests + stdin piping | FakeCmd.Run() returns success without consuming stdin | FakeCmd must verify SetStdin was called for kubectl apply commands |
 
 ---
 
-## Phase-Specific Warnings
+## Performance Traps
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Bug fixes (defer-in-loop) | Fix in docker but not podman/nerdctl | Grep-and-fix all three, add tests for all three |
-| Bug fixes (tar extraction) | Treat non-EOF as break instead of error | Always `return err` on non-EOF; add truncated tar test |
-| Bug fixes (ListInternalNodes) | Forget defaultName() in new commands | Normalize cluster name as first step in every command |
-| Bug fixes (network sort) | Non-strict comparator re-introduced | Write sort test with 3-element array including ties |
-| Provider deduplication | Merging Podman port stripping into shared path | Use PortFormatter interface; test Podman port format explicitly |
-| Provider deduplication | Podman volume pre-creation removed | Keep Podman volume creation in provider-specific code |
-| Provider deduplication | Shared commonArgs misses provider-specific flags | Define ProviderBehavior interface; test each provider's common args |
-| Provider deduplication | Tests broken after extraction | Run all tests before each extraction step; commit atomically |
-| kinder env command | Human text mixed with eval output | stdout = machine-readable only; stderr = human/warnings |
-| kinder doctor command | Docker-specific checks on Podman system | Detect provider first; gate all checks on detected provider |
-| Local registry addon | Registry unreachable from inside nodes | Registry must be on kind network; containerd must be patched and restarted |
-| Local registry addon | Config not surviving cluster restart | Use containerd certs.d directory format; verify after simulated restart |
-| Local registry addon | Host-side push fails on non-Docker system | Document provider-specific host config; detect and warn at addon install time |
-| cert-manager addon | CRDs not established before controller starts | Wait for CRD establishment; then wait for webhook readiness |
-| cert-manager addon | Envoy Gateway creates Gateway before cert-manager webhook ready | Install and health-check cert-manager before Envoy Gateway configuration |
-| cert-manager addon | Double installation via dependency chain | Check for existing cert-manager CRDs before installing |
+Patterns that work at small scale but fail as usage grows.
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Naive full parallelism of all addons | EnvoyGateway gets no LoadBalancer IP; CertManager ClusterIssuer fails | Execute dependency groups sequentially, parallelize within groups | Immediately — timing-dependent |
+| Parallel addons sharing Status spinner | Spinner output garbled; carriage returns corrupt JSON output | Route status to a channel owned by a single writer goroutine | With 2+ concurrent addons |
+| TOCTOU in ActionContext.Nodes() cache | Double ListNodes() calls under concurrency | Replace check-then-set with sync.Once | With 2+ concurrent addons calling Nodes() |
+| json.Encode per item in loop | JSON Lines output instead of JSON array | Collect all items, encode once as array | When consumer expects []T not one T per line |
+
+---
+
+## Security Mistakes
+
+Domain-specific security issues beyond general web security.
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Logging cluster credentials in JSON output | kubeconfig or token written to structured logs | Never include sensitive fields in JSON output structs; use redaction |
+| World-readable permissions on moved pkg/fs output | Sensitive kubeconfig files copied with 0644 | Preserve or restrict permissions; audit pkg/fs.Copy() after any refactor |
+| context.WithTimeout shorter than kubectl --timeout | Kubectl reports success, context cancelled before kubectl completes | Context timeout must be longer than the longest kubectl --timeout used in the action |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+Things that appear complete but are missing critical pieces.
+
+- [ ] **go.mod version bump:** `go` directive bumped — but `toolchain` directive also updated, AND comment-gated code (`rand.NewSource`) cleaned up, AND `go mod tidy` run with the new toolchain
+- [ ] **JSON output:** Returns valid JSON — but also tested that `--output json | jq empty` exits 0, AND logger routes to stderr in JSON mode, AND output is a JSON array not JSON lines
+- [ ] **Parallel addon execution:** Addons run concurrently — but also the dependency DAG is documented and enforced, AND `-race` detector shows no races, AND integration test verifies EnvoyGateway gets a LoadBalancer IP
+- [ ] **Addon registry refactoring:** `create.go` no longer has hard-coded imports — but also `go build ./...` shows no import cycles, AND adding a new addon only requires one file change (not changes in create.go)
+- [ ] **context.Context in actions:** `Execute()` signature updated — but also no `context.Context` stored in any struct field, AND all call sites pass a real context (not `context.Background()`)
+- [ ] **Unit tests for addon actions:** Tests compile and pass — but also they test behavior (does the action call kubectl apply with --server-side?), not implementation, AND they work without `$KUBECONFIG` set
+- [ ] **Package move (pkg/fs → pkg/internal/fs):** All imports updated — but also `go build ./...` passes, AND the internal boundary does not prevent packages that previously accessed pkg/fs from accessing pkg/internal/fs
+
+---
+
+## Recovery Strategies
+
+When pitfalls occur despite prevention, how to recover.
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| toolchain directive breaks CI | LOW | Pin `toolchain go1.X.Y` explicitly; check in go.mod+go.sum together; update CI to use GOTOOLCHAIN=local |
+| Dependency cascade breaks tests | MEDIUM | `git bisect` to find which `go get` broke the test; revert that dep to previous version; update selectively |
+| context.Context in struct discovered late | MEDIUM | Create migration branch; add `ExecuteContext()` alongside `Execute()`; migrate callers incrementally; deprecate old signature |
+| Import cycle after registry refactor | LOW | `go build ./...` immediately shows the cycle; move the registry to `create.go`; no new package needed |
+| Parallel addon race condition discovered in production | HIGH | Revert to sequential execution; document the dependency DAG; re-implement parallel execution with explicit groups |
+| JSON output with stdout contamination | LOW | Add `--output json` golden-file test that pipes through `jq`; fix logger routing to stderr; re-verify |
+| Package move breaks upstream cherry-pick | MEDIUM | Document the moved path in the new location; apply upstream patch to both old and new path; verify with `go build` |
+| Fake node test doesn't catch real bug | MEDIUM | Add integration test that creates a real cluster and verifies addon output (separate slow test suite) |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+How roadmap phases should address these pitfalls.
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| go.mod version bump + toolchain | Phase 1: go.mod and dependencies | `go mod tidy` produces stable go.mod; comment-gated code removed; CI passes |
+| Dependency cascade | Phase 1: incremental dep update | `go test ./...` passes after each individual dep update |
+| context.Context in struct | Phase 2: architecture improvements | `grep -rn "context\.Context" --include="*.go" pkg/ \| grep "struct {"` returns 0 matches |
+| Import cycle in registry refactor | Phase 2: architecture improvements | `go build ./...` after each step; no packages import their callers |
+| Package move breaks boundary | Phase 2: architecture improvements | `go build ./...` + `go test ./...` pass immediately after move commit |
+| Fake node test infrastructure | Phase 3: unit tests | Addon tests pass without KUBECONFIG set; no real commands executed |
+| JSON stdout contamination | Phase 5: JSON output | `kinder get clusters --output json \| jq empty` exits 0 |
+| Parallel addon race condition | Phase 4: parallel execution | `go test -race ./...` shows no races; integration test verifies EnvoyGateway gets IP |
+| Addon dependency ordering violation | Phase 4: parallel execution | Dependency DAG documented before any goroutine is introduced |
+
+---
+
+## Fork-Specific Pitfalls
+
+Issues unique to kinder's status as a fork of `sigs.k8s.io/kind`.
+
+### Pitfall F1: Module Path Still Says `sigs.k8s.io/kind`
+
+The `go.mod` declares `module sigs.k8s.io/kind`. All internal imports use this path. If the module path is ever changed to `github.com/PatrykQuantumNomad/kinder`, EVERY import statement in 28K LOC must be updated simultaneously. The risk is not in the change itself — it is in partial changes, where some files are updated and others are not, causing compile failures that are hard to trace.
+
+**Prevention:** Do not change the module path unless absolutely necessary. If changing, use a single automated script (`find . -name "*.go" -exec sed -i 's|sigs.k8s.io/kind|github.com/PatrykQuantumNomad/kinder|g' {} +`) and verify with `go build ./...` before committing anything.
+
+**Phase to address:** Not in v1.4 scope — defer this decision; note in PROJECT.md.
+
+### Pitfall F2: Code Quality Changes Make Upstream Syncs Harder
+
+Every code quality improvement (renaming error variables, moving packages, adding context parameters, extracting shared code) increases the diff from upstream kind. When upstream releases a security fix, cherry-picking it may fail because the surrounding context has changed.
+
+**Prevention:**
+- Keep a `DIVERGENCE.md` (or equivalent) listing every deliberate divergence from upstream kind
+- Prefer additive changes (new files, new packages) over modifying upstream files when possible
+- When modifying upstream files, keep the change minimal and clearly marked with `// kinder: <reason>` comments
+- Run `git diff upstream/main HEAD -- path/to/modified/file` periodically to assess upstream sync risk
+
+**Phase to address:** Ongoing — document each divergence in the commit message with the prefix "kinder:"
 
 ---
 
 ## Sources
 
-- [kind local registry guide](https://kind.sigs.k8s.io/docs/user/local-registry/) — official containerd config patch pattern and registry-on-kind-network requirement (HIGH confidence)
-- [containerd registry configuration](https://github.com/containerd/containerd/blob/main/docs/cri/registry.md) — certs.d directory-based config for containerd v2 (HIGH confidence)
-- [cert-manager kind development guide](https://cert-manager.io/docs/contributing/kind/) — cert-manager + kind integration, webhook readiness bootstrapping (HIGH confidence)
-- [cert-manager Envoy Gateway TLS guide](https://gateway.envoyproxy.io/docs/tasks/security/tls-cert-manager/) — dependency ordering between cert-manager and Envoy Gateway (HIGH confidence)
-- [Go defer in loop — JetBrains Inspectopedia](https://www.jetbrains.com/help/inspectopedia/GoDeferInLoop.html) — canonical documentation of the defer accumulation problem (HIGH confidence)
-- [Go archive/tar package](https://pkg.go.dev/archive/tar) — `io.EOF` return semantics for `Next()` (HIGH confidence)
-- [kinder CONCERNS.md](planning/codebase/CONCERNS.md) — codebase analysis identifying the four bugs, provider duplication fragility, and test coverage gaps (HIGH confidence — primary source)
-- [kinder docker/provision.go](pkg/cluster/internal/providers/docker/provision.go) — direct code evidence of defer-in-loop in generatePortMappings (HIGH confidence)
-- [kinder podman/provision.go](pkg/cluster/internal/providers/podman/provision.go) — direct code evidence of Podman port format divergence and volume pre-creation (HIGH confidence)
-- [kinder nerdctl/provision.go](pkg/cluster/internal/providers/nerdctl/provision.go) — direct code evidence of nerdctl network flag divergence (HIGH confidence)
-- [kinder docker/network.go](pkg/cluster/internal/providers/docker/network.go) — direct code evidence of network sort comparator (HIGH confidence)
-- [Interface pollution in Go — 100 Go Mistakes](https://100go.co/5-interface-pollution/) — guidance on when to define interfaces for behavior extraction (MEDIUM confidence)
-- [kind issue: containerd race restarting with config patches](https://github.com/kubernetes-sigs/kind/issues/2262) — confirmed timing issue with containerd restart after config patching (HIGH confidence)
+- [Go 1.21 Release Notes — toolchain directive](https://tip.golang.org/doc/go1.21) — authoritative source on go.mod toolchain behavior change (HIGH confidence)
+- [Go Toolchains reference](https://go.dev/doc/toolchain) — GOTOOLCHAIN, toolchain directive semantics (HIGH confidence)
+- [cmd/go Issue #62409 — go get -u + go mod tidy toolchain behavior change](https://github.com/golang/go/issues/62409) — real-world CI breakage from toolchain directive after update (HIGH confidence)
+- [Contexts and structs — official Go blog](https://go.dev/blog/context-and-structs) — "Do not store Contexts inside a struct type" (HIGH confidence)
+- [Go's context library anti-patterns — Medium](https://medium.com/@gosamv/gos-context-library-more-patterns-and-anti-patterns-6bc48eaf774e) — context retrofitting patterns (MEDIUM confidence)
+- [cert-manager webhook readiness — official docs](https://cert-manager.io/docs/concepts/webhook/) — bootstrapping window and timing requirements (HIGH confidence)
+- [cert-manager troubleshooting webhook — official docs](https://cert-manager.io/docs/troubleshooting/webhook/) — "connection refused" during webhook startup (HIGH confidence)
+- [Testing os/exec.Command — npf.io](https://npf.io/2015/06/testing-exec-command/) — helper process pattern for fake commands (MEDIUM confidence)
+- [k8s.io/utils/exec/testing — pkg.go.dev](https://pkg.go.dev/k8s.io/utils/exec/testing) — FakeExec pattern from Kubernetes itself (HIGH confidence)
+- [Go data race detector — official docs](https://go.dev/doc/articles/race_detector) — `-race` flag usage for detecting parallel addon races (HIGH confidence)
+- [Import cycles in Go — Jogendra](https://jogendra.dev/import-cycles-in-golang-and-how-to-deal-with-them) — import cycle causes and solutions (MEDIUM confidence)
+- [Go forum: how to properly fork a golang module](https://forum.golangbridge.org/t/how-to-properly-fork-a-golang-module/27846) — module path management for forks (MEDIUM confidence)
+- Kinder codebase direct analysis: `pkg/cluster/internal/create/create.go`, `pkg/cluster/internal/create/actions/action.go`, `pkg/exec/types.go`, `pkg/exec/local.go`, `pkg/errors/concurrent.go`, `go.mod` — (HIGH confidence — primary sources)
 
 ---
 
-*Pitfalls research for: kinder v1.3 — local registry, cert-manager, CLI diagnostic tools, provider deduplication, and bug fixes*
+*Pitfalls research for: kinder v1.4 — code quality improvements, architecture fixes, unit tests, new features added to existing kind fork*
 *Researched: 2026-03-03*

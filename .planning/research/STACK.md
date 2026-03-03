@@ -1,311 +1,454 @@
 # Technology Stack
 
-**Project:** kinder — Milestone 2 (Go CLI additions)
-**Scope:** Stack additions/changes for local registry addon, cert-manager addon, `kinder env` command, `kinder doctor` command, and provider code deduplication. Existing validated stack (Go, Cobra, go:embed, exec patterns) is not re-researched.
+**Project:** kinder — Milestone 3 (Code quality, testing, parallel addons, JSON output, addon registry)
+**Scope:** Stack additions/changes for: go.mod version bump, golang.org/x/sys update, context.Context support, unit tests for addon actions, parallel addon installation, structured JSON output, addon registry pattern.
 **Researched:** 2026-03-03
-**Overall confidence:** HIGH for implementation patterns; MEDIUM for cert-manager version choice (depends on default node image k8s version)
+**Overall confidence:** HIGH for all items below (verified against official sources and live package versions)
 
 ---
 
 ## Executive Summary: What Actually Changes in go.mod
 
-**New external dependencies: ZERO.**
+**New external dependency: ONE** — `golang.org/x/sync` for `errgroup` (parallel addon install).
 
-All four feature areas are implemented using the standard library plus packages already present in go.mod. The only mandatory go.mod change is updating the `go` minimum version directive. No `require` block additions are needed.
+The `golang.org/x/sys` version update is a maintenance upgrade (v0.6.0 → v0.41.0). The `go` minimum version directive bumps from `go 1.21.0` to `go 1.23.0` (already used by the `hack/tools` module; aligns with the build toolchain's effective minimum). The `toolchain` directive is already present at `go1.26.0` and stays unchanged.
+
+All other improvements — context support, unit tests, JSON output, addon registry — use only the standard library plus existing in-repo packages.
 
 ---
 
 ## Recommended Stack Changes
 
-### 1. Go Module Minimum Version — MANDATORY UPDATE
+### 1. Go Module Minimum Version — go 1.21.0 → go 1.23.0
 
 | Item | Current | Recommended |
 |------|---------|-------------|
-| `go` directive | `go 1.17` | `go 1.21.0` |
-| `toolchain` directive | absent | `toolchain go1.26.0` |
+| `go` directive | `go 1.21.0` | `go 1.23.0` |
+| `toolchain` directive | `toolchain go1.26.0` | `toolchain go1.26.0` (unchanged) |
 
-**Why `go 1.21.0`:**
-- Go 1.21 changed the `go` directive from advisory to a mandatory minimum. Before 1.21 it was mostly unenforced; from 1.21+ the toolchain refuses if the consumer's Go is older than declared.
-- The codebase already has a comment flagging this. In `pkg/cluster/internal/create/create.go` line 258: `// NOTE: explicit seeding is required while the module minimum is Go 1.17. Once the minimum Go version is bumped to 1.20+, this can be simplified...` — bumping to 1.21.0 allows replacing `rand.New(rand.NewSource(time.Now().UTC().UnixNano()))` with just `rand.Intn()` (global source auto-seeded since 1.20).
-- 1.21.0 also unlocks `slices` and `maps` standard packages for cleaner provider deduplication helpers.
-- The system already builds with go1.26.0 (per `.go-version` = `1.25.7`, confirmed host = `go1.26.0`). This is a paperwork alignment, not a toolchain change.
+**Why `go 1.23.0` (not 1.24 or 1.25):**
 
-**Why `toolchain go1.26.0`:**
-- `.go-version` already pins `1.25.7`. Adding the `toolchain` directive in go.mod makes the intended build toolchain explicit and reproducible. Unlike the `go` directive, `toolchain` does not impose a requirement on consumers of this module — it only affects developers working in this module.
+- The `hack/tools` module (`hack/tools/go.mod`) already declares `go 1.23`. Bumping the main module to 1.23 brings it into alignment without adding friction.
+- Go 1.23 introduced `iter` package (range-over-func), but more relevantly for this milestone it stabilised iterator-based APIs in `slices`/`maps` that are used in common helpers. More practically, 1.23 is the LTS-stable choice with no known regressions relevant to CLI tools as of 2026-03.
+- Go 1.24 (released February 2025) adds `math/rand.Seed()` as a no-op, which finalises the rand.Intn auto-seeding cleanup already flagged in the codebase comment. However, the rand simplification in `logSalutation()` only requires 1.20+ (global auto-seed), so the 1.23 bump already enables that cleanup.
+- Go 1.24 also adds `testing.T.Context()` — useful for test context management — but it is NOT required for the unit tests in scope (which test pure functions like `patchCorefile`, `carvePoolFromSubnet`, and manifest generation).
+- Go 1.25 (released August 2025) adds `sync.WaitGroup.Go()` and `testing/synctest` — neither is required here.
+- **Decision: go 1.23.0** — minimum useful bump, aligned with hack/tools, avoids pulling in unnecessary Go version constraints on downstream consumers.
+
+**Unlocked by the bump:**
+
+| Feature | Since | Use in this milestone |
+|---------|-------|----------------------|
+| `rand.Intn()` without explicit seeding | 1.20 | Replace `rand.New(rand.NewSource(...))` in `logSalutation()` |
+| `slices.Contains`, `slices.Sort` | 1.21 | Cleaner addon name deduplication in registry |
+| `maps.Keys` | 1.21 | Addon registry key enumeration |
+| `iter` package | 1.23 | Available if needed for addon iteration patterns |
 
 **go.mod diff:**
 
 ```diff
--go 1.17
-+go 1.21.0
-+
-+toolchain go1.26.0
+-go 1.21.0
++go 1.23.0
+
+ toolchain go1.26.0
 ```
 
-No changes to the `require` block.
-
-**Confidence:** HIGH — verified against official Go toolchain docs and the codebase comment.
+**Confidence:** HIGH — verified against Go release notes and hack/tools/go.mod in this repo.
 
 ---
 
-### 2. Local Registry Addon — No New Dependencies
+### 2. golang.org/x/sys — v0.6.0 → v0.41.0
 
-**Runtime component (not a Go library):**
+| Item | Current | Recommended |
+|------|---------|-------------|
+| `golang.org/x/sys` | `v0.6.0` (indirect) | `v0.41.0` (indirect) |
 
-| Component | What | Version |
-|-----------|------|---------|
-| Registry container image | `registry:2` (Docker Hub official) | v2.8.x series |
+**Why this update is safe:**
 
-**Why `registry:2` and not `registry:3`:**
+- `golang.org/x/sys` is an `// indirect` dependency in the main `go.mod`. Nothing in the kinder codebase imports it directly — it is pulled in transitively by `github.com/mattn/go-isatty v0.0.20`.
+- The one known backward-incompatible change in the v0.6→v0.41 range is in `v0.23.0`: removal of Linux-specific `ETHTOOL_FLAG_*` constants that track kernel-6.10 enum promotions. Kinder does not use the `unix` or `windows` subpackages of `x/sys` directly, so this does not affect it.
+- `go-isatty v0.0.20` declares its own minimum `x/sys` requirement; `go mod tidy` will resolve the correct minimum. Running `go get golang.org/x/sys@v0.41.0 && go mod tidy` is the correct update path.
+- Staying on `v0.6.0` is a security hygiene risk — 35 point releases of a low-level OS interaction package have accumulated over 3 years.
 
-As of 2026-03-03, Docker Hub shows `registry:3` / `registry:latest` point to v3.0.0 (released April 2025, first stable v3). However, `registry:2` remains pinned to the v2.8.x series and is the image the entire kind ecosystem (official kind docs, tilt-dev, openfaas, community guides) universally uses. v3.0.0 deprecated several storage drivers (the release notes call these "deprecations of certain storage drivers and dependency replacements"). The risk of migrating to v3 mid-project is not justified by any feature gain for a local dev registry. Revisit when kind upstream migrates.
-
-**Go implementation — uses only existing packages:**
-
-| Mechanism | Existing package used |
-|-----------|----------------------|
-| Start registry container | `exec.Command("docker"/"podman"/"nerdctl", "run", ...)` — existing exec pattern |
-| Connect to kind network | `exec.Command(..., "network", "connect", "kind", "kind-registry")` |
-| Write hosts.toml per node | `node.Command("mkdir", "-p", ...)` + `node.Command("tee", ...)` — existing node exec pattern |
-| Apply ConfigMap | `node.Command("kubectl", "apply", "-f", "-")` with embedded YAML — same as metallb/envoygw |
-
-**Containerd config patch (kind v0.27.0+ pattern):**
-
-Applied via the existing `ContainerdConfigPatches` field in the v1alpha4 config — no new config fields. The patch enables the registry config directory:
-
-```toml
-[plugins."io.containerd.grpc.v1.cri".registry]
-  config_path = "/etc/containerd/certs.d"
-```
-
-Then per node, write `/etc/containerd/certs.d/localhost:5001/hosts.toml`:
-
-```toml
-[host."http://kind-registry:5000"]
-```
-
-This alias bridges host `localhost:5001` to the `kind-registry` container name inside the node's network namespace — the reason the registry must be connected to the `kind` Docker/Podman/Nerdctl network.
-
-**New API field:**
-
-```go
-// pkg/apis/config/v1alpha4/types.go — Addons struct
-Registry *bool `yaml:"registry,omitempty" json:"registry,omitempty"`
-```
-
-Same `*bool` pattern as existing five addon fields. Default: true (enabled).
-
-**New package:** `pkg/cluster/internal/create/actions/installregistry/registry.go`
-
-The action runs: start container → connect to network → patch containerd config per node → apply optional ConfigMap. Follows the `installmetallb` action pattern exactly.
-
-**Confidence:** HIGH — verified against official kind docs at https://kind.sigs.k8s.io/docs/user/local-registry/
-
----
-
-### 3. cert-manager Addon — No New Dependencies
-
-| Component | Version | Source |
-|-----------|---------|--------|
-| cert-manager manifest | v1.17.6 | `https://github.com/cert-manager/cert-manager/releases/download/v1.17.6/cert-manager.yaml` |
-
-**Why v1.17.6:**
-
-| Release | Kubernetes Compatibility | Status (2026-03-03) | Notes |
-|---------|--------------------------|---------------------|-------|
-| v1.19.4 | k8s 1.31–1.35 | Latest stable | Too new — may break users on older k8s node images |
-| v1.18.x | k8s 1.29–1.33 | Supported | Reasonable but still narrows k8s range |
-| v1.17.6 | k8s 1.28–1.31 | Supported (EOL when v1.19 ships) | Best balance — overlaps the widest range of kind node images |
-
-The default kind node image typically targets the previous-stable k8s release. Locking to v1.19.x would mean users pulling the default kind node image (likely k8s 1.30 or 1.31) might hit compatibility issues. v1.17.6 is the safest conservative choice. Bump to v1.19.x when the project pins to k8s 1.31+ node images.
-
-**cert-manager-specific wait requirement:**
-
-The webhook deployment must be `Available` before any `Certificate` or `Issuer` CRs can be applied, otherwise the Kubernetes admission webhook rejects them. The install action must include:
+**Update command:**
 
 ```bash
-kubectl wait --namespace=cert-manager \
-  --for=condition=Available deployment/cert-manager-webhook \
-  --timeout=120s
+go get golang.org/x/sys@v0.41.0
+go mod tidy
 ```
 
-This is more stringent than the MetalLB controller wait — both the cert-manager controller AND the webhook must be ready. Failure to wait causes confusing admission rejection errors.
+**Confidence:** HIGH — version confirmed via https://pkg.go.dev/golang.org/x/sys?tab=versions (v0.41.0 released 2026-02-08). Breaking change risk assessed from https://github.com/golang/go/issues/68766.
 
-**Go implementation — uses only existing packages:**
+---
 
-| Mechanism | Existing package used |
-|-----------|----------------------|
-| Embed manifest | `//go:embed manifests/cert-manager.yaml` — same as metallb |
-| Apply manifest | `node.Command("kubectl", "apply", "-f", "-")` with embedded YAML stdin |
-| Wait for readiness | `node.Command("kubectl", "wait", "--for=condition=Available", ...)` |
+### 3. golang.org/x/sync — NEW DEPENDENCY (v0.19.0)
 
-**New API field:**
+| Library | Version | Purpose | Why |
+|---------|---------|---------|-----|
+| `golang.org/x/sync/errgroup` | `v0.19.0` | Parallel addon installation with error propagation | Standard Go extended-library approach for bounded concurrent goroutines with error collection |
+
+**Why `errgroup` and not `sync.WaitGroup`:**
+
+- `errgroup.Group` collects the first non-nil error and cancels sibling goroutines via a shared `context.Context`. This is exactly what parallel addon install needs: if one addon fails, others should still complete (warn-and-continue semantics), but the error must propagate.
+- `errgroup.SetLimit(n)` provides bounded concurrency — important because all addons call `kubectl` commands on the same control-plane node, and unlimited parallelism would flood the node's API server.
+- `sync.WaitGroup` alone cannot propagate errors without additional `chan error` boilerplate; `errgroup` is the idiomatic choice in 2025/2026 Go.
+
+**Key API surface used:**
 
 ```go
-// pkg/apis/config/v1alpha4/types.go — Addons struct
-CertManager *bool `yaml:"certManager,omitempty" json:"certManager,omitempty"`
+import "golang.org/x/sync/errgroup"
+
+g, ctx := errgroup.WithContext(parentCtx)
+g.SetLimit(3) // at most 3 addons installing concurrently
+
+for _, addon := range addons {
+    addon := addon // loop capture (required pre-Go 1.22; harmless after)
+    g.Go(func() error {
+        return addon.Execute(actionsCtx)
+    })
+}
+
+if err := g.Wait(); err != nil {
+    // first non-nil error — but addon system uses warn-and-continue
+    // so errors are captured in addonResult, not returned from g.Go
+}
 ```
 
-Default: true (enabled). Note: cert-manager is relatively heavyweight (~50MB manifest, ~3 CRD-heavy). Consider defaulting to `false` (disabled by default, opt-in) to keep cluster creation fast for users who don't need TLS certificate management. This is a design decision for the roadmap phase, not a stack constraint.
+**Warn-and-continue design:** Addon actions must NOT return errors from `g.Go` goroutines for the parallel case (because errgroup cancels peers on first error). Instead, each goroutine captures its error into an `addonResult` and always returns `nil` — preserving the existing warn-and-continue semantics while gaining parallelism.
 
-**New package:** `pkg/cluster/internal/create/actions/installcertmanager/certmanager.go`
+**Add to go.mod:**
 
-**Addon ordering constraint:** cert-manager installs after `waitforready` and before any future addon that issues `Certificate` resources. For this milestone, no existing addon depends on cert-manager, so it can append to the current addon sequence.
+```bash
+go get golang.org/x/sync@v0.19.0
+```
 
-**Confidence:** MEDIUM — cert-manager version verified via https://cert-manager.io/docs/releases/; Kubernetes compatibility range is research-confirmed but the actual default node image k8s version should be verified before shipping.
+**Confidence:** HIGH — version confirmed via https://pkg.go.dev/golang.org/x/sync?tab=versions (v0.19.0 released 2025-12-04). errgroup API confirmed via https://pkg.go.dev/golang.org/x/sync/errgroup.
 
 ---
 
-### 4. `kinder env` Command — No New Dependencies
+### 4. Unit Tests for Addon Actions — Standard Library Only
 
-| Component | What |
-|-----------|------|
-| Package | `pkg/cmd/kind/env/env.go` (new) |
-| Framework | Cobra — already a dependency |
-| Wire-up | `root.go`: `cmd.AddCommand(env.NewCommand(logger, streams))` |
+**No new test dependencies.** The existing pattern across the codebase uses only `testing` from the standard library with table-driven tests. This is the correct pattern for kinder.
 
-**What `env` outputs:**
+| What | Pattern | Example in codebase |
+|------|---------|---------------------|
+| Pure function testing | Table-driven `t.Run` tests | `subnet_test.go`, `corefile_test.go` |
+| Logger stubbing | Custom `testLogger` struct implementing `log.Logger` | `create_addon_test.go` |
+| Exec command stubbing | Function-level extraction of pure logic from exec calls | `subnet_test.go` (tests `parseSubnetFromJSON` not `detectSubnet`) |
 
-```
-KUBECONFIG=/home/user/.kube/config
-KIND_CLUSTER_NAME=kind
-KIND_PROVIDER=docker
-```
+**Why NOT to add testify:**
 
-With `--shell` flag: prefixes `export ` to each line (bash/zsh compatible). This matches the established pattern of `eval $(kinder env)` for shell integration.
+- The existing test files (`subnet_test.go`, `corefile_test.go`, `create_addon_test.go`, `waitforready_test.go`) all use zero external test dependencies. testify's `assert.Equal` is convenient but adds a dependency and changes the repo's zero-external-test-dep posture.
+- The test patterns in the existing addon tests are idiomatic Go: `if got != want { t.Errorf(...) }`. New tests should match this pattern.
+- `hack/tools/go.mod` does include `github.com/stretchr/testify v1.10.0` as a transitive dependency of golangci-lint, but it is not used directly in the main module test files.
 
-**Implementation:** Uses only packages already imported in the codebase:
-- `p.ListClusters()` — existing `Provider` interface method
-- `kubeconfig.PathForCluster(name)` — existing package
-- `os/exec.LookPath()` — standard library (already used in `nerdctl/util.go`)
-- `fmt.Fprintf(streams.Out, ...)` — standard library
+**What the new addon tests should test (pure functions extracted from Execute):**
 
-**Confidence:** MEDIUM — pattern is clear from codebase conventions; exact output fields are a design decision.
+| Addon | Extractable pure function | Test focus |
+|-------|--------------------------|------------|
+| `installmetallb` | `carvePoolFromSubnet`, `parseSubnetFromJSON` | Already tested. Extend with edge cases. |
+| `installcorednstuning` | `patchCorefile`, `indentCorefile` | Already tested. |
+| `installcertmanager` | Manifest embedding verification | New: ensure embedded YAML is valid, non-empty |
+| `installenvoygw` | Manifest embedding verification | New: same pattern |
+| `installlocalregistry` | Hosts.toml template generation | New: extract template rendering |
+| `installmetricsserver` | Manifest embedding verification | New |
+| `installdashboard` | Manifest embedding verification | New |
 
----
+**Key testing pattern for addon actions:**
 
-### 5. `kinder doctor` Command — No New Dependencies
+The `Execute(ctx *ActionContext)` method cannot be unit tested directly because it calls `node.Command(...)` (which runs docker/kubectl). The correct approach is:
 
-| Component | What |
-|-----------|------|
-| Package | `pkg/cmd/kind/doctor/doctor.go` (new) |
-| Framework | Cobra — already a dependency |
-| Wire-up | `root.go`: `cmd.AddCommand(doctor.NewCommand(logger, streams))` |
+1. Extract the pure computation from `Execute` into unexported helper functions (like `patchCorefile` already does)
+2. Write table-driven tests against those helpers
+3. `Execute` itself is integration-tested by the existing integration test suite
 
-**What `doctor` checks:**
-
-| Check | Source | Method |
-|-------|--------|--------|
-| Container runtime available | `os/exec.LookPath("docker"/"podman"/"nerdctl")` | Standard library |
-| Provider info (cgroup2, rootless, memory limit) | `p.Info()` → `providers.ProviderInfo` struct | Existing Provider interface |
-| Active clusters reachable | `p.ListClusters()` | Existing Provider interface |
-| kubectl available | `os/exec.LookPath("kubectl")` | Standard library |
-| kubeconfig exists | `os.Stat(kubeconfig.PathForCluster(name))` | Standard library |
-
-The `providers.ProviderInfo` struct already contains all health data doctor needs: `Rootless`, `Cgroup2`, `SupportsMemoryLimit`, `SupportsPidsLimit`, `SupportsCPUShares`.
-
-**Output format:**
-
-```
-[OK]   Docker available (version 27.x)
-[OK]   Cgroup v2 enabled
-[WARN] Running rootless — MetalLB L2 speaker limited
-[OK]   Cluster "kind" reachable (3 nodes)
-[FAIL] kubectl not found in PATH
-```
-
-**Confidence:** MEDIUM — implementation is straightforward; exact check list is a design decision for the roadmap phase.
+**Confidence:** HIGH — based on direct reading of existing test files and the established project pattern.
 
 ---
 
-### 6. Provider Code Deduplication — No New Dependencies
+### 5. context.Context Support for Blocking Operations
 
-**What duplicates exist** (confirmed by direct source file reading):
+**No new dependencies.** `context` is a standard library package available since Go 1.7.
 
-| Duplicated item | docker | nerdctl | podman | Action |
-|-----------------|--------|---------|--------|--------|
-| `clusterLabelKey` constant | yes | yes | yes | Move to `common/constants.go` |
-| `nodeRoleLabelKey` constant | yes | yes | yes | Move to `common/constants.go` |
-| `dockerInfo` struct | yes | yes | no (uses `podmanInfo`) | Move docker+nerdctl shared struct to `common/info.go` |
-| `info()` function body (docker+nerdctl) | identical except `binaryName` param | identical | different | Extract to `common/info.go` with `binaryName string` param |
-| `mountFuse()` function | identical | identical | absent | Move to `common/mount.go` |
-| `planCreation` preamble (node naming + LB setup) | ~85% identical | ~80% identical | ~80% identical | Extract shared helpers to `common/provision.go` |
+**What needs context threading:**
 
-**What stays provider-specific (do not consolidate):**
+| Operation | Current | With context |
+|-----------|---------|-------------|
+| `Action.Execute(ctx *ActionContext)` | No cancellation | Add `context.Context` to `ActionContext` struct |
+| `node.Command(...)` calls | Uses `Cmd` interface (no context) | Use `node.CommandContext(goCtx, ...)` where `CommandContext` already exists on `Cmder` interface |
+| `waitforready.tryUntil(...)` | Polls until deadline, no external cancel | Pass `ctx context.Context`; select on `ctx.Done()` in poll loop |
+| `Cluster(...)` in `create.go` | No context param | Add `ctx context.Context` as first parameter |
 
-- `podman/info.go` — uses entirely different `podmanInfo` JSON structure and version-gates cgroup detection
-- `nerdctl` binary dispatch — the `binaryName string` parameter pattern is nerdctl-specific (also handles `finch`)
-- `podman/DeleteNodes` — extra volume cleanup step not present in docker/nerdctl
-- Network functions — each provider has distinct subnet detection and network creation logic
-- `podman/GetAPIServerEndpoint` — handles three different podman version behaviors; unique to podman
+**Design decision: Minimal surface change**
 
-**New files in `pkg/cluster/internal/providers/common/`:**
+Do NOT add `context.Context` to the `actions.Action` interface as a parameter change. That would require updating every `Execute` implementation immediately and break the interface contract. Instead:
+
+- Add a `Ctx context.Context` field to `ActionContext` struct (already used for caching with the `cachedData` mutex)
+- Each action accesses `ctx.Ctx` when it needs to pass context to `node.CommandContext`
+- The cobra command layer creates `context.Background()` and threads it down; optionally wires to `signal.NotifyContext` for Ctrl-C cancellation
+
+**Signal handling pattern (optional, can be phase-specific):**
+
+```go
+// In cobra RunE:
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+```
+
+This is the idiomatic pattern for CLI tools that need graceful cancellation. The `os/signal` and `syscall` packages are both in the standard library.
+
+**Confidence:** HIGH — pattern is consistent with Go standard library docs and the existing `CommandContext` support already present in `exec/local.go` and `exec/types.go`.
+
+---
+
+### 6. Structured JSON Output for CLI Commands
+
+**No new dependencies.** Uses `encoding/json` from the standard library.
+
+**Pattern for `--output` flag:**
+
+```go
+// In each command's options struct:
+type flagpole struct {
+    Output string // "text" | "json"
+}
+
+// Register with cobra:
+flags.StringVar(&flagp.Output, "output", "text", `output format: "text" or "json"`)
+```
+
+**JSON output structs for `kinder get clusters`:**
+
+```go
+type ClusterInfo struct {
+    Name     string `json:"name"`
+    Provider string `json:"provider,omitempty"`
+    Nodes    int    `json:"nodes,omitempty"`
+}
+```
+
+**Render function pattern:**
+
+```go
+func renderOutput(w io.Writer, format string, data interface{}) error {
+    switch format {
+    case "json":
+        enc := json.NewEncoder(w)
+        enc.SetIndent("", "  ")
+        return enc.Encode(data)
+    default:
+        // existing text rendering
+    }
+}
+```
+
+**Commands to add JSON output to:**
+
+| Command | JSON struct fields |
+|---------|--------------------|
+| `kinder get clusters` | `[{"name": "kind"}]` |
+| `kinder get nodes` | `[{"name": "...", "role": "...", "status": "..."}]` |
+| `kinder env` | `{"KUBECONFIG": "...", "KIND_CLUSTER_NAME": "..."}` |
+| `kinder doctor` | `{"checks": [{"name": "...", "status": "ok|warn|fail", "detail": "..."}]}` |
+
+**Why NOT to add a third-party output library:**
+
+- `encoding/json` with `SetIndent` produces standard, machine-parseable output identical to what `kubectl -o json` produces.
+- Libraries like `go-pretty` or `tablewriter` are for human-readable table output — not needed for JSON.
+- The GitHub CLI's `AddJSONFlags` pattern (jq expression filtering) is overkill for a local dev tool.
+
+**Confidence:** HIGH — `encoding/json` is the standard, verified Go approach. No external library needed.
+
+---
+
+### 7. Addon Registry Pattern
+
+**No new dependencies.** Implemented using standard Go interfaces and maps.
+
+**Design: Map-based registry with ordered execution**
+
+The existing addon system in `create.go` is a hardcoded sequence of `runAddon()` calls. The registry pattern replaces this with a declarative map.
+
+**Core types:**
+
+```go
+// pkg/cluster/internal/create/actions/registry.go
+
+// AddonFactory creates a new Action for an addon given the cluster config.
+type AddonFactory func(cfg *config.Cluster) actions.Action
+
+// AddonDescriptor describes a registered addon.
+type AddonDescriptor struct {
+    Name    string       // human-readable name for logs
+    Enabled func(*config.AddonsConfig) bool  // predicate from config
+    Factory AddonFactory
+    Order   int          // lower = runs first; addons with equal Order run in parallel
+}
+
+// Registry holds all registered addons.
+var Registry []AddonDescriptor
+```
+
+**Registration (replaces hardcoded runAddon calls):**
+
+```go
+// At package init time in each addon's package — or registered centrally in create.go
+// Central registration is preferred: keeps create.go the single source of ordering truth.
+
+var defaultAddons = []AddonDescriptor{
+    {Name: "Local Registry", Order: 10, Enabled: func(a *config.AddonsConfig) bool { return a.LocalRegistry }, Factory: func(_ *config.Cluster) actions.Action { return installlocalregistry.NewAction() }},
+    {Name: "MetalLB",        Order: 20, Enabled: func(a *config.AddonsConfig) bool { return a.MetalLB },        Factory: func(_ *config.Cluster) actions.Action { return installmetallb.NewAction() }},
+    // ...
+}
+```
+
+**Why this approach over `init()` auto-registration:**
+
+- `init()` based plugin registries (where each addon package calls `registry.Register(...)` in its `init()`) require blank import side effects (`_ "pkg/addon/metallb"`) which are fragile and hard to discover.
+- Central registration in `create.go` (or a dedicated `addons.go` file) is more readable, testable, and avoids init-order surprises.
+- The `Order int` field enables the parallel install group: addons with the same `Order` value run concurrently via `errgroup`; different `Order` values run in sequence.
+
+**Benefit for cluster presets:**
+
+```go
+// A "minimal" preset omits heavy addons:
+type ClusterPreset struct {
+    Name    string
+    Addons  []string  // addon names to enable
+    Config  *config.Cluster
+}
+
+var Presets = map[string]ClusterPreset{
+    "minimal": {Name: "minimal", Addons: []string{}},
+    "standard": {Name: "standard", Addons: []string{"MetalLB", "Metrics Server", "CoreDNS Tuning"}},
+    "full":    {Name: "full", Addons: nil}, // nil = all enabled
+}
+```
+
+**Confidence:** HIGH — pattern is standard Go interface design; the `Order`-based parallel grouping aligns with `errgroup.SetLimit` approach above.
+
+---
+
+### 8. golangci-lint — v1.62.2 → v2.10.1 (hack/tools module only)
+
+| Item | Current | Recommended |
+|------|---------|-------------|
+| golangci-lint (in hack/tools/go.mod) | `v1.62.2` | `v2.10.1` |
+| Config file (hack/tools/.golangci.yml) | v1 format | Migrate to v2 format |
+
+**Why update:**
+
+- golangci-lint v2 was released in March 2025. v1.x is in maintenance mode. The current `v1.62.2` is from late 2024.
+- v2 has breaking config changes: `linters.disable-all` is replaced by `linters.default: none`, `exportloopref` is removed (fixed in Go 1.22+), `gosimple`/`stylecheck` merged into `staticcheck`.
+- Run `golangci-lint migrate` to auto-convert `hack/tools/.golangci.yml` from v1 to v2 format.
+- This only affects `hack/tools/go.mod`, not the main `go.mod`. The linter is a dev tool, not a runtime or test dependency.
+
+**Linter config change required:**
+
+Remove `exportloopref` from enabled linters (it is removed in v2; the underlying loop variable capture bug was fixed in Go 1.22 and the linter was retired). Add `copyloopvar` if targeting Go < 1.22 users (not needed here since we're at 1.23 minimum).
+
+**Confidence:** MEDIUM — golangci-lint v2 confirmed at https://github.com/golangci/golangci-lint/releases (v2.10.1 released 2026-02-17). Migration guide confirmed at https://golangci-lint.run/docs/product/migration-guide/. Marking MEDIUM because the config migration requires validation after running `golangci-lint migrate`.
+
+---
+
+## Dependency Delta Summary
 
 ```
-common/
-  constants.go    # clusterLabelKey, nodeRoleLabelKey (currently 3 identical copies)
-  info.go         # shared dockerInfo struct + info(binaryName string) for docker+nerdctl
-  mount.go        # shared mountFuse(binaryName string, infoFn func() (*ProviderInfo, error))
+go.mod changes:
+  go 1.21.0 → go 1.23.0
+  golang.org/x/sys v0.6.0 → v0.41.0   (indirect, bump for security hygiene)
+  golang.org/x/sync v0.19.0            (NEW — errgroup for parallel addon install)
+
+hack/tools/go.mod changes:
+  golangci-lint v1.62.2 → v2.10.1
+  hack/tools/.golangci.yml: run golangci-lint migrate
 ```
-
-**No interface changes.** `providers.Provider` in `pkg/cluster/internal/providers/provider.go` is unchanged. All changes are internal to provider packages.
-
-**Confidence:** HIGH — directly observed from reading all three provider source files.
 
 ---
 
 ## What NOT to Add
 
-| Avoid | Why |
-|-------|-----|
-| `helm/helm` Go library | No Helm runtime needed — cert-manager install uses the static `cert-manager.yaml` manifest, same pattern as MetalLB |
-| `k8s.io/client-go` | No in-process Kubernetes API calls — all kubectl operations use the `node.Command("kubectl", ...)` pattern (runs kubectl inside the kind node container) |
-| `github.com/docker/docker` SDK | Docker/podman/nerdctl are invoked as external binaries via `exec.Command` — this is intentional in the kind architecture and must not change |
-| `viper` configuration | `kinder env` output is simple key=value strings; Viper is overkill and would add an unwanted dependency |
-| Any new test framework | Use existing `testing` standard library patterns already present in the codebase |
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `github.com/stretchr/testify` (main module) | Zero external test deps is the established project posture; stdlib `testing` is sufficient for table-driven tests of pure functions | Standard library `testing` package |
+| `k8s.io/client-go` | All kubectl calls run inside kind node containers via `node.Command("kubectl", ...)` — no in-process k8s client needed | Existing `exec.Cmd` pattern |
+| `gomock` / `mockery` | The testable addon pattern extracts pure functions; there is nothing to mock at the unit test level | Extract pure functions, test them directly |
+| `sync.WaitGroup` (for parallel addons) | No built-in error propagation; requires `chan error` boilerplate | `golang.org/x/sync/errgroup` |
+| `github.com/pkg/errors` (already in go.mod but deprecated by authors) | Already present as `sigs.k8s.io/kind/pkg/errors`; do not add new direct uses of `github.com/pkg/errors` from external code | Use `fmt.Errorf("...: %w", err)` for new code |
+| `go-pretty` / `tablewriter` for JSON output | JSON rendering is one `encoding/json` call; third-party formatting libraries add dependencies with no benefit | `encoding/json` with `SetIndent` |
+| Plugin system using `plugin.Open` (Go plugins via .so files) | Requires CGO, not available in static builds, platform-limited | Interface-based registry with compile-time registration |
 
 ---
 
-## Integration Points Summary
+## Version Compatibility
+
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `golang.org/x/sync v0.19.0` | `go 1.23.0` | x/sync v0.19 requires go 1.22+; confirmed compatible |
+| `golang.org/x/sys v0.41.0` | `go 1.23.0` | x/sys v0.41 requires go 1.23+; exact match with our bump |
+| `golangci-lint v2.10.1` | `go 1.23` (hack/tools) | v2 requires go 1.22+; compatible with hack/tools go 1.23 |
+| `github.com/stretchr/testify v1.11.1` | `go 1.23.0` | Latest testify (if ever added to main module); not required now |
+
+---
+
+## Integration Points
 
 ```
 go.mod
-  go 1.21.0                              (was 1.17)
-  toolchain go1.26.0                     (new)
+  go 1.23.0                              (was 1.21.0)
+  golang.org/x/sync v0.19.0             (NEW)
+  golang.org/x/sys v0.41.0              (updated from v0.6.0, indirect)
 
-pkg/apis/config/v1alpha4/types.go
-  Addons.Registry   *bool               (new field)
-  Addons.CertManager *bool              (new field)
+pkg/cluster/internal/create/actions/action.go
+  ActionContext.Ctx context.Context      (new field)
+
+pkg/cluster/internal/create/actions/registry.go (NEW FILE)
+  AddonDescriptor struct
+  AddonFactory type
+  defaultAddons []AddonDescriptor
 
 pkg/cluster/internal/create/create.go
-  runAddon("Registry", ...)             (after waitforready, before MetalLB)
-  runAddon("cert-manager", ...)         (after Registry)
+  Cluster(ctx context.Context, ...) error  (ctx added as first param)
+  logSalutation(): rand.Intn() without explicit seeding (1.20+ cleanup)
+  parallel addon loop using errgroup + defaultAddons registry
 
-pkg/cmd/kind/root.go
-  cmd.AddCommand(env.NewCommand(...))   (new)
-  cmd.AddCommand(doctor.NewCommand(...)) (new)
+pkg/cmd/kind/get/clusters/clusters.go
+  --output flag ("text"|"json")
+  JSON rendering via encoding/json
 
-pkg/cluster/internal/providers/common/
-  constants.go                           (new — moves 3 identical constant definitions)
-  info.go                                (new — moves docker+nerdctl shared info code)
-  mount.go                               (new — moves docker+nerdctl shared mountFuse)
+pkg/cmd/kind/get/nodes/nodes.go
+  --output flag ("text"|"json")
 
-New packages (all follow existing installmetallb pattern):
-  pkg/cluster/internal/create/actions/installregistry/
-  pkg/cluster/internal/create/actions/installcertmanager/
-  pkg/cmd/kind/env/
-  pkg/cmd/kind/doctor/
+pkg/cmd/kind/env/env.go
+  --output flag (text is default; json emits key-value as JSON object)
+
+pkg/cmd/kind/doctor/doctor.go
+  --output flag with CheckResult JSON struct
+
+hack/tools/go.mod
+  golangci-lint v2.10.1                  (from v1.62.2)
+
+hack/tools/.golangci.yml
+  Migrated to v2 config format (run: golangci-lint migrate)
+  Remove: exportloopref (removed in v2)
 ```
 
 ---
 
 ## Sources
 
-- Go toolchain directive semantics: https://go.dev/doc/toolchain (HIGH confidence)
-- Go 1.21 go directive change: https://tip.golang.org/doc/go1.21 (HIGH confidence)
-- kind local registry official docs: https://kind.sigs.k8s.io/docs/user/local-registry/ (HIGH confidence)
-- Docker Hub registry tags (registry:2 = v2.8.x, registry:3 = v3.0.0): https://hub.docker.com/_/registry/tags (MEDIUM confidence — confirmed via search; page CSS-blocked on direct fetch)
-- distribution/distribution v3.0.0: https://github.com/distribution/distribution/releases (HIGH confidence)
-- cert-manager supported releases + k8s compatibility: https://cert-manager.io/docs/releases/ (HIGH confidence)
-- cert-manager v1.17.6 released 2025-12-17: search results from cert-manager release index (MEDIUM confidence)
-- Provider duplication analysis: direct source file reading of docker/nerdctl/podman packages in this repo (HIGH confidence)
+- Go 1.23 release notes: https://go.dev/doc/go1.23 (HIGH confidence)
+- Go 1.24 release notes (rand.Seed no-op, T.Context): https://go.dev/doc/go1.24 (HIGH confidence)
+- Go 1.25 release notes (sync.WaitGroup.Go, testing/synctest): https://go.dev/doc/go1.25 (HIGH confidence)
+- golang.org/x/sys versions: https://pkg.go.dev/golang.org/x/sys?tab=versions — v0.41.0 released 2026-02-08 (HIGH confidence)
+- golang.org/x/sync versions: https://pkg.go.dev/golang.org/x/sync?tab=versions — v0.19.0 released 2025-12-04 (HIGH confidence)
+- errgroup API: https://pkg.go.dev/golang.org/x/sync/errgroup (HIGH confidence)
+- x/sys backwards-incompatible change v0.23.0: https://github.com/golang/go/issues/68766 (HIGH confidence)
+- golangci-lint v2.10.1: https://github.com/golangci/golangci-lint/releases (HIGH confidence)
+- golangci-lint v2 migration guide: https://golangci-lint.run/docs/product/migration-guide/ (HIGH confidence)
+- rand auto-seed since Go 1.20: https://go.dev/blog/randv2 (HIGH confidence)
+- Existing codebase: direct file reads of go.mod, hack/tools/go.mod, create.go, action.go, exec/local.go, exec/types.go, and all addon test files (HIGH confidence)
+
+---
+*Stack research for: kinder — code quality, testing, parallel addons, JSON output, addon registry*
+*Researched: 2026-03-03*

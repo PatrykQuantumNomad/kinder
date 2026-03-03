@@ -1,397 +1,696 @@
 # Architecture Patterns
 
-**Domain:** Go CLI — kinder v1.3 feature integration
+**Domain:** Go CLI — kinder code quality and feature milestone (addon registry, context propagation, parallelism, JSON output, testing)
 **Researched:** 2026-03-03
-**Confidence:** HIGH — all analysis is from direct codebase read, no inference needed
+**Confidence:** HIGH — all analysis is from direct codebase read; no inference needed
 
 ---
 
-## Recommended Architecture
-
-### System Overview
+## System Overview
 
 ```
 pkg/
-├── apis/config/v1alpha4/types.go          ← PUBLIC API: Addons struct (*bool fields)
-├── internal/apis/config/types.go          ← INTERNAL: Addons struct (bool fields, no pointers)
+├── apis/config/v1alpha4/types.go       ← PUBLIC API: Addons struct (*bool fields)
+├── internal/apis/config/types.go       ← INTERNAL: Addons struct (plain bool fields)
 │
 ├── cluster/
-│   ├── internal/
-│   │   ├── providers/
-│   │   │   ├── provider.go                ← Provider interface (unchanged)
-│   │   │   ├── common/                    ← SHARED: grows in v1.3 (node.go, provision.go, etc.)
-│   │   │   │   ├── cgroups.go             ← WaitUntilLogRegexpMatches (existing)
-│   │   │   │   ├── constants.go           ← APIServerInternalPort (existing)
-│   │   │   │   ├── images.go              ← RequiredNodeImages (existing)
-│   │   │   │   ├── logs.go                ← FileOnHost (existing)
-│   │   │   │   ├── namer.go               ← MakeNodeNamer (existing)
-│   │   │   │   ├── proxy.go               ← GetProxyEnvs (existing)
-│   │   │   │   ├── getport.go             ← PortOrGetFreePort (existing)
-│   │   │   │   ├── node.go                ← NEW: shared node + nodeCmd struct
-│   │   │   │   └── provision.go           ← NEW: shared planCreation, commonArgs, generateMountBindings, generatePortMappings
-│   │   │   ├── docker/
-│   │   │   │   ├── provider.go            ← MODIFY: add binaryName field, use common.node, common.planCreation
-│   │   │   │   ├── node.go                ← DELETE: replaced by common/node.go
-│   │   │   │   ├── provision.go           ← DELETE: replaced by common/provision.go
-│   │   │   │   ├── images.go              ← MODIFY: call common.EnsureNodeImages(binaryName)
-│   │   │   │   ├── network.go             ← KEEP: docker-specific (removeDuplicateNetworks logic)
-│   │   │   │   ├── util.go                ← KEEP: docker-specific (usernsRemap, mountDevMapper)
-│   │   │   │   └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
-│   │   │   ├── nerdctl/
-│   │   │   │   ├── provider.go            ← MODIFY: delegate to common.node, common.planCreation
-│   │   │   │   ├── node.go                ← DELETE: replaced by common/node.go
-│   │   │   │   ├── provision.go           ← DELETE: replaced by common/provision.go
-│   │   │   │   ├── images.go              ← MODIFY: call common.EnsureNodeImages(binaryName)
-│   │   │   │   ├── network.go             ← KEEP: nerdctl-specific network logic
-│   │   │   │   ├── util.go                ← KEEP: IsAvailable, mountFuse (nerdctl-specific)
-│   │   │   │   └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
-│   │   │   └── podman/
-│   │   │       ├── provider.go            ← MODIFY: delegate to common.node, common.planCreation
-│   │   │       ├── node.go                ← DELETE: replaced by common/node.go
-│   │   │       ├── provision.go           ← MODIFY: keep podman-specific runArgsForNode (anon volumes)
-│   │   │       ├── images.go              ← KEEP: sanitizeImage differs (podman registry format)
-│   │   │       ├── network.go             ← KEEP: podman JSON subnet parsing (different API)
-│   │   │       ├── util.go                ← KEEP: createAnonymousVolume, deleteVolumes (podman-only)
-│   │   │       └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
-│   │   │
-│   │   └── create/
-│   │       ├── create.go                  ← MODIFY: add LocalRegistry, CertManager to runAddon calls
-│   │       └── actions/
-│   │           ├── action.go              ← UNCHANGED
-│   │           ├── installlocalregistry/  ← NEW package
-│   │           │   ├── localregistry.go
-│   │           │   └── manifests/         ← registry Deployment + Service + configmap YAMLs
-│   │           └── installcertmanager/    ← NEW package
-│   │               ├── certmanager.go
-│   │               └── manifests/         ← cert-manager install YAML (embedded)
+│   ├── provider.go                     ← LAYER VIOLATION: imports cmd/kind/version
+│   │                                      FIX: move version constants to pkg/internal/version
+│   │                                      or pkg/cluster/internal/version
 │   │
-│   └── provider.go                        ← UNCHANGED (public API, wraps internal)
+│   └── internal/
+│       ├── create/
+│       │   ├── create.go               ← Action pipeline orchestration
+│       │   │                             FIX: context.Context propagation
+│       │   │                             FIX: parallel addon phase
+│       │   │                             FIX: addon registry pattern
+│       │   │                             FIX: JSON output alongside human output
+│       │   └── actions/
+│       │       ├── action.go           ← ActionContext — add context.Context field
+│       │       ├── installmetallb/     ← existing addon (pattern reference)
+│       │       │   ├── metallb.go
+│       │       │   └── subnet.go + subnet_test.go (EXISTING unit test model)
+│       │       ├── installcorednstuning/
+│       │       │   └── corefile_test.go (EXISTING unit test model)
+│       │       ├── installenvoygw/
+│       │       ├── installlocalregistry/
+│       │       ├── installcertmanager/
+│       │       ├── installmetricsserver/
+│       │       ├── installdashboard/
+│       │       └── installstorage/
+│       │
+│       └── providers/
+│           └── common/                 ← CommandContext already implemented (node.go)
 │
-└── cmd/kind/
-    ├── root.go                            ← MODIFY: add env.NewCommand, doctor.NewCommand
-    ├── env/                               ← NEW package
-    │   └── env.go                         ← kinder env: prints KUBECONFIG, cluster name, provider
-    └── doctor/                            ← NEW package
-        └── doctor.go                      ← kinder doctor: checks docker/podman/nerdctl availability + version
+├── cmd/kind/
+│   ├── root.go
+│   └── version/                        ← PROBLEM SOURCE: CLI-layer package
+│       └── version.go                  ← imported by pkg/cluster/provider.go (violation)
+│
+└── internal/
+    └── version/                        ← DOES NOT EXIST YET
+        └── kindversion.go              ← NEW: move Version/DisplayVersion here
 ```
 
 ---
 
-## Component Boundaries
+## Component Responsibilities
 
-### Existing Components (Unchanged Interface, Possibly Modified Internals)
+| Component | Responsibility | What Changes |
+|-----------|---------------|--------------|
+| `create.go` | Pipeline orchestration | Add ctx propagation; addon registry loop; parallel phase; JSON output |
+| `action.go` | ActionContext data bag | Add `context.Context` field |
+| `pkg/cluster/provider.go` | Public cluster API | Remove `cmd/kind/version` import |
+| `pkg/cmd/kind/version/version.go` | CLI command + version strings | Remove `Version()` / `DisplayVersion()` from here; re-export from new internal package |
+| Addon actions (`.go` files) | kubectl exec via node.Command | Split pure logic into testable helper functions (pattern: corefile_test.go) |
 
-| Component | Responsibility | What Changes in v1.3 |
-|-----------|---------------|----------------------|
-| `Provider` interface (`provider.go`) | Provision/list/delete/inspect cluster nodes | Nothing — interface is stable |
-| `ActionContext` (`action.go`) | Passes logger, status, provider, config to actions | Nothing — data bag is correct as-is |
-| `Addons` struct (internal `config/types.go`) | Holds bool flags for each addon | Add `LocalRegistry bool`, `CertManager bool` fields |
-| `Addons` struct (v1alpha4 `types.go`) | Public API with `*bool` fields for YAML config | Add `LocalRegistry *bool`, `CertManager *bool` fields |
-| `create.go` | Orchestrates action pipeline and addon runAddon calls | Add `runAddon` calls for LocalRegistry and CertManager |
-| `convert_v1alpha4.go` | Converts public config to internal config | Add LocalRegistry + CertManager field conversion |
-| `default.go` | Sets addon defaults (true/false) | Add LocalRegistry + CertManager defaults |
+---
 
-### New Components
+## Six Improvements: Integration Analysis
 
-| Component | Responsibility | Integrates With |
-|-----------|---------------|-----------------|
-| `common/node.go` | Shared `node` struct + `nodeCmd` struct + all methods (`Role`, `IP`, `Command`, `CommandContext`, `SerialLogs`) | docker, nerdctl, podman providers — each provider's `node()` factory returns `&common.Node{binaryName: ..., name: ...}` |
-| `common/provision.go` | Shared `planCreation`, `commonArgs`, `runArgsForNode`, `runArgsForLoadBalancer`, `generateMountBindings`, `generatePortMappings`, `createContainer`, `createContainerWithWaitUntilSystemdReachesMultiUserSystem` — all parameterized with `binaryName string` | docker, nerdctl, podman providers delegate provisioning to this |
-| `actions/installlocalregistry/` | Action: run a registry container on the cluster network, patch containerd config on all nodes to mirror `localhost:5001` to it, create a `ConfigMap` in the cluster advertising the registry address | `ActionContext.Nodes()`, `node.Command(kubectl)`, `node.Command(containerd config)` |
-| `actions/installcertmanager/` | Action: kubectl apply embedded cert-manager manifest, wait for cert-manager-webhook Deployment to be Available | `ActionContext.Nodes()`, `node.Command(kubectl apply)`, `node.Command(kubectl wait)` |
-| `pkg/cmd/kind/env/` | Cobra subcommand: print environment info (which KUBECONFIG would be set, current cluster name, detected provider) | `cluster.Provider.ListClusters()`, `cluster.Provider.Info()`, kubeconfig package |
-| `pkg/cmd/kind/doctor/` | Cobra subcommand: check that the active provider binary exists, its version is supported, and connectivity works | `docker.IsAvailable()`, `nerdctl.IsAvailable()`, `podman.IsAvailable()`, provider `Info()` |
+### Improvement 1: Addon Registry Pattern
+
+**Problem:** `create.go` lines 213-219 hard-code seven `runAddon(...)` calls. Adding an eighth addon requires editing two files: the action package + `create.go`.
+
+**Current structure:**
+```go
+// create.go — hard-coded list
+runAddon("Local Registry",  opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction())
+runAddon("MetalLB",         opts.Config.Addons.MetalLB, installmetallb.NewAction())
+runAddon("Metrics Server",  opts.Config.Addons.MetricsServer, installmetricsserver.NewAction())
+runAddon("CoreDNS Tuning",  opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction())
+runAddon("Envoy Gateway",   opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction())
+runAddon("Dashboard",       opts.Config.Addons.Dashboard, installdashboard.NewAction())
+runAddon("Cert Manager",    opts.Config.Addons.CertManager, installcertmanager.NewAction())
+```
+
+**Target structure — registry in `actions/addon_registry.go`:**
+```go
+// AddonEntry describes one addon in the registry.
+type AddonEntry struct {
+    Name    string
+    Enabled func(cfg *config.Cluster) bool
+    New     func() Action
+}
+
+// Registry returns the ordered list of addons to run.
+// Order defines dependency: LocalRegistry first (containerd config), MetalLB
+// before EnvoyGateway (LoadBalancer IPs), CertManager last (depends on nothing).
+func Registry(cfg *config.Cluster) []AddonEntry {
+    return []AddonEntry{
+        {
+            Name:    "Local Registry",
+            Enabled: func(c *config.Cluster) bool { return c.Addons.LocalRegistry },
+            New:     installlocalregistry.NewAction,
+        },
+        // ... remaining addons in dependency order ...
+    }
+}
+```
+
+**`create.go` then becomes:**
+```go
+for _, entry := range actions.Registry(opts.Config) {
+    runAddon(entry.Name, entry.Enabled(opts.Config), entry.New())
+}
+```
+
+**Files modified:** `pkg/cluster/internal/create/actions/action.go` (or new `addon_registry.go`), `pkg/cluster/internal/create/create.go`.
+
+**Files NOT modified:** Each addon action package is unchanged. No new imports needed in `create.go` if the registry owns the imports.
+
+**Import consideration:** The registry file must import all addon packages. Currently `create.go` owns those imports. The registry file takes them over — it lives in the `actions` package, so it imports sibling packages (`actions/installmetallb`, etc.). This is correct: the registry is in `pkg/cluster/internal/create/actions/`, which can import sub-packages.
+
+---
+
+### Improvement 2: Moving the version Package to Fix Layer Violation
+
+**Problem:** `pkg/cluster/provider.go` imports `sigs.k8s.io/kind/pkg/cmd/kind/version`. The library layer (`pkg/cluster/`) must not import the CLI layer (`pkg/cmd/`). This is a hard dependency inversion — the library depends on a command.
+
+**Diagnosis:** `provider.go` calls `version.DisplayVersion()` in `CollectLogs` to write `kind-version.txt`. The `version` package contains:
+1. `Version() string` — assembles a version string from build-time injected vars
+2. `DisplayVersion() string` — prefixes `Version()` with "kind v" + runtime info
+3. `NewCommand()` — Cobra command (CLI concern, must stay in `pkg/cmd/kind/version/`)
+
+**Move plan — new package `pkg/internal/kindversion/`:**
+
+```
+pkg/internal/kindversion/
+└── version.go    ← Version(), DisplayVersion(), version constants and vars
+```
+
+The existing `pkg/cmd/kind/version/version.go` becomes a thin wrapper:
+```go
+package version
+
+import "sigs.k8s.io/kind/pkg/internal/kindversion"
+
+// Version re-exports from the internal package.
+func Version() string { return kindversion.Version() }
+
+// DisplayVersion re-exports from the internal package.
+func DisplayVersion() string { return kindversion.DisplayVersion() }
+
+// NewCommand remains here — CLI concern, does not move.
+func NewCommand(...) *cobra.Command { ... }
+```
+
+`pkg/cluster/provider.go` changes its import from `pkg/cmd/kind/version` to `pkg/internal/kindversion`.
+
+`root.go` still works unchanged because `version.NewCommand` stays in `pkg/cmd/kind/version`.
+
+**Build order for this change:**
+1. Create `pkg/internal/kindversion/version.go` — copy `Version()`, `DisplayVersion()`, constants, build-time vars
+2. Update `pkg/cluster/provider.go` — change import, update function call
+3. Simplify `pkg/cmd/kind/version/version.go` — delegate to `kindversion`, keep `NewCommand`
+4. `go build ./...` must pass
+5. `go test ./pkg/cmd/kind/version/...` must pass (tests reference unexported `version()` and `truncate()` — these stay in the version package since they test internal logic)
+
+**Test file consideration:** `pkg/cmd/kind/version/version_test.go` tests the internal `version()` function (unexported, same package). This test stays in `pkg/cmd/kind/version/` because `version()` stays there (it's a private helper called by the public `Version()` which delegates to `kindversion`). Alternatively, move the internal `version()` function to `kindversion` along with its test.
+
+**Recommended:** Move the `version()` function and its test to `kindversion` for full coverage of the moved code. The `truncate()` helper and its test move with `version()`.
+
+---
+
+### Improvement 3: Adding context.Context to Blocking Operations
+
+**Problem:** Blocking calls (`kubectl wait --timeout=120s`, `kubectl apply`, `tryUntil` loops in `waitforready`) have no cancellation path. Long-running cluster creates cannot be interrupted.
+
+**Where context.Context already exists:**
+- `exec.Cmder` interface: `CommandContext(context.Context, string, ...string) Cmd` (already in `pkg/exec/types.go`)
+- `common.Node.CommandContext(ctx, command, args...)` (already in `pkg/cluster/internal/providers/common/node.go`)
+- `exec.LocalCmder.CommandContext(ctx, ...)` (already in `pkg/exec/local.go`)
+
+The infrastructure for context-aware commands is already present. It is unused by addon actions.
+
+**What must change:**
+
+**Step 1 — Add `context.Context` to `ActionContext`:**
+```go
+// pkg/cluster/internal/create/actions/action.go
+type ActionContext struct {
+    Context  context.Context   // NEW field
+    Logger   log.Logger
+    Status   *cli.Status
+    Config   *config.Cluster
+    Provider providers.Provider
+    cache    *cachedData
+}
+
+func NewActionContext(
+    ctx context.Context,       // NEW parameter
+    logger log.Logger,
+    status *cli.Status,
+    provider providers.Provider,
+    cfg *config.Cluster,
+) *ActionContext {
+    return &ActionContext{
+        Context:  ctx,
+        Logger:   logger,
+        Status:   status,
+        Provider: provider,
+        Config:   cfg,
+        cache:    &cachedData{},
+    }
+}
+```
+
+**Step 2 — Thread context through `create.go`:**
+```go
+// Cluster() function signature update
+func Cluster(ctx context.Context, logger log.Logger, p providers.Provider, opts *ClusterOptions) error {
+    // ...
+    actionsContext := actions.NewActionContext(ctx, logger, status, p, opts.Config)
+    // ...
+}
+```
+
+**Step 3 — Addon actions use `ctx.CommandContext` instead of `node.Command`:**
+```go
+// In installcertmanager/certmanager.go — BEFORE:
+if err := node.Command("kubectl", ...).Run(); err != nil { ... }
+
+// AFTER:
+if err := node.CommandContext(ctx.Context, "kubectl", ...).Run(); err != nil { ... }
+```
+
+**Step 4 — `waitforready.go` tryUntil loop:**
+
+The `tryUntil` function uses `time.Sleep` and time-based cancellation. It needs context awareness:
+```go
+func waitForReady(ctx context.Context, node nodes.Node, until time.Time, selectorLabel string) bool {
+    return tryUntil(ctx, until, func() bool { ... })
+}
+
+func tryUntil(ctx context.Context, until time.Time, try func() bool) bool {
+    for until.After(time.Now()) {
+        select {
+        case <-ctx.Done():
+            return false
+        default:
+        }
+        if try() {
+            return true
+        }
+        time.Sleep(500 * time.Millisecond)
+    }
+    return false
+}
+```
+
+**Callers:** `create.go` calls `internalcreate.Cluster(...)`. The public API `pkg/cluster/provider.go` calls `internalcreate.Cluster(p.logger, p.provider, opts)`. The context must be threaded from `provider.go:Create()` through to `internalcreate.Cluster()`. Public API change:
+```go
+// pkg/cluster/provider.go
+func (p *Provider) Create(name string, options ...CreateOption) error {
+    // ...
+    return internalcreate.Cluster(context.Background(), p.logger, p.provider, opts)
+}
+```
+
+Or accept a context parameter on `Create()` — which is a public API change. Start with `context.Background()` in `Create()` and document that a future API version will accept caller-provided contexts.
+
+**Files modified:**
+- `pkg/cluster/internal/create/actions/action.go` — add Context field + param
+- `pkg/cluster/internal/create/create.go` — accept ctx, thread to NewActionContext
+- `pkg/cluster/provider.go` — pass `context.Background()` to Cluster()
+- All addon `Execute()` methods — use `ctx.Context` with `CommandContext`
+- `pkg/cluster/internal/create/actions/waitforready/waitforready.go` — context-aware tryUntil
+
+---
+
+### Improvement 4: Parallel Addon Installation
+
+**Problem:** Seven addons run sequentially. `CertManager` takes 2-3 minutes (300s timeout). Some addons are independent and could run concurrently.
+
+**Dependency graph for current addons:**
+```
+LocalRegistry   (no deps — uses containerd/exec path, independent of k8s API)
+MetalLB         (no deps — applies manifest + waits for deployment)
+MetricsServer   (no deps — applies manifest only)
+CoreDNSTuning   (no deps — reads+patches ConfigMap)
+Dashboard       (no deps — applies manifest)
+CertManager     (no deps — applies manifest + waits 300s for webhook)
+EnvoyGateway    (depends on MetalLB for LoadBalancer IPs — but only at runtime, not at install time)
+```
+
+The MetalLB/EnvoyGateway dependency is a runtime dependency (MetalLB must provide IPs for EG services), not an install-time dependency (both manifests can be applied independently). The current code already warns about this rather than enforcing order. Therefore, all seven addons can be installed in parallel.
+
+**Design: Two-phase addon execution within `create.go`**
+
+Phase 1 (sequential, existing): Core Kubernetes setup — `loadbalancer`, `config`, `kubeadminit`, `installcni`, `installstorage`, `kubeadmjoin`, `waitforready`.
+
+Phase 2 (parallel, new): Addon installation — all seven addon actions run concurrently via goroutines.
+
+**Implementation using `errgroup`-style pattern (matching existing `errors.AggregateConcurrent` in the codebase):**
+
+```go
+// create.go — replace sequential runAddon loop with:
+var mu sync.Mutex
+var addonResults []addonResult
+
+var wg sync.WaitGroup
+for _, entry := range actions.Registry(opts.Config) {
+    entry := entry // capture loop variable (Go < 1.22)
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        var result addonResult
+        if !entry.Enabled(opts.Config) {
+            result = addonResult{name: entry.Name, enabled: false}
+        } else {
+            err := entry.New().Execute(actionsContext)
+            if err != nil {
+                logger.Warnf("Addon %s failed: %v", entry.Name, err)
+            }
+            result = addonResult{name: entry.Name, enabled: true, err: err}
+        }
+        mu.Lock()
+        addonResults = append(addonResults, result)
+        mu.Unlock()
+    }()
+}
+wg.Wait()
+```
+
+**Status spinner conflict:** `cli.Status.Start()` and `Status.End()` are not concurrency-safe — two goroutines calling `Start()` simultaneously will overwrite each other's status string. Resolution options:
+1. Each addon action creates its own `cli.Status` instance (not safe either — the spinner is shared)
+2. Addon actions skip `ctx.Status.Start/End` and use `ctx.Logger` only
+3. A channel-based serialized status printer receives messages from goroutines
+
+Recommended: Option 2 for the parallel phase — addon actions log their progress via `ctx.Logger.V(0).Infof(...)` rather than the spinner status. The addon summary (`logAddonSummary`) already prints a clean final state. The spinner is most useful for the sequential core phase where one step runs at a time.
+
+**Files modified:**
+- `pkg/cluster/internal/create/create.go` — replace sequential loop with goroutine fan-out
+- `pkg/cluster/internal/create/actions/action.go` — no change needed (ActionContext is safe to share read-only; Nodes() cache uses RWMutex already)
+- Addon actions — replace `ctx.Status.Start/End` with logger calls in Execute(), or guard the status with a mutex
+
+**Thread safety of ActionContext:** `ActionContext.Nodes()` is already protected by `cachedData.mu` (sync.RWMutex). `ActionContext.Logger`, `Status`, `Config`, `Provider` are read-only during addon execution. The only unsafe access is `ctx.Status.Start/End` — which must be removed from parallel addon actions.
+
+---
+
+### Improvement 5: Structured JSON Output
+
+**Problem:** `create.go` produces human-readable log output only. Scripting and tooling need machine-readable output.
+
+**Scope:** Two output formats must coexist. Human format (existing) via `logger.V(0).Infof(...)`. JSON format when `--output=json` flag is set.
+
+**Design: Output mode in ClusterOptions + JSON summary at the end**
+
+```go
+// pkg/cluster/internal/create/create.go
+type ClusterOptions struct {
+    // ... existing fields ...
+    OutputFormat string // "human" (default) or "json"
+}
+
+// JSON output struct
+type ClusterOutput struct {
+    ClusterName string        `json:"clusterName"`
+    KubeConfig  string        `json:"kubeconfig"`
+    Addons      []AddonOutput `json:"addons"`
+}
+
+type AddonOutput struct {
+    Name    string `json:"name"`
+    Enabled bool   `json:"enabled"`
+    Success bool   `json:"success"`
+    Error   string `json:"error,omitempty"`
+}
+```
+
+**Integration point — `create.go` end of `Cluster()` function:**
+```go
+if opts.OutputFormat == "json" {
+    out := buildClusterOutput(opts.Config.Name, opts.KubeconfigPath, addonResults)
+    enc := json.NewEncoder(os.Stdout)
+    enc.SetIndent("", "  ")
+    _ = enc.Encode(out)
+} else {
+    logAddonSummary(logger, addonResults)
+    if opts.DisplayUsage { logUsage(logger, ...) }
+    if opts.DisplaySalutation { logSalutation(logger) }
+}
+```
+
+**CLI flag integration in `pkg/cmd/kind/create/cluster/createcluster.go`:**
+```go
+type flagpole struct {
+    // ... existing ...
+    Output string // new: "human" or "json"
+}
+// --output flag registered in NewCommand()
+// passed as opts.OutputFormat
+```
+
+**Files modified:**
+- `pkg/cluster/internal/create/create.go` — add OutputFormat field, JSON branch at end
+- `pkg/cmd/kind/create/cluster/createcluster.go` — add `--output` flag
+
+**Files NOT modified:** Logger, Status, action packages — JSON output is a post-execution summary, not per-step output.
+
+**What JSON does NOT cover:** Per-step progress. The human-readable spinner and per-step messages continue during execution. JSON is emitted once at the end as a machine-readable summary (cluster name, kubeconfig path, per-addon result). This sidesteps the "quiet mode vs. progress mode" conflict.
+
+---
+
+### Improvement 6: Unit Tests for Addon Actions That Call kubectl
+
+**Problem:** Addon actions call `node.Command("kubectl", ...)` which shells out to a real container runtime. These cannot be unit tested in the traditional sense.
+
+**Existing solution (precedent in the codebase):** Extract the business logic that does NOT call kubectl into a pure function, test that function directly.
+
+**Evidence from existing tests:**
+- `installcorednstuning/corefile_test.go` — tests `patchCorefile()` and `indentCorefile()` (pure string functions, no kubectl)
+- `installmetallb/subnet_test.go` — tests `parseSubnetFromJSON()` and `carvePoolFromSubnet()` (pure parse/compute functions, no kubectl)
+- `waitforready/waitforready_test.go` — tests `tryUntil()` (pure timing function, no kubectl)
+
+**The pattern:** Each addon action has an `Execute()` method that calls kubectl, and zero or more pure helper functions. Tests cover only the helpers.
+
+**Where unit tests fit for each addon:**
+
+| Addon | Existing testable logic | Extractable for testing |
+|-------|------------------------|------------------------|
+| `installmetallb` | `parseSubnetFromJSON`, `carvePoolFromSubnet` | Already tested |
+| `installcorednstuning` | `patchCorefile`, `indentCorefile` | Already tested |
+| `waitforready` | `tryUntil`, `formatDuration` | Already tested |
+| `installenvoygw` | No pure helpers currently | Extract: `buildGatewayClassYAML()` |
+| `installlocalregistry` | No pure helpers currently | Extract: `buildHostsTOML(registryName, port string) string` |
+| `installcertmanager` | No pure helpers currently | Extract: `deploymentNames() []string` or test manifest embedding |
+| `installmetricsserver` | No pure helpers currently | Little to extract (single manifest apply) |
+| `installdashboard` | No pure helpers currently | Little to extract (single manifest apply) |
+| `installstorage` | Unknown | Depends on implementation |
+
+**Recommended extraction pattern for `installenvoygw`:**
+
+```go
+// envoygw.go — before: inline YAML string
+// After: extract into testable function
+func gatewayClassManifest(controllerName string) string {
+    return fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: %s
+`, controllerName)
+}
+```
+
+Test:
+```go
+// envoygw_test.go
+func TestGatewayClassManifest(t *testing.T) {
+    got := gatewayClassManifest("gateway.envoyproxy.io/gatewayclass-controller")
+    if !strings.Contains(got, "controllerName: gateway.envoyproxy.io") {
+        t.Error("missing controllerName")
+    }
+}
+```
+
+**For `installlocalregistry`:**
+```go
+// Extract the TOML generation
+func buildHostsTOML(registryName string) string {
+    return fmt.Sprintf(`[host."http://%s:5000"]\n`, registryName)
+}
+```
+
+**What cannot be unit tested** (without a test double for `nodes.Node`):
+- `Execute()` method top-level flow
+- `kubectl apply` calls
+- `kubectl wait` calls
+
+These require integration tests (e.g., using a real kind cluster) and are out of scope for unit testing. The right split is: extract pure logic → unit test it; leave kubectl orchestration in `Execute()` → cover with integration tests.
+
+**Test file placement:** Same package as the source file (white-box testing), e.g., `installmetallb/subnet_test.go` is `package installmetallb`. This gives access to unexported helpers.
 
 ---
 
 ## Data Flow
 
-### Provider Deduplication: Before and After
-
-**Before (current state):** Each provider package contains its own complete implementation of `node`, `nodeCmd`, and all provisioning functions. `docker/node.go` hardcodes `"docker"` as the binary name string. `podman/node.go` hardcodes `"podman"`. `nerdctl/node.go` stores `binaryName` on the struct (already parameterized).
-
-**After (target state):** `common/node.go` holds one `Node` struct with `binaryName string` and `name string` fields. All `node.*` methods use `n.binaryName` instead of a hardcoded string. Provider packages' `provider.node(name)` factory returns `&common.Node{binaryName: p.binaryName, name: name}`. Docker and podman acquire `binaryName` fields on their provider structs (currently only nerdctl has this). Provisioning logic follows the same pattern via `common/provision.go`.
+### Addon Registry Flow (New)
 
 ```
-Provider.Provision(cfg)
+create.go: Cluster()
     |
     v
-common.EnsureNodeImages(logger, status, cfg, binaryName)   ← new common func
+actions.Registry(opts.Config)  →  returns []AddonEntry in dependency order
     |
     v
-ensureNetwork(networkName, binaryName)     ← per-provider (network logic differs)
+[goroutine per entry]
+    |
+    +-- entry.Enabled(opts.Config) == false → skip
+    +-- entry.Enabled(opts.Config) == true  → entry.New().Execute(actionsContext)
+    |                                              |
+    |                                    node.CommandContext(ctx.Context, "kubectl", ...)
+    |                                              |
+    |                                    common.nodeCmd.Run()
+    |                                              |
+    |                                    exec.CommandContext(ctx, binaryName, "exec", ...)
+    |
+    +-- addonResult → collected via mutex
     |
     v
-common.PlanCreation(cfg, networkName, binaryName, providerSpecificArgs)
-    |                                         ↑
-    |                              podman: runArgsForNode has extra anon volume creation
-    v
-createContainerFuncs []func() error
+wg.Wait()
     |
     v
-execute each func → common.createContainer(name, args, binaryName)
-                  → common.createContainerWithWaitUntilSystemdReachesMultiUserSystem(...)
+logAddonSummary() / JSON output
 ```
 
-The key design decision: podman's `runArgsForNode` is NOT fully shareable because it calls `createAnonymousVolume(name)` for the `/var` mount — a podman-specific operation. The shared `provision.go` accepts a `runArgsForNodeFn` function parameter, allowing podman to supply its own `runArgsForNode` while sharing everything else. Alternatively, podman's provision.go can continue to call into the common provision for the container creation parts only, keeping its own `runArgsForNode`. Either pattern works; the second is simpler.
-
-### Local Registry Addon: Data Flow
+### Version Package Data Flow (Fix)
 
 ```
-create.go: runAddon("Local Registry", cfg.Addons.LocalRegistry, installlocalregistry.NewAction())
+BEFORE:
+pkg/cluster/provider.go
+    → import "sigs.k8s.io/kind/pkg/cmd/kind/version"
+    → version.DisplayVersion()                    (WRONG: library imports CLI)
+
+AFTER:
+pkg/cluster/provider.go
+    → import "sigs.k8s.io/kind/pkg/internal/kindversion"
+    → kindversion.DisplayVersion()                (CORRECT: library imports internal)
+
+pkg/cmd/kind/version/version.go
+    → import "sigs.k8s.io/kind/pkg/internal/kindversion"
+    → re-exports Version(), DisplayVersion()      (thin wrapper)
+    → NewCommand() stays here                     (CLI concern)
+
+pkg/cmd/kind/root.go
+    → import "sigs.k8s.io/kind/pkg/cmd/kind/version"
+    → version.NewCommand()                        (UNCHANGED)
+```
+
+### Context Propagation Data Flow (New)
+
+```
+CLI: createcluster.go: opts.Context = cmd.Context() or context.Background()
     |
     v
-installlocalregistry.Execute(ctx *ActionContext)
-    |
-    +-- run registry container on host:
-    |       exec.Command(ctx.Provider.(fmt.Stringer).String(), "run", "-d",
-    |           "--name", "kind-registry", "--network=kind",
-    |           "-p", "127.0.0.1:5001:5000", "registry:2")
-    |
-    +-- for each node (ctx.Nodes()):
-    |       node.Command("mkdir", "-p", "/etc/containerd/certs.d/localhost:5001")
-    |       node.Command("tee", "/etc/containerd/certs.d/localhost:5001/hosts.toml")
-    |           stdin: "[host.\"http://kind-registry:5000\"]\n"
-    |
-    +-- kubectl apply ConfigMap (registry-info in kube-public namespace)
-    |       node[0].Command("kubectl", "--kubeconfig=...", "apply", "-f", "-")
-    |           stdin: configmap YAML with registry endpoint
-    |
-    +-- ctx.Status.End(true)
-```
-
-The registry container runs on the `kind` Docker/nerdctl/podman network alongside node containers, so nodes can reach it by container name `kind-registry` over the internal network.
-
-### Cert-Manager Addon: Data Flow
-
-```
-create.go: runAddon("cert-manager", cfg.Addons.CertManager, installcertmanager.NewAction())
+pkg/cluster/provider.go: Create(name, options...)
+    → internalcreate.Cluster(ctx, logger, provider, opts)
     |
     v
-installcertmanager.Execute(ctx *ActionContext)
-    |
-    +-- ctx.Status.Start("Installing cert-manager")
-    +-- node[0].Command("kubectl", "--kubeconfig=...", "apply", "-f", "-")
-    |       stdin: embedded certManagerManifest (//go:embed manifests/cert-manager.yaml)
-    |
-    +-- node[0].Command("kubectl", "--kubeconfig=...",
-    |       "wait", "--namespace=cert-manager",
-    |       "--for=condition=Available", "deployment/cert-manager-webhook",
-    |       "--timeout=120s")
-    |
-    +-- ctx.Status.End(true)
-```
-
-Pattern is identical to `installdashboard` and `installmetallb`. Embed one YAML file, apply it, wait for a deployment.
-
-### env Command: Data Flow
-
-```
-kinder env [--name cluster-name]
+create.go: Cluster(ctx context.Context, ...)
+    → actions.NewActionContext(ctx, logger, status, provider, cfg)
     |
     v
-cmd/kind/env/env.go: runE()
-    |
-    +-- create Provider (same as create cluster: runtime.GetDefault(logger))
-    +-- detect cluster name: flag > KIND_CLUSTER_NAME env > "kind"
-    +-- provider.ListClusters()     ← detect which clusters exist
-    +-- provider.Info()             ← detect rootless, provider type
-    +-- construct kubeconfig path: kubeconfig.PathForCluster(name)
-    |
-    +-- print to stdout:
-    |       KUBECONFIG=<path>
-    |       KIND_CLUSTER_NAME=<name>
-    |       KINDER_PROVIDER=<docker|nerdctl|podman>
-    |
-    (optionally: eval $(kinder env) sets shell vars)
-```
-
-Pattern: modeled after `docker machine env` / `minikube docker-env`. Simple read-only command, no side effects.
-
-### doctor Command: Data Flow
-
-```
-kinder doctor
+ActionContext.Context  ← available in every Execute() call
     |
     v
-cmd/kind/doctor/doctor.go: runE()
+node.CommandContext(ctx.Context, "kubectl", "wait", ...)
     |
-    +-- check docker: docker.IsAvailable() → print OK/FAIL + version
-    +-- check nerdctl: nerdctl.IsAvailable() → print OK/FAIL + version
-    +-- check podman: podman.IsAvailable() → print OK/FAIL + version
-    +-- detect active provider: runtime.GetDefault(logger)
-    +-- provider.Info() → print cgroup capabilities (rootless, cgroup2, memory limit, etc.)
-    +-- check kubeconfig path exists and is readable
-    +-- print summary: "All checks passed" or list of failures
+    v
+common.nodeCmd{ctx: ctx}.Run()
     |
-    (exit code 0 = all OK, exit code 1 = any failure)
+    v
+exec.CommandContext(ctx, binaryName, "exec", ..., "kubectl", "wait", ...)
+    (process killed on ctx.Done())
+```
+
+---
+
+## Recommended Project Structure
+
+```
+pkg/
+├── internal/
+│   └── kindversion/           ← NEW: moved from cmd/kind/version/
+│       └── version.go         ← Version(), DisplayVersion(), version vars
+│
+├── cluster/
+│   ├── provider.go            ← MODIFY: import kindversion instead of cmd/kind/version
+│   │
+│   └── internal/create/
+│       ├── create.go          ← MODIFY: context, parallel addons, JSON output
+│       └── actions/
+│           ├── action.go      ← MODIFY: add Context field to ActionContext
+│           ├── addon_registry.go  ← NEW: Registry() func returning []AddonEntry
+│           │
+│           ├── installenvoygw/
+│           │   ├── envoygw.go
+│           │   └── envoygw_test.go   ← NEW: test gatewayClassManifest
+│           │
+│           ├── installlocalregistry/
+│           │   ├── localregistry.go
+│           │   └── localregistry_test.go   ← NEW: test buildHostsTOML
+│           │
+│           └── [all other addon pkgs — CommandContext instead of Command]
+│
+└── cmd/kind/
+    ├── root.go                ← UNCHANGED
+    ├── version/
+    │   └── version.go         ← MODIFY: delegate to kindversion, keep NewCommand
+    └── create/cluster/
+        └── createcluster.go   ← MODIFY: add --output flag
 ```
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: binaryName Parameterization (nerdctl precedent)
+### Pattern 1: Extract-and-Test (existing precedent)
 
-**What:** All provider operations that shell out to a container runtime accept `binaryName string` as a parameter rather than hardcoding the runtime name. The provider struct stores `binaryName` and passes it through.
+**What:** Split `Execute()` into (a) pure logic functions with no I/O, and (b) kubectl orchestration. Test (a) directly. Accept that (b) requires integration tests.
 
-**When:** Whenever implementing shared code that must work with docker, nerdctl, podman, or finch.
+**When:** Any addon action with non-trivial logic (string transforms, IP parsing, YAML generation).
 
-**Example (from existing nerdctl/node.go — the model):**
+**Example — existing pattern in `installcorednstuning`:**
 ```go
-type node struct {
-    name       string
-    binaryName string
-}
-
-func (n *node) Role() (string, error) {
-    cmd := exec.Command(n.binaryName, "inspect", ...)
-    // ...
-}
-```
-
-**Target pattern for common/node.go:**
-```go
-// Node implements nodes.Node for all container runtime providers.
-// The binaryName field holds the runtime binary (docker, nerdctl, podman, finch).
-type Node struct {
-    name       string
-    binaryName string
-}
-
-func NewNode(name, binaryName string) *Node {
-    return &Node{name: name, binaryName: binaryName}
-}
-```
-
-### Pattern 2: Action with Embedded Manifest (existing addon pattern)
-
-**What:** Each addon action embeds its YAML manifest(s) using `//go:embed`, applies them via `kubectl apply -f -` with stdin, then waits for a deployment to become Available.
-
-**When:** All new addons (LocalRegistry, CertManager) follow this pattern.
-
-**Example (from installdashboard/dashboard.go — the model):**
-```go
-//go:embed manifests/headlamp.yaml
-var headlampManifest string
-
+// corednstuning.go
 func (a *action) Execute(ctx *actions.ActionContext) error {
-    ctx.Status.Start("Installing cert-manager")
-    defer ctx.Status.End(false)
-
-    allNodes, err := ctx.Nodes()
-    // ... find controlPlanes[0] ...
-
-    if err := node.Command(
-        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
-        "apply", "-f", "-",
-    ).SetStdin(strings.NewReader(certManagerManifest)).Run(); err != nil {
-        return errors.Wrap(err, "failed to apply cert-manager manifest")
-    }
-
-    if err := node.Command(
-        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
-        "wait", "--namespace=cert-manager",
-        "--for=condition=Available", "deployment/cert-manager-webhook",
-        "--timeout=120s",
-    ).Run(); err != nil {
-        return errors.Wrap(err, "cert-manager webhook did not become available")
-    }
-
-    ctx.Status.End(true)
-    return nil
-}
-```
-
-### Pattern 3: Addon Config with *bool (existing pattern)
-
-**What:** Public API uses `*bool` for each addon flag. `nil` means "use default". Internal config uses plain `bool`. `convert_v1alpha4.go` converts with a `boolOrDefault(field *bool, defaultVal bool)` helper.
-
-**When:** Adding any new addon field to the config types.
-
-**Locations requiring change for each new addon:**
-1. `pkg/apis/config/v1alpha4/types.go` — add `LocalRegistry *bool` to `Addons` struct
-2. `pkg/internal/apis/config/types.go` — add `LocalRegistry bool` to `Addons` struct
-3. `pkg/internal/apis/config/convert_v1alpha4.go` — convert the field
-4. `pkg/internal/apis/config/default.go` — set default value (true or false)
-5. `pkg/cluster/internal/create/create.go` — add `runAddon()` call
-
-### Pattern 4: Cobra Subcommand (existing pattern)
-
-**What:** Each top-level command group has a parent command in `pkg/cmd/kind/<name>/<name>.go` that adds subcommands. Leaf commands define `flagpole` struct, `NewCommand()`, and `runE()`. Logger and IOStreams flow through all levels.
-
-**When:** Adding `env` and `doctor` commands.
-
-**Example (from pkg/cmd/kind/get/get.go — the model):**
-```go
-package env
-
-import (
-    "github.com/spf13/cobra"
-    "sigs.k8s.io/kind/pkg/cmd"
-    "sigs.k8s.io/kind/pkg/log"
-)
-
-type flagpole struct {
-    Name string
+    // ...kubectl get configmap...
+    corefileStr, err = patchCorefile(corefileStr)  // pure function
+    // ...kubectl apply...
 }
 
-func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
-    flags := &flagpole{}
-    cmd := &cobra.Command{
-        Use:   "env",
-        Short: "Print environment variables for a cluster",
-        RunE: func(cmd *cobra.Command, args []string) error {
-            return runE(logger, streams, flags)
-        },
-    }
-    cmd.Flags().StringVarP(&flags.Name, "name", "n", "", "cluster name")
-    return cmd
-}
+// Tested in corefile_test.go — no kubectl needed
+func TestPatchCorefile(t *testing.T) { ... }
 ```
 
-**Then in root.go:**
-```go
-import "sigs.k8s.io/kind/pkg/cmd/kind/env"
-// ...
-cmd.AddCommand(env.NewCommand(logger, streams))
-```
+### Pattern 2: AddonEntry Registry (new)
+
+**What:** A slice of `AddonEntry` structs replaces the hard-coded `runAddon` calls. The registry owns all addon imports. Adding a new addon = add one entry to the slice.
+
+**When:** Any new addon addition, or when refactoring create.go.
+
+**Trade-off:** Slightly less explicit than named `runAddon` calls, but eliminates the need to edit `create.go` for new addons.
+
+### Pattern 3: context.Context via CommandContext (existing infrastructure, new usage)
+
+**What:** Replace `node.Command(...)` with `node.CommandContext(ctx.Context, ...)` in addon `Execute()` methods. The underlying `common.nodeCmd` and `exec.CommandContext` already handle cancellation.
+
+**When:** Any blocking kubectl call in an addon action.
+
+**Trade-off:** Minor verbosity increase in each addon action. No behavior change when context is `context.Background()` (which it will be until caller-provided contexts are exposed via the public API).
+
+### Pattern 4: binaryName Parameterization (existing, unchanged)
+
+**What:** All container runtime calls use the provider's binary name string. No hardcoding.
+
+**When:** Any new code that shells out to a container runtime. Covered by existing `common/node.go`.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Sharing podman's runArgsForNode With Docker/Nerdctl
+### Anti-Pattern 1: Testing Execute() Directly Without a Real Cluster
 
-**What goes wrong:** Podman's `runArgsForNode` calls `createAnonymousVolume(name)` before building args, and uses a different `--volume` syntax with `:suid,exec,dev` options. Docker's version uses `"--volume", "/var"` (anonymous, no label). These are not the same.
+**What people do:** Write `TestExecute()` that calls `action.Execute(actionsContext)` with a real `ActionContext`.
 
-**Why bad:** Forcing them into one function requires a provider-type switch inside the shared code, defeating the purpose.
+**Why it's wrong:** `Execute()` calls `node.Command("kubectl", ...)`, which execs into a container that does not exist in a unit test environment. The test fails with "no such container."
 
-**Instead:** Keep `runArgsForNode` in each provider package. Only share `generateMountBindings`, `generatePortMappings`, `createContainer`, and `createContainerWithWaitUntilSystemdReachesMultiUserSystem` — those are truly identical. The `planCreation` skeleton (the outer loop) can also be shared if it accepts `runArgsForNodeFn` as a callback.
+**Do this instead:** Extract logic from `Execute()` into pure functions. Test those functions. Accept that `Execute()` itself is an integration concern.
 
-### Anti-Pattern 2: Making LocalRegistry a Node Container
+### Anti-Pattern 2: Sharing cli.Status Across Goroutines Without Synchronization
 
-**What goes wrong:** Running the registry as a kind node (inside a kind node container image) adds complexity and requires modifying the provisioning pipeline.
+**What people do:** Run addon goroutines that each call `ctx.Status.Start("Installing X")`.
 
-**Instead:** Run the registry as a separate container on the same Docker/nerdctl/podman network (`kind` network). This is how the kind docs recommend it. The registry container is a standard `registry:2` image, separate from kind nodes, reachable by container name within the network.
+**Why it's wrong:** `cli.Status` is not concurrency-safe. `Start()` sets `s.status` and potentially starts a spinner. Concurrent calls overwrite each other.
 
-### Anti-Pattern 3: Deleting provider-specific node.go Before Common Is Proven
+**Do this instead:** Addon actions in the parallel phase use `ctx.Logger.V(0).Infof(...)` directly. The spinner-based status is reserved for the sequential core phase. Alternatively, wrap `Status` with a mutex — but simpler to just use the logger in parallel code.
 
-**What goes wrong:** Deleting the per-provider `node.go` files before `common/node.go` compiles and passes tests breaks the build. There are no compile-time guarantees that the common struct satisfies `nodes.Node` until it's wired up and tested.
+### Anti-Pattern 3: Moving Version Constants Without Updating Build Injection
 
-**Instead:** Build order must be: (1) write `common/node.go`, (2) verify it satisfies `nodes.Node` interface, (3) update providers to use it, (4) delete per-provider `node.go` files, (5) run tests. Do not delete before step 4 is confirmed green.
+**What people do:** Move `versionCore`, `versionPreRelease`, `gitCommit`, `gitCommitCount` vars to `kindversion` but forget to update the `-ldflags` linker flags in the build system.
 
-### Anti-Pattern 4: Embedding Large cert-manager Manifests Verbatim
+**Why it's wrong:** The build system injects version strings at link time using `-X sigs.k8s.io/kind/pkg/cmd/kind/version.gitCommit=<hash>`. If the vars move to a new package, the `-X` flag must reference the new full package path.
 
-**What goes wrong:** cert-manager's official install YAML is ~5000 lines. Embedding it verbatim bloats the binary and makes the file hard to review. Worse, it requires manual update with each cert-manager release.
+**Do this instead:** Update `Makefile` / `hack/build.sh` linker flags to reference `pkg/internal/kindversion.gitCommit` etc. immediately after the move. Verify with `kinder version` that the hash is set correctly in a built binary.
 
-**Instead:** Embed the YAML but process it through the same pattern as other addons — confirm the manifest version at the start of each milestone. Add a `// cert-manager version: X.Y.Z` comment at the top of the embedded YAML file so it's clear what version is baked in. Consider extracting just the CRDs + controller deployments if the full manifest is truly unwieldy.
+### Anti-Pattern 4: Exposing context.Context in the Public API Prematurely
 
-### Anti-Pattern 5: doctor Command Calling provider.Info() for Non-Active Providers
+**What people do:** Change `provider.go:Create(name string, options ...CreateOption)` to `Create(ctx context.Context, name string, options ...CreateOption)`.
 
-**What goes wrong:** Calling `podman.info()` when Docker is active requires podman to be installed, which defeats the purpose of a diagnostic command.
+**Why it's wrong:** This is a breaking API change. Current callers of `kind`-the-library would fail to compile.
 
-**Instead:** `doctor` checks `IsAvailable()` for each provider binary, then only calls `Info()` on the detected active provider. Unavailable providers are reported as "not found" without attempting further introspection.
+**Do this instead:** Pass `context.Background()` from `provider.go:Create()` internally. Document that a future version will support caller-provided contexts. Introduce `CreateWithContext(ctx, name, options...)` as an addition rather than a modification.
+
+### Anti-Pattern 5: Removing Dependency Order Comments When Adding the Registry
+
+**What people do:** Convert the sequential list to a registry and remove the comments that document why LocalRegistry comes before MetalLB, etc.
+
+**Why it's wrong:** The ordering represents implicit dependencies (LocalRegistry injects containerd config before cluster is fully up; MetalLB before EnvoyGateway for LoadBalancer IPs at runtime). Without comments, future maintainers reorder incorrectly.
+
+**Do this instead:** Add a doc comment on the `Registry()` function explaining dependency ordering, and add inline comments on entries that have ordering constraints.
 
 ---
 
@@ -401,129 +700,85 @@ cmd.AddCommand(env.NewCommand(logger, streams))
 
 | File | Nature of Change |
 |------|-----------------|
-| `pkg/apis/config/v1alpha4/types.go` | Add `LocalRegistry *bool`, `CertManager *bool` to `Addons` struct |
-| `pkg/internal/apis/config/types.go` | Add `LocalRegistry bool`, `CertManager bool` to `Addons` struct |
-| `pkg/internal/apis/config/convert_v1alpha4.go` | Convert new `*bool` fields to `bool` |
-| `pkg/internal/apis/config/default.go` | Set defaults for `LocalRegistry` and `CertManager` |
-| `pkg/cluster/internal/create/create.go` | Add `runAddon` calls for `LocalRegistry` (before CertManager) and `CertManager` |
-| `pkg/cmd/kind/root.go` | Add `cmd.AddCommand(env.NewCommand(...))` and `cmd.AddCommand(doctor.NewCommand(...))` |
-| `pkg/cluster/internal/providers/docker/provider.go` | Add `binaryName string` field; wire `binaryName: "docker"`; use `common.Node` in `node()` factory |
-| `pkg/cluster/internal/providers/podman/provider.go` | Use `common.Node` in `node()` factory |
-| `pkg/cluster/internal/providers/nerdctl/provider.go` | Use `common.Node` in `node()` factory (already has `binaryName`) |
-| `pkg/cluster/internal/providers/docker/images.go` | Delegate to common image-pull function (accept binaryName) |
-| `pkg/cluster/internal/providers/nerdctl/images.go` | Delegate to common image-pull function |
+| `pkg/cluster/internal/create/actions/action.go` | Add `Context context.Context` field; add ctx param to `NewActionContext` |
+| `pkg/cluster/internal/create/create.go` | Accept `context.Context` param; use addon registry loop; goroutine fan-out for parallel phase; JSON output branch |
+| `pkg/cluster/provider.go` | Change import from `cmd/kind/version` to `internal/kindversion`; pass `context.Background()` to `Cluster()` |
+| `pkg/cmd/kind/version/version.go` | Delegate `Version()`, `DisplayVersion()` to `kindversion`; keep `NewCommand()` here |
+| `pkg/cmd/kind/create/cluster/createcluster.go` | Add `--output` flag; pass `OutputFormat` to `ClusterOptions` |
+| All addon `Execute()` methods | Replace `node.Command(...)` with `node.CommandContext(ctx.Context, ...)` |
+| `pkg/cluster/internal/create/actions/waitforready/waitforready.go` | Context-aware `tryUntil()` loop |
+| Makefile / build scripts | Update `-X` linker flags to point to `pkg/internal/kindversion.*` vars |
 
 ### New Files
 
 | File | Purpose |
 |------|---------|
-| `pkg/cluster/internal/providers/common/node.go` | Shared `Node` struct, `nodeCmd` struct, all `nodes.Node` interface methods |
-| `pkg/cluster/internal/providers/common/provision.go` | Shared `generateMountBindings`, `generatePortMappings`, `createContainer`, `createContainerWithWaitUntilSystemdReachesMultiUserSystem` |
-| `pkg/cluster/internal/create/actions/installlocalregistry/localregistry.go` | Local registry Action implementation |
-| `pkg/cluster/internal/create/actions/installlocalregistry/manifests/` | Registry ConfigMap YAML for cluster advertisement |
-| `pkg/cluster/internal/create/actions/installcertmanager/certmanager.go` | cert-manager Action implementation |
-| `pkg/cluster/internal/create/actions/installcertmanager/manifests/cert-manager.yaml` | Embedded cert-manager install manifest |
-| `pkg/cmd/kind/env/env.go` | `kinder env` Cobra command |
-| `pkg/cmd/kind/doctor/doctor.go` | `kinder doctor` Cobra command |
-
-### Deleted Files
-
-| File | Reason |
-|------|--------|
-| `pkg/cluster/internal/providers/docker/node.go` | Replaced by `common/node.go` |
-| `pkg/cluster/internal/providers/nerdctl/node.go` | Replaced by `common/node.go` |
-| `pkg/cluster/internal/providers/podman/node.go` | Replaced by `common/node.go` |
-| `pkg/cluster/internal/providers/docker/provision.go` | Replaced by `common/provision.go` + thin docker wrapper |
-| `pkg/cluster/internal/providers/nerdctl/provision.go` | Replaced by `common/provision.go` + thin nerdctl wrapper |
-
-Note: `podman/provision.go` is MODIFIED not deleted, because `runArgsForNode` (anonymous volume creation) is podman-specific.
+| `pkg/internal/kindversion/version.go` | Version string logic, build-time vars — library-accessible |
+| `pkg/cluster/internal/create/actions/addon_registry.go` | `AddonEntry` type, `Registry()` function with ordered addon list |
+| `pkg/cluster/internal/create/actions/installenvoygw/envoygw_test.go` | Unit tests for extractable pure logic |
+| `pkg/cluster/internal/create/actions/installlocalregistry/localregistry_test.go` | Unit tests for extractable pure logic |
 
 ---
 
 ## Build Order Recommendation
 
-This order respects compile-time dependencies and allows incremental validation.
+Dependencies between improvements determine order. Each step is independently verifiable.
 
 ```
-Step 1: Provider code deduplication (foundational, de-risks all else)
-    1a. Write common/node.go — verify nodes.Node interface is satisfied
-    1b. Update docker/provider.go: add binaryName, use common.Node in node()
-    1c. Update nerdctl/provider.go: use common.Node in node()
-    1d. Update podman/provider.go: use common.Node in node()
-    1e. Delete docker/node.go, nerdctl/node.go, podman/node.go
-    1f. Run: go build ./... (must compile)
-    1g. Run: go test ./pkg/cluster/internal/providers/...
+Step 1: Version package move (no dependencies on other steps)
+    1a. Create pkg/internal/kindversion/version.go
+        - Copy Version(), DisplayVersion(), versionCore, versionPreRelease, gitCommit, gitCommitCount
+        - Copy internal version() helper and truncate() helper
+        - Copy their tests into pkg/internal/kindversion/version_test.go
+    1b. Update pkg/cluster/provider.go import
+    1c. Update pkg/cmd/kind/version/version.go to delegate
+    1d. Update build system -X linker flags
+    1e. go build ./... && go test ./...
 
-    1h. Write common/provision.go — shared generateMountBindings, generatePortMappings, createContainer
-    1i. Update docker/provision.go: delegate to common, delete duplicated functions
-    1j. Update nerdctl/provision.go: delegate to common, delete duplicated functions
-    1k. Podman/provision.go: keep runArgsForNode, delegate rest to common
-    1l. Run: go build ./... + go test ./...
+Step 2: context.Context in ActionContext (prerequisite for Steps 3, 4)
+    2a. Add Context field to ActionContext, update NewActionContext signature
+    2b. Update create.go: Cluster() accepts ctx, passes to NewActionContext
+    2c. Update provider.go: Create() passes context.Background()
+    2d. go build ./...  (must compile — all callers of NewActionContext must be updated)
 
-Step 2: Config types for new addons (required before action code references cfg.Addons.*)
-    2a. Add LocalRegistry, CertManager to v1alpha4/types.go
-    2b. Add LocalRegistry, CertManager to internal config/types.go
-    2c. Update convert_v1alpha4.go
-    2d. Update default.go (set defaults)
-    2e. Run: go build ./... (config package must compile before actions reference it)
+Step 3: Context propagation to addon actions (depends on Step 2)
+    3a. Update waitforready.go: context-aware tryUntil
+    3b. Update each addon Execute(): CommandContext instead of Command
+    3c. go build ./... && go test ./pkg/cluster/internal/create/actions/...
 
-Step 3: Local Registry addon
-    3a. Create actions/installlocalregistry/manifests/ (registry-info ConfigMap YAML)
-    3b. Implement actions/installlocalregistry/localregistry.go
-    3c. Wire into create.go runAddon (before CertManager in dependency order)
-    3d. Manual test: kinder create cluster, verify registry reachable from node
+Step 4: Addon registry (depends on Step 2; independent of Step 3)
+    4a. Create addon_registry.go with AddonEntry type and Registry()
+    4b. Update create.go: replace 7 runAddon calls with registry loop
+    4c. go build ./... (verify no import cycle: actions/ imports sub-packages)
 
-Step 4: cert-manager addon
-    4a. Download cert-manager.yaml, place in actions/installcertmanager/manifests/
-    4b. Implement actions/installcertmanager/certmanager.go
-    4c. Wire into create.go runAddon
-    4d. Manual test: kinder create cluster, verify cert-manager-webhook Available
+Step 5: Parallel addon installation (depends on Steps 3 and 4)
+    5a. Wrap registry loop in goroutines with sync.WaitGroup + mutex
+    5b. Remove ctx.Status.Start/End from addon Execute() methods; use logger
+    5c. go build ./... && go test ./...
+    5d. Manual test: kinder create cluster (observe parallel output)
 
-Step 5: CLI commands (env, doctor)
-    5a. Implement pkg/cmd/kind/env/env.go
-    5b. Implement pkg/cmd/kind/doctor/doctor.go
-    5c. Register both in pkg/cmd/kind/root.go
-    5d. Run: go build ./...; kinder env --help; kinder doctor
+Step 6: JSON output (independent of Steps 1-5; can be done any time after Step 2)
+    6a. Add OutputFormat to ClusterOptions
+    6b. Add --output flag to createcluster.go
+    6c. Add JSON output branch at end of create.go Cluster()
+    6d. go build ./... && kinder create cluster --output=json
 
-Step 6: Bug fixes (independent of steps 1-5, can be done in any order)
+Step 7: Unit tests for addon actions (independent; can be done any time)
+    7a. Extract pure logic from installenvoygw, installlocalregistry
+    7b. Write _test.go files using the corefile_test.go pattern
+    7c. go test ./pkg/cluster/internal/create/actions/...
 ```
-
----
-
-## Duplication Analysis: What Is Actually Shared
-
-The three provider implementations share the following code verbatim (or with only a binaryName parameter difference). This is what goes into `common/`:
-
-| Code Unit | Docker | Nerdctl | Podman | Shareable? |
-|-----------|--------|---------|--------|------------|
-| `node` struct fields | name string | name+binaryName | name string | YES — add binaryName to all |
-| `node.String()` | identical | identical | identical | YES |
-| `node.Role()` | identical except binary | identical | identical | YES (binaryName param) |
-| `node.IP()` | identical except binary | identical | identical | YES (binaryName param) |
-| `node.Command()` | identical except binary | identical | identical | YES (binaryName param) |
-| `node.CommandContext()` | identical except binary | identical | identical | YES (binaryName param) |
-| `node.SerialLogs()` | identical except binary | identical | identical | YES (binaryName param) |
-| `nodeCmd` struct | no binaryName | has binaryName | no binaryName | YES — add binaryName to all |
-| `nodeCmd.Run()` | identical except binary | identical | identical | YES (binaryName param) |
-| `generateMountBindings()` | identical | identical | identical | YES |
-| `generatePortMappings()` | identical | identical | podman: empty string for 0 | MOSTLY — podman has one extra line; factor out or use a flag |
-| `createContainer()` | identical except binary | identical | identical | YES (binaryName param) |
-| `createContainerWithWait...()` | identical except binary | identical | identical | YES (binaryName param) |
-| `getSubnets()` | docker JSON format | same | podman JSON — DIFFERENT | NO — keep per-provider |
-| `runArgsForNode()` | standard mounts | identical to docker | anon volume for /var | PARTIALLY — podman differs |
-| `ensureNetwork()` | docker network API + duplicate removal | nerdctl network API | podman JSON network API | NO — all three differ |
-| `info()` / `Info()` | docker JSON | same as docker | podman JSON — different struct | NO — all three differ |
 
 ---
 
 ## Scalability Considerations
 
-| Concern | Now (3 providers) | After deduplication | If 4th provider added |
-|---------|-------------------|--------------------|-----------------------|
-| Adding new node method | 3 files to update | 1 file (common/node.go) | 1 file |
-| Adding new provision arg | 3 files to update | 1-2 files | 1-2 files |
-| Testing coverage | 3x test surface | 1x shared + per-provider specifics | Same |
-| Adding new addon | 1 action pkg + 1 line in create.go + 5 config locations | Same (no change from dedup) | Same |
+| Concern | Now | After Parallel Addons | After Registry Pattern |
+|---------|-----|-----------------------|----------------------|
+| Adding a new addon | Edit create.go + add pkg | Same | Add 1 AddonEntry to registry |
+| Number of addons | 7 sequential | 7 parallel | N parallel |
+| Create time (all addons) | CertManager 300s is serial bottleneck | Dominated by slowest addon | Same |
+| Test coverage | 3 action packages tested | Same + 2 more | Same |
 
 ---
 
@@ -532,18 +787,19 @@ The three provider implementations share the following code verbatim (or with on
 All findings from direct codebase read at `/Users/patrykattc/work/git/kinder` — HIGH confidence.
 
 Key files examined:
-- `pkg/cluster/internal/providers/{docker,nerdctl,podman}/{provider,node,provision,images,network,util,constants}.go`
-- `pkg/cluster/internal/providers/common/*.go`
-- `pkg/cluster/internal/providers/provider.go`
-- `pkg/cluster/internal/create/create.go`
-- `pkg/cluster/internal/create/actions/action.go`
-- `pkg/cluster/internal/create/actions/{installdashboard,installmetallb}/`
-- `pkg/apis/config/v1alpha4/types.go`
-- `pkg/internal/apis/config/types.go`
-- `pkg/cmd/kind/root.go`
-- `pkg/cmd/kind/get/get.go`
-- `pkg/cmd/kind/create/cluster/createcluster.go`
+- `pkg/cluster/internal/create/create.go` — current pipeline and addon calls
+- `pkg/cluster/internal/create/actions/action.go` — ActionContext definition
+- `pkg/cluster/internal/create/actions/{installmetallb,installenvoygw,installlocalregistry,installcertmanager,installcorednstuning}/*.go` — addon action implementations
+- `pkg/cluster/internal/create/actions/waitforready/waitforready.go` — blocking retry loop
+- `pkg/cluster/internal/create/actions/{installcorednstuning,installmetallb,waitforready}/*_test.go` — existing test patterns
+- `pkg/cluster/internal/providers/common/node.go` — CommandContext already implemented
+- `pkg/exec/types.go`, `pkg/exec/local.go` — Cmder interface + CommandContext exists
+- `pkg/cluster/nodes/types.go` — Node interface (exec.Cmder embedded)
+- `pkg/cluster/provider.go` — layer violation site
+- `pkg/cmd/kind/version/version.go` + `version_test.go` — version package structure
+- `pkg/internal/apis/config/types.go` — internal Addons struct
+- `pkg/apis/config/v1alpha4/types.go` — public Addons struct
 
 ---
-*Architecture research for: kinder v1.3 — local registry addon, cert-manager addon, env/doctor commands, provider code deduplication*
+*Architecture research for: kinder code quality milestone — addon registry, version layer fix, context propagation, parallel addons, JSON output, unit tests*
 *Researched: 2026-03-03*
