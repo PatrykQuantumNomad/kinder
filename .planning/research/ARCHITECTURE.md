@@ -1,512 +1,549 @@
-# Architecture Research
+# Architecture Patterns
 
-**Domain:** Static documentation + landing page site integrated into Go CLI monorepo
-**Researched:** 2026-03-01
-**Confidence:** HIGH (Astro/Starlight official docs verified; GitHub Actions pattern verified; existing repo read directly)
+**Domain:** Go CLI — kinder v1.3 feature integration
+**Researched:** 2026-03-03
+**Confidence:** HIGH — all analysis is from direct codebase read, no inference needed
 
 ---
 
-## Standard Architecture
+## Recommended Architecture
 
 ### System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     kinder GitHub repo (main)                    │
-├────────────────────────────┬────────────────────────────────────┤
-│       Go CLI (existing)    │       Website (new)                 │
-│  ┌─────────────────────┐  │  ┌────────────────────────────┐    │
-│  │  cmd/kinder/        │  │  │  kinder-site/              │    │
-│  │  pkg/cluster/...    │  │  │  ├── src/                  │    │
-│  │  internal/actions/  │  │  │  │   ├── content/docs/     │    │
-│  │  Makefile           │  │  │  │   ├── components/       │    │
-│  └─────────────────────┘  │  │  │   └── assets/           │    │
-│                            │  │  ├── public/               │    │
-│  (Go build, no changes)   │  │  │   └── CNAME             │    │
-│                            │  │  ├── astro.config.mjs      │    │
-│                            │  │  └── package.json          │    │
-│                            │  └────────────────────────────┘    │
-├────────────────────────────┴────────────────────────────────────┤
-│                     GitHub Actions CI                            │
-│  ┌──────────────────┐  ┌─────────────────────────────────────┐  │
-│  │  Go test/build   │  │  Astro build + GitHub Pages deploy  │  │
-│  │  (unchanged)     │  │  (new workflow, path: kinder-site/) │  │
-│  └──────────────────┘  └─────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────────────┤
-│                     GitHub Pages                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  kinder.patrykgolabek.dev  (custom CNAME)               │    │
-│  │  Landing page (/)  +  Docs (/docs/...)                  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Component Responsibilities
-
-| Component | Responsibility | Implementation |
-|-----------|----------------|----------------|
-| `kinder-site/` | Entire website source; fully self-contained Node project | Astro 5 + Starlight 0.37.x |
-| `src/content/docs/` | All documentation pages as Markdown/MDX | Starlight content collection; auto-generates sidebar |
-| `src/pages/index.astro` | Custom landing page (splash template, no sidebar) | Astro `.astro` page outside the docs collection |
-| `src/components/` | Reusable Astro components for landing sections | Hero, FeatureGrid, AddonCard, QuickStart |
-| `src/assets/` | Images, logo — processed by Astro's image pipeline | SVG logo, hero screenshots |
-| `public/CNAME` | Custom domain declaration for GitHub Pages | Single line: `kinder.patrykgolabek.dev` |
-| `astro.config.mjs` | Starlight integration config, site URL, sidebar, social links | Root config for entire site |
-| `.github/workflows/deploy-site.yml` | Build Astro and deploy to GitHub Pages | `withastro/action@v5` with `path: ./kinder-site` |
-
----
-
-## Recommended Project Structure
-
-```
-kinder-site/
-├── astro.config.mjs          # Site config: title, social links, sidebar, customCss
-├── package.json              # Dependencies: astro, @astrojs/starlight
-├── package-lock.json         # Lockfile committed (required by withastro/action)
-├── tsconfig.json             # TypeScript config (Astro scaffold provides this)
+pkg/
+├── apis/config/v1alpha4/types.go          ← PUBLIC API: Addons struct (*bool fields)
+├── internal/apis/config/types.go          ← INTERNAL: Addons struct (bool fields, no pointers)
 │
-├── public/
-│   ├── CNAME                 # "kinder.patrykgolabek.dev" — required for custom domain
-│   └── favicon.svg           # Site icon (dark-friendly)
+├── cluster/
+│   ├── internal/
+│   │   ├── providers/
+│   │   │   ├── provider.go                ← Provider interface (unchanged)
+│   │   │   ├── common/                    ← SHARED: grows in v1.3 (node.go, provision.go, etc.)
+│   │   │   │   ├── cgroups.go             ← WaitUntilLogRegexpMatches (existing)
+│   │   │   │   ├── constants.go           ← APIServerInternalPort (existing)
+│   │   │   │   ├── images.go              ← RequiredNodeImages (existing)
+│   │   │   │   ├── logs.go                ← FileOnHost (existing)
+│   │   │   │   ├── namer.go               ← MakeNodeNamer (existing)
+│   │   │   │   ├── proxy.go               ← GetProxyEnvs (existing)
+│   │   │   │   ├── getport.go             ← PortOrGetFreePort (existing)
+│   │   │   │   ├── node.go                ← NEW: shared node + nodeCmd struct
+│   │   │   │   └── provision.go           ← NEW: shared planCreation, commonArgs, generateMountBindings, generatePortMappings
+│   │   │   ├── docker/
+│   │   │   │   ├── provider.go            ← MODIFY: add binaryName field, use common.node, common.planCreation
+│   │   │   │   ├── node.go                ← DELETE: replaced by common/node.go
+│   │   │   │   ├── provision.go           ← DELETE: replaced by common/provision.go
+│   │   │   │   ├── images.go              ← MODIFY: call common.EnsureNodeImages(binaryName)
+│   │   │   │   ├── network.go             ← KEEP: docker-specific (removeDuplicateNetworks logic)
+│   │   │   │   ├── util.go                ← KEEP: docker-specific (usernsRemap, mountDevMapper)
+│   │   │   │   └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
+│   │   │   ├── nerdctl/
+│   │   │   │   ├── provider.go            ← MODIFY: delegate to common.node, common.planCreation
+│   │   │   │   ├── node.go                ← DELETE: replaced by common/node.go
+│   │   │   │   ├── provision.go           ← DELETE: replaced by common/provision.go
+│   │   │   │   ├── images.go              ← MODIFY: call common.EnsureNodeImages(binaryName)
+│   │   │   │   ├── network.go             ← KEEP: nerdctl-specific network logic
+│   │   │   │   ├── util.go                ← KEEP: IsAvailable, mountFuse (nerdctl-specific)
+│   │   │   │   └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
+│   │   │   └── podman/
+│   │   │       ├── provider.go            ← MODIFY: delegate to common.node, common.planCreation
+│   │   │       ├── node.go                ← DELETE: replaced by common/node.go
+│   │   │       ├── provision.go           ← MODIFY: keep podman-specific runArgsForNode (anon volumes)
+│   │   │       ├── images.go              ← KEEP: sanitizeImage differs (podman registry format)
+│   │   │       ├── network.go             ← KEEP: podman JSON subnet parsing (different API)
+│   │   │       ├── util.go                ← KEEP: createAnonymousVolume, deleteVolumes (podman-only)
+│   │   │       └── constants.go           ← KEEP: clusterLabelKey, nodeRoleLabelKey
+│   │   │
+│   │   └── create/
+│   │       ├── create.go                  ← MODIFY: add LocalRegistry, CertManager to runAddon calls
+│   │       └── actions/
+│   │           ├── action.go              ← UNCHANGED
+│   │           ├── installlocalregistry/  ← NEW package
+│   │           │   ├── localregistry.go
+│   │           │   └── manifests/         ← registry Deployment + Service + configmap YAMLs
+│   │           └── installcertmanager/    ← NEW package
+│   │               ├── certmanager.go
+│   │               └── manifests/         ← cert-manager install YAML (embedded)
+│   │
+│   └── provider.go                        ← UNCHANGED (public API, wraps internal)
 │
-└── src/
-    ├── content.config.ts     # Content Layer schema: extends docsSchema()
-    │
-    ├── content/
-    │   └── docs/             # Starlight maps every file here to a URL
-    │       ├── index.mdx     # Redirect to /docs/getting-started/ (or remove if landing is separate)
-    │       ├── getting-started.mdx
-    │       ├── configuration.mdx
-    │       └── addons/
-    │           ├── overview.mdx
-    │           ├── metallb.mdx
-    │           ├── envoy-gateway.mdx
-    │           ├── metrics-server.mdx
-    │           ├── coredns.mdx
-    │           └── headlamp.mdx
-    │
-    ├── pages/
-    │   └── index.astro       # Landing page — overrides Starlight's root page
-    │
-    ├── components/
-    │   ├── Hero.astro         # Full-width hero: headline + install command
-    │   ├── FeatureGrid.astro  # 3-column grid of addon feature cards
-    │   ├── AddonCard.astro    # Individual card: icon, name, one-liner
-    │   ├── QuickStart.astro   # Tabbed code block: install + create cluster
-    │   └── GithubBadge.astro  # Stars/version badge linking to GitHub
-    │
-    └── assets/
-        ├── logo.svg           # Kinder logo (light + dark safe)
-        └── hero-terminal.png  # Terminal screenshot showing kinder create cluster
+└── cmd/kind/
+    ├── root.go                            ← MODIFY: add env.NewCommand, doctor.NewCommand
+    ├── env/                               ← NEW package
+    │   └── env.go                         ← kinder env: prints KUBECONFIG, cluster name, provider
+    └── doctor/                            ← NEW package
+        └── doctor.go                      ← kinder doctor: checks docker/podman/nerdctl availability + version
 ```
-
-### Structure Rationale
-
-- **`kinder-site/` at repo root:** Keeps Go codebase completely separate. Go tooling ignores `kinder-site/` entirely; Node tooling starts from `kinder-site/`. No workspace or symlink hacks needed.
-- **`src/content/docs/`:** Starlight's required path. Everything here becomes a documentation page automatically with sidebar, breadcrumbs, search, and prev/next navigation.
-- **`src/pages/index.astro`:** Landing pages need no sidebar and a custom layout. Placing a real `.astro` file at `src/pages/index.astro` overrides Starlight's generated root page, giving full layout control while keeping the docs integration intact.
-- **`public/CNAME`:** The `withastro/action` copies the `public/` directory verbatim into the build output. GitHub Pages reads `CNAME` from the root of the deployed artifact to configure the custom domain.
-- **`package-lock.json` committed:** `withastro/action` requires a lockfile to determine which package manager to use and to enable caching. Without it, the action falls back to a slower uncached install.
 
 ---
 
-## Architectural Patterns
+## Component Boundaries
 
-### Pattern 1: Starlight Integration (Docs) with Custom Landing Page
+### Existing Components (Unchanged Interface, Possibly Modified Internals)
 
-**What:** Use Starlight for all documentation pages while adding a completely custom `src/pages/index.astro` landing page. Starlight handles `/docs/**` routes via content collections; the landing page handles `/`.
+| Component | Responsibility | What Changes in v1.3 |
+|-----------|---------------|----------------------|
+| `Provider` interface (`provider.go`) | Provision/list/delete/inspect cluster nodes | Nothing — interface is stable |
+| `ActionContext` (`action.go`) | Passes logger, status, provider, config to actions | Nothing — data bag is correct as-is |
+| `Addons` struct (internal `config/types.go`) | Holds bool flags for each addon | Add `LocalRegistry bool`, `CertManager bool` fields |
+| `Addons` struct (v1alpha4 `types.go`) | Public API with `*bool` fields for YAML config | Add `LocalRegistry *bool`, `CertManager *bool` fields |
+| `create.go` | Orchestrates action pipeline and addon runAddon calls | Add `runAddon` calls for LocalRegistry and CertManager |
+| `convert_v1alpha4.go` | Converts public config to internal config | Add LocalRegistry + CertManager field conversion |
+| `default.go` | Sets addon defaults (true/false) | Add LocalRegistry + CertManager defaults |
 
-**When to use:** Any site that needs both a marketing landing page (no sidebar, custom layout) and structured documentation (sidebar, search, prev/next). This is the standard pattern for developer tools.
+### New Components
 
-**Trade-offs:** Starlight controls its own layout for docs pages. Custom component injection requires Starlight's override mechanism (`components:` in the Starlight config), which adds complexity for non-trivial customizations. For kinder, basic CSS variable overrides are sufficient — avoid the override mechanism for the initial build.
-
-**Example `astro.config.mjs`:**
-```javascript
-import { defineConfig } from 'astro/config';
-import starlight from '@astrojs/starlight';
-
-export default defineConfig({
-  site: 'https://kinder.patrykgolabek.dev',
-  // No `base` needed when using a custom domain at apex of subdomain
-  integrations: [
-    starlight({
-      title: 'kinder',
-      description: 'Batteries-included local Kubernetes clusters',
-      logo: { src: './src/assets/logo.svg' },
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/patrykattc/kinder' },
-      ],
-      customCss: ['./src/custom.css'],
-      defaultLocale: 'en',
-      sidebar: [
-        { label: 'Getting Started', link: '/docs/getting-started/' },
-        { label: 'Configuration', link: '/docs/configuration/' },
-        {
-          label: 'Addons',
-          autogenerate: { directory: 'addons' },
-        },
-      ],
-    }),
-  ],
-});
-```
-
-**Example `src/content.config.ts`:**
-```typescript
-import { defineCollection } from 'astro:content';
-import { docsSchema } from '@astrojs/starlight/schema';
-
-export const collections = {
-  docs: defineCollection({ schema: docsSchema() }),
-};
-```
-
-### Pattern 2: CSS Variable Override for Dark Terminal Theme
-
-**What:** Override Starlight's CSS custom properties in a `customCss` file to match a dark developer-tool aesthetic. Starlight already defaults to dark mode; the overrides tune colors to a terminal-inspired palette (dark backgrounds, green/cyan accents, monospace code).
-
-**When to use:** When Starlight's default Night Owl palette does not match the product's brand. For kinder, the target is a darker, more muted palette similar to tools like `kind`'s docs or `flux`'s site.
-
-**Trade-offs:** CSS variable overrides are stable across Starlight versions (they are a documented public API). Overriding component templates via Starlight's `components:` prop is less stable and should be avoided unless absolutely necessary.
-
-**Example `src/custom.css`:**
-```css
-/* Dark terminal theme for kinder */
-:root {
-  --sl-color-accent-low: #0d2b2b;
-  --sl-color-accent: #00b4b4;       /* cyan — Kubernetes brand adjacent */
-  --sl-color-accent-high: #7fffee;
-  --sl-color-white: #f4f4f5;
-  --sl-color-gray-1: #eaeaeb;
-  --sl-color-gray-6: #111318;       /* near-black background */
-  --sl-font-system-mono: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
-/* Force dark background even on light system preference */
-:root[data-theme='light'] {
-  /* intentionally close to dark — kinder is a dev tool, dark-first */
-  --sl-color-bg: #1a1d24;
-  --sl-color-bg-nav: #111318;
-}
-```
-
-### Pattern 3: Static Code Blocks for Install Instructions
-
-**What:** Use Starlight's built-in Expressive Code syntax highlighting for the install commands. Place the most important command (the quickstart) prominently on the landing page using a custom `QuickStart.astro` component, not inside a docs page.
-
-**When to use:** Landing pages need scannable install commands. Docs pages use standard Markdown code fences.
-
-**Trade-offs:** Custom components in `src/components/` are not automatically styled by Starlight. They inherit global CSS variables but require their own layout CSS. Keep landing page components simple — flexbox/grid, no complex JS.
-
-**Example landing page snippet:**
-```astro
----
-// src/pages/index.astro
-import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
-import Hero from '../components/Hero.astro';
-import FeatureGrid from '../components/FeatureGrid.astro';
----
-<StarlightPage frontmatter={{ title: 'kinder', template: 'splash' }}>
-  <Hero />
-  <FeatureGrid />
-</StarlightPage>
-```
-
-### Pattern 4: Content Collections with Autogenerated Sidebar
-
-**What:** Place all addon docs in `src/content/docs/addons/` and use `autogenerate: { directory: 'addons' }` in the sidebar config. Starlight generates sidebar entries alphabetically by filename; use numeric prefixes (`01-metallb.mdx`) or the `sidebar.order` frontmatter field to control order.
-
-**When to use:** Any section with multiple related pages. Avoids manually maintaining a sidebar list.
-
-**Trade-offs:** Autogenerated labels default to the filename (with capitalization). Override with `sidebar.label` in page frontmatter to get clean display names.
-
-**Example frontmatter in `src/content/docs/addons/metallb.mdx`:**
-```yaml
----
-title: MetalLB
-description: LoadBalancer support for kinder clusters via Layer 2 ARP
-sidebar:
-  label: MetalLB
-  order: 1
----
-```
+| Component | Responsibility | Integrates With |
+|-----------|---------------|-----------------|
+| `common/node.go` | Shared `node` struct + `nodeCmd` struct + all methods (`Role`, `IP`, `Command`, `CommandContext`, `SerialLogs`) | docker, nerdctl, podman providers — each provider's `node()` factory returns `&common.Node{binaryName: ..., name: ...}` |
+| `common/provision.go` | Shared `planCreation`, `commonArgs`, `runArgsForNode`, `runArgsForLoadBalancer`, `generateMountBindings`, `generatePortMappings`, `createContainer`, `createContainerWithWaitUntilSystemdReachesMultiUserSystem` — all parameterized with `binaryName string` | docker, nerdctl, podman providers delegate provisioning to this |
+| `actions/installlocalregistry/` | Action: run a registry container on the cluster network, patch containerd config on all nodes to mirror `localhost:5001` to it, create a `ConfigMap` in the cluster advertising the registry address | `ActionContext.Nodes()`, `node.Command(kubectl)`, `node.Command(containerd config)` |
+| `actions/installcertmanager/` | Action: kubectl apply embedded cert-manager manifest, wait for cert-manager-webhook Deployment to be Available | `ActionContext.Nodes()`, `node.Command(kubectl apply)`, `node.Command(kubectl wait)` |
+| `pkg/cmd/kind/env/` | Cobra subcommand: print environment info (which KUBECONFIG would be set, current cluster name, detected provider) | `cluster.Provider.ListClusters()`, `cluster.Provider.Info()`, kubeconfig package |
+| `pkg/cmd/kind/doctor/` | Cobra subcommand: check that the active provider binary exists, its version is supported, and connectivity works | `docker.IsAvailable()`, `nerdctl.IsAvailable()`, `podman.IsAvailable()`, provider `Info()` |
 
 ---
 
 ## Data Flow
 
-### Build-Time Flow (GitHub Actions)
+### Provider Deduplication: Before and After
+
+**Before (current state):** Each provider package contains its own complete implementation of `node`, `nodeCmd`, and all provisioning functions. `docker/node.go` hardcodes `"docker"` as the binary name string. `podman/node.go` hardcodes `"podman"`. `nerdctl/node.go` stores `binaryName` on the struct (already parameterized).
+
+**After (target state):** `common/node.go` holds one `Node` struct with `binaryName string` and `name string` fields. All `node.*` methods use `n.binaryName` instead of a hardcoded string. Provider packages' `provider.node(name)` factory returns `&common.Node{binaryName: p.binaryName, name: name}`. Docker and podman acquire `binaryName` fields on their provider structs (currently only nerdctl has this). Provisioning logic follows the same pattern via `common/provision.go`.
 
 ```
-git push to main
+Provider.Provision(cfg)
     |
     v
-.github/workflows/deploy-site.yml triggers
+common.EnsureNodeImages(logger, status, cfg, binaryName)   ← new common func
     |
     v
-actions/checkout@v5  (full repo checkout)
+ensureNetwork(networkName, binaryName)     ← per-provider (network logic differs)
     |
     v
-withastro/action@v5
-    path: ./kinder-site         <- tells action where Astro project lives
-    node-version: 22            <- default
+common.PlanCreation(cfg, networkName, binaryName, providerSpecificArgs)
+    |                                         ↑
+    |                              podman: runArgsForNode has extra anon volume creation
+    v
+createContainerFuncs []func() error
     |
     v
-npm install                     <- installs astro + @astrojs/starlight
-    |
-    v
-astro build                     <- reads astro.config.mjs
-    |
-    +-- reads src/content/docs/**   -> generates HTML for each doc page
-    +-- reads src/pages/index.astro -> generates landing page HTML
-    +-- processes src/assets/       -> optimized images
-    +-- copies public/CNAME         -> into dist/
-    |
-    v
-dist/                           <- static site output
-    |
-    v
-actions/deploy-pages@v4         <- uploads dist/ as GitHub Pages artifact
-    |
-    v
-GitHub Pages serves at kinder.patrykgolabek.dev
+execute each func → common.createContainer(name, args, binaryName)
+                  → common.createContainerWithWaitUntilSystemdReachesMultiUserSystem(...)
 ```
 
-### Request Flow (End User)
+The key design decision: podman's `runArgsForNode` is NOT fully shareable because it calls `createAnonymousVolume(name)` for the `/var` mount — a podman-specific operation. The shared `provision.go` accepts a `runArgsForNodeFn` function parameter, allowing podman to supply its own `runArgsForNode` while sharing everything else. Alternatively, podman's provision.go can continue to call into the common provision for the container creation parts only, keeping its own `runArgsForNode`. Either pattern works; the second is simpler.
+
+### Local Registry Addon: Data Flow
 
 ```
-Browser: https://kinder.patrykgolabek.dev/
+create.go: runAddon("Local Registry", cfg.Addons.LocalRegistry, installlocalregistry.NewAction())
     |
     v
-GitHub Pages CDN (cached static files)
+installlocalregistry.Execute(ctx *ActionContext)
     |
-    v
-Landing page HTML (index.astro compiled output)
-    -> Hero component: headline, install command, GitHub link
-    -> FeatureGrid: 5 addon cards
-    -> QuickStart: code block with kinder create cluster
-
-Browser: https://kinder.patrykgolabek.dev/docs/getting-started/
+    +-- run registry container on host:
+    |       exec.Command(ctx.Provider.(fmt.Stringer).String(), "run", "-d",
+    |           "--name", "kind-registry", "--network=kind",
+    |           "-p", "127.0.0.1:5001:5000", "registry:2")
     |
-    v
-GitHub Pages CDN
+    +-- for each node (ctx.Nodes()):
+    |       node.Command("mkdir", "-p", "/etc/containerd/certs.d/localhost:5001")
+    |       node.Command("tee", "/etc/containerd/certs.d/localhost:5001/hosts.toml")
+    |           stdin: "[host.\"http://kind-registry:5000\"]\n"
     |
-    v
-Starlight-generated HTML
-    -> Left sidebar: navigation tree
-    -> Content: getting-started.mdx rendered
-    -> Right sidebar: table of contents
-    -> Footer: prev/next pagination
+    +-- kubectl apply ConfigMap (registry-info in kube-public namespace)
+    |       node[0].Command("kubectl", "--kubeconfig=...", "apply", "-f", "-")
+    |           stdin: configmap YAML with registry endpoint
+    |
+    +-- ctx.Status.End(true)
 ```
 
-### Go CLI / Website Data Boundary
+The registry container runs on the `kind` Docker/nerdctl/podman network alongside node containers, so nodes can reach it by container name `kind-registry` over the internal network.
 
-There is intentionally no runtime coupling between the Go CLI and the website. The website is pure static HTML. The only data that crosses the boundary is:
+### Cert-Manager Addon: Data Flow
 
-| Data | Direction | Mechanism |
-|------|-----------|-----------|
-| CLI version string | Go CLI -> website | Hard-coded in docs frontmatter; updated manually on release |
-| Addon version numbers | Go CLI -> website | Hard-coded in addon docs; updated manually on release |
-| Install instructions | Human -> website | Authored in MDX once, updated on CLI changes |
+```
+create.go: runAddon("cert-manager", cfg.Addons.CertManager, installcertmanager.NewAction())
+    |
+    v
+installcertmanager.Execute(ctx *ActionContext)
+    |
+    +-- ctx.Status.Start("Installing cert-manager")
+    +-- node[0].Command("kubectl", "--kubeconfig=...", "apply", "-f", "-")
+    |       stdin: embedded certManagerManifest (//go:embed manifests/cert-manager.yaml)
+    |
+    +-- node[0].Command("kubectl", "--kubeconfig=...",
+    |       "wait", "--namespace=cert-manager",
+    |       "--for=condition=Available", "deployment/cert-manager-webhook",
+    |       "--timeout=120s")
+    |
+    +-- ctx.Status.End(true)
+```
 
-No dynamic API calls. No version auto-detection from the binary. This is correct for a static site: keep complexity low, update docs as part of the release process.
+Pattern is identical to `installdashboard` and `installmetallb`. Embed one YAML file, apply it, wait for a deployment.
+
+### env Command: Data Flow
+
+```
+kinder env [--name cluster-name]
+    |
+    v
+cmd/kind/env/env.go: runE()
+    |
+    +-- create Provider (same as create cluster: runtime.GetDefault(logger))
+    +-- detect cluster name: flag > KIND_CLUSTER_NAME env > "kind"
+    +-- provider.ListClusters()     ← detect which clusters exist
+    +-- provider.Info()             ← detect rootless, provider type
+    +-- construct kubeconfig path: kubeconfig.PathForCluster(name)
+    |
+    +-- print to stdout:
+    |       KUBECONFIG=<path>
+    |       KIND_CLUSTER_NAME=<name>
+    |       KINDER_PROVIDER=<docker|nerdctl|podman>
+    |
+    (optionally: eval $(kinder env) sets shell vars)
+```
+
+Pattern: modeled after `docker machine env` / `minikube docker-env`. Simple read-only command, no side effects.
+
+### doctor Command: Data Flow
+
+```
+kinder doctor
+    |
+    v
+cmd/kind/doctor/doctor.go: runE()
+    |
+    +-- check docker: docker.IsAvailable() → print OK/FAIL + version
+    +-- check nerdctl: nerdctl.IsAvailable() → print OK/FAIL + version
+    +-- check podman: podman.IsAvailable() → print OK/FAIL + version
+    +-- detect active provider: runtime.GetDefault(logger)
+    +-- provider.Info() → print cgroup capabilities (rootless, cgroup2, memory limit, etc.)
+    +-- check kubeconfig path exists and is readable
+    +-- print summary: "All checks passed" or list of failures
+    |
+    (exit code 0 = all OK, exit code 1 = any failure)
+```
 
 ---
 
-## Scaling Considerations
+## Patterns to Follow
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| 0-1k monthly visitors | GitHub Pages free tier is more than sufficient; no CDN tuning needed |
-| 1k-100k monthly visitors | GitHub Pages handles this without any changes (served via Fastly CDN) |
-| 100k+ monthly visitors | Consider Cloudflare proxy in front of GitHub Pages for analytics and caching control; no site architecture change needed |
+### Pattern 1: binaryName Parameterization (nerdctl precedent)
 
-This is a developer tool docs site. Traffic will be dominated by organic search and GitHub referrals. GitHub Pages free tier supports unlimited bandwidth for public repos. No scaling concerns exist for this project.
+**What:** All provider operations that shell out to a container runtime accept `binaryName string` as a parameter rather than hardcoding the runtime name. The provider struct stores `binaryName` and passes it through.
+
+**When:** Whenever implementing shared code that must work with docker, nerdctl, podman, or finch.
+
+**Example (from existing nerdctl/node.go — the model):**
+```go
+type node struct {
+    name       string
+    binaryName string
+}
+
+func (n *node) Role() (string, error) {
+    cmd := exec.Command(n.binaryName, "inspect", ...)
+    // ...
+}
+```
+
+**Target pattern for common/node.go:**
+```go
+// Node implements nodes.Node for all container runtime providers.
+// The binaryName field holds the runtime binary (docker, nerdctl, podman, finch).
+type Node struct {
+    name       string
+    binaryName string
+}
+
+func NewNode(name, binaryName string) *Node {
+    return &Node{name: name, binaryName: binaryName}
+}
+```
+
+### Pattern 2: Action with Embedded Manifest (existing addon pattern)
+
+**What:** Each addon action embeds its YAML manifest(s) using `//go:embed`, applies them via `kubectl apply -f -` with stdin, then waits for a deployment to become Available.
+
+**When:** All new addons (LocalRegistry, CertManager) follow this pattern.
+
+**Example (from installdashboard/dashboard.go — the model):**
+```go
+//go:embed manifests/headlamp.yaml
+var headlampManifest string
+
+func (a *action) Execute(ctx *actions.ActionContext) error {
+    ctx.Status.Start("Installing cert-manager")
+    defer ctx.Status.End(false)
+
+    allNodes, err := ctx.Nodes()
+    // ... find controlPlanes[0] ...
+
+    if err := node.Command(
+        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+        "apply", "-f", "-",
+    ).SetStdin(strings.NewReader(certManagerManifest)).Run(); err != nil {
+        return errors.Wrap(err, "failed to apply cert-manager manifest")
+    }
+
+    if err := node.Command(
+        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+        "wait", "--namespace=cert-manager",
+        "--for=condition=Available", "deployment/cert-manager-webhook",
+        "--timeout=120s",
+    ).Run(); err != nil {
+        return errors.Wrap(err, "cert-manager webhook did not become available")
+    }
+
+    ctx.Status.End(true)
+    return nil
+}
+```
+
+### Pattern 3: Addon Config with *bool (existing pattern)
+
+**What:** Public API uses `*bool` for each addon flag. `nil` means "use default". Internal config uses plain `bool`. `convert_v1alpha4.go` converts with a `boolOrDefault(field *bool, defaultVal bool)` helper.
+
+**When:** Adding any new addon field to the config types.
+
+**Locations requiring change for each new addon:**
+1. `pkg/apis/config/v1alpha4/types.go` — add `LocalRegistry *bool` to `Addons` struct
+2. `pkg/internal/apis/config/types.go` — add `LocalRegistry bool` to `Addons` struct
+3. `pkg/internal/apis/config/convert_v1alpha4.go` — convert the field
+4. `pkg/internal/apis/config/default.go` — set default value (true or false)
+5. `pkg/cluster/internal/create/create.go` — add `runAddon()` call
+
+### Pattern 4: Cobra Subcommand (existing pattern)
+
+**What:** Each top-level command group has a parent command in `pkg/cmd/kind/<name>/<name>.go` that adds subcommands. Leaf commands define `flagpole` struct, `NewCommand()`, and `runE()`. Logger and IOStreams flow through all levels.
+
+**When:** Adding `env` and `doctor` commands.
+
+**Example (from pkg/cmd/kind/get/get.go — the model):**
+```go
+package env
+
+import (
+    "github.com/spf13/cobra"
+    "sigs.k8s.io/kind/pkg/cmd"
+    "sigs.k8s.io/kind/pkg/log"
+)
+
+type flagpole struct {
+    Name string
+}
+
+func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
+    flags := &flagpole{}
+    cmd := &cobra.Command{
+        Use:   "env",
+        Short: "Print environment variables for a cluster",
+        RunE: func(cmd *cobra.Command, args []string) error {
+            return runE(logger, streams, flags)
+        },
+    }
+    cmd.Flags().StringVarP(&flags.Name, "name", "n", "", "cluster name")
+    return cmd
+}
+```
+
+**Then in root.go:**
+```go
+import "sigs.k8s.io/kind/pkg/cmd/kind/env"
+// ...
+cmd.AddCommand(env.NewCommand(logger, streams))
+```
 
 ---
 
-## Anti-Patterns
+## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Reusing the Existing `site/` Directory
+### Anti-Pattern 1: Sharing podman's runArgsForNode With Docker/Nerdctl
 
-**What people do:** Modify the existing `site/` directory (Hugo-based, kind's site) to add kinder branding.
+**What goes wrong:** Podman's `runArgsForNode` calls `createAnonymousVolume(name)` before building args, and uses a different `--volume` syntax with `:suid,exec,dev` options. Docker's version uses `"--volume", "/var"` (anonymous, no label). These are not the same.
 
-**Why it's wrong:** The `site/` directory is a Hugo project targeting kind's upstream website. It has kind's config, kind's theme, kind's menus. Mixing kinder content in creates maintenance confusion, makes upgrades from upstream harder, and produces a site that looks like kind's site with kinder content.
+**Why bad:** Forcing them into one function requires a provider-type switch inside the shared code, defeating the purpose.
 
-**Do this instead:** Create a completely separate `kinder-site/` directory at the repo root. The existing `site/` directory can be removed or left as-is — it is unused by kinder's build.
+**Instead:** Keep `runArgsForNode` in each provider package. Only share `generateMountBindings`, `generatePortMappings`, `createContainer`, and `createContainerWithWaitUntilSystemdReachesMultiUserSystem` — those are truly identical. The `planCreation` skeleton (the outer loop) can also be shared if it accepts `runArgsForNodeFn` as a callback.
 
-### Anti-Pattern 2: Setting `base` When Using a Custom Domain
+### Anti-Pattern 2: Making LocalRegistry a Node Container
 
-**What people do:** Set `base: '/kinder'` in `astro.config.mjs` because they assume the site lives at a sub-path.
+**What goes wrong:** Running the registry as a kind node (inside a kind node container image) adds complexity and requires modifying the provisioning pipeline.
 
-**Why it's wrong:** When a custom domain (`kinder.patrykgolabek.dev`) is configured, the site is at the root of that domain, not at a sub-path. Setting `base` causes all internal links and asset paths to be prefixed with `/kinder`, breaking navigation.
+**Instead:** Run the registry as a separate container on the same Docker/nerdctl/podman network (`kind` network). This is how the kind docs recommend it. The registry container is a standard `registry:2` image, separate from kind nodes, reachable by container name within the network.
 
-**Do this instead:** Set only `site: 'https://kinder.patrykgolabek.dev'` and do not set `base`. The `public/CNAME` file handles domain association with GitHub Pages.
+### Anti-Pattern 3: Deleting provider-specific node.go Before Common Is Proven
 
-### Anti-Pattern 3: Checking In `node_modules/`
+**What goes wrong:** Deleting the per-provider `node.go` files before `common/node.go` compiles and passes tests breaks the build. There are no compile-time guarantees that the common struct satisfies `nodes.Node` until it's wired up and tested.
 
-**What people do:** Commit `node_modules/` to avoid the install step in CI.
+**Instead:** Build order must be: (1) write `common/node.go`, (2) verify it satisfies `nodes.Node` interface, (3) update providers to use it, (4) delete per-provider `node.go` files, (5) run tests. Do not delete before step 4 is confirmed green.
 
-**Why it's wrong:** Node modules are platform-specific binaries + thousands of files. They bloat the repo, slow down clones, and cause cache invalidation issues.
+### Anti-Pattern 4: Embedding Large cert-manager Manifests Verbatim
 
-**Do this instead:** Commit `package-lock.json`. The `withastro/action` uses it to restore the npm cache between runs, making subsequent CI builds fast without committing node_modules.
+**What goes wrong:** cert-manager's official install YAML is ~5000 lines. Embedding it verbatim bloats the binary and makes the file hard to review. Worse, it requires manual update with each cert-manager release.
 
-### Anti-Pattern 4: Embedding the Website in Go's Build System
+**Instead:** Embed the YAML but process it through the same pattern as other addons — confirm the manifest version at the start of each milestone. Add a `// cert-manager version: X.Y.Z` comment at the top of the embedded YAML file so it's clear what version is baked in. Consider extracting just the CRDs + controller deployments if the full manifest is truly unwieldy.
 
-**What people do:** Add a `make site` target that shells out to `npm run build` inside the repo's root Makefile, using the Go-managed `PATH` setup from `hack/build/setup-go.sh`.
+### Anti-Pattern 5: doctor Command Calling provider.Info() for Non-Active Providers
 
-**Why it's wrong:** Node and Go have entirely different toolchain management. Mixing them in the same Makefile creates confusion about which PATH is active, what versions of tools are available, and what CI jobs are responsible for what. The existing Makefile uses `hack/build/setup-go.sh` to configure Go's toolchain — injecting `npm` into this path is fragile.
+**What goes wrong:** Calling `podman.info()` when Docker is active requires podman to be installed, which defeats the purpose of a diagnostic command.
 
-**Do this instead:** The website lives in `kinder-site/` with its own `package.json`. Developers who want to work on the site `cd kinder-site && npm install && npm run dev`. GitHub Actions uses the `withastro/action` with `path: ./kinder-site`. No Makefile integration needed.
-
-### Anti-Pattern 5: Using Starlight's Component Override System for Minor Styling
-
-**What people do:** Override Starlight's built-in components (Header, Sidebar, Footer) by creating local copies in `src/components/starlight/` and wiring them in via `components:` in the Starlight config.
-
-**Why it's wrong:** Overriding components is a copy-paste of Starlight's internal implementation. When Starlight releases updates (bug fixes, accessibility improvements), the overridden components don't get the fixes. Minor styling doesn't justify the maintenance cost.
-
-**Do this instead:** Use CSS variable overrides in `customCss`. They are a documented, stable API. Only use component overrides for structural changes that CSS cannot achieve.
+**Instead:** `doctor` checks `IsAvailable()` for each provider binary, then only calls `Info()` on the detected active provider. Unavailable providers are reported as "not found" without attempting further introspection.
 
 ---
 
-## Integration Points
+## Integration Points: New vs. Modified
 
-### External Services
+### Modified Files
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| GitHub Pages | `withastro/action@v5` in deploy workflow | `path: ./kinder-site` for subdirectory; `public/CNAME` for custom domain |
-| DNS (custom domain) | CNAME record: `kinder.patrykgolabek.dev -> patrykattc.github.io` | Set in DNS provider; GitHub Pages Settings > Custom Domain; can take hours to propagate |
-| GitHub (social link) | `social:` in Starlight config | Icon link in site header to the repo |
+| File | Nature of Change |
+|------|-----------------|
+| `pkg/apis/config/v1alpha4/types.go` | Add `LocalRegistry *bool`, `CertManager *bool` to `Addons` struct |
+| `pkg/internal/apis/config/types.go` | Add `LocalRegistry bool`, `CertManager bool` to `Addons` struct |
+| `pkg/internal/apis/config/convert_v1alpha4.go` | Convert new `*bool` fields to `bool` |
+| `pkg/internal/apis/config/default.go` | Set defaults for `LocalRegistry` and `CertManager` |
+| `pkg/cluster/internal/create/create.go` | Add `runAddon` calls for `LocalRegistry` (before CertManager) and `CertManager` |
+| `pkg/cmd/kind/root.go` | Add `cmd.AddCommand(env.NewCommand(...))` and `cmd.AddCommand(doctor.NewCommand(...))` |
+| `pkg/cluster/internal/providers/docker/provider.go` | Add `binaryName string` field; wire `binaryName: "docker"`; use `common.Node` in `node()` factory |
+| `pkg/cluster/internal/providers/podman/provider.go` | Use `common.Node` in `node()` factory |
+| `pkg/cluster/internal/providers/nerdctl/provider.go` | Use `common.Node` in `node()` factory (already has `binaryName`) |
+| `pkg/cluster/internal/providers/docker/images.go` | Delegate to common image-pull function (accept binaryName) |
+| `pkg/cluster/internal/providers/nerdctl/images.go` | Delegate to common image-pull function |
 
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Go CLI source ↔ website docs | None at runtime; manual sync at release time | Addon versions and CLI flags documented in MDX; update docs as part of the release process |
-| `kinder-site/` ↔ root Makefile | None — fully decoupled | No make target needed; Go CI workflow explicitly ignores `kinder-site/**` via `paths-ignore` |
-| Existing Go CI workflows ↔ deploy-site workflow | None — independent triggers | Go CI: `paths-ignore: ['kinder-site/**']`; Site CI: `paths: ['kinder-site/**']` |
-
-### New Files in Repo Root (not in `kinder-site/`)
+### New Files
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/deploy-site.yml` | Build + deploy Astro site to GitHub Pages |
+| `pkg/cluster/internal/providers/common/node.go` | Shared `Node` struct, `nodeCmd` struct, all `nodes.Node` interface methods |
+| `pkg/cluster/internal/providers/common/provision.go` | Shared `generateMountBindings`, `generatePortMappings`, `createContainer`, `createContainerWithWaitUntilSystemdReachesMultiUserSystem` |
+| `pkg/cluster/internal/create/actions/installlocalregistry/localregistry.go` | Local registry Action implementation |
+| `pkg/cluster/internal/create/actions/installlocalregistry/manifests/` | Registry ConfigMap YAML for cluster advertisement |
+| `pkg/cluster/internal/create/actions/installcertmanager/certmanager.go` | cert-manager Action implementation |
+| `pkg/cluster/internal/create/actions/installcertmanager/manifests/cert-manager.yaml` | Embedded cert-manager install manifest |
+| `pkg/cmd/kind/env/env.go` | `kinder env` Cobra command |
+| `pkg/cmd/kind/doctor/doctor.go` | `kinder doctor` Cobra command |
 
-The existing Go CI workflows (`docker.yaml`, `podman.yml`, `nerdctl.yaml`, `vm.yaml`) already ignore the `site/` path. They should also ignore `kinder-site/**` to avoid triggering Go test runs when only docs are changed.
+### Deleted Files
 
----
+| File | Reason |
+|------|--------|
+| `pkg/cluster/internal/providers/docker/node.go` | Replaced by `common/node.go` |
+| `pkg/cluster/internal/providers/nerdctl/node.go` | Replaced by `common/node.go` |
+| `pkg/cluster/internal/providers/podman/node.go` | Replaced by `common/node.go` |
+| `pkg/cluster/internal/providers/docker/provision.go` | Replaced by `common/provision.go` + thin docker wrapper |
+| `pkg/cluster/internal/providers/nerdctl/provision.go` | Replaced by `common/provision.go` + thin nerdctl wrapper |
 
-## GitHub Actions Workflow
-
-Complete workflow for reference. Place at `.github/workflows/deploy-site.yml`:
-
-```yaml
-name: Deploy kinder site
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'kinder-site/**'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
-jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install, build, and upload site
-        uses: withastro/action@v5
-        with:
-          path: ./kinder-site
-          node-version: 22
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-```
-
-**Path trigger:** Only runs when files under `kinder-site/` change. Go source changes do not trigger a site deploy.
+Note: `podman/provision.go` is MODIFIED not deleted, because `runArgsForNode` (anonymous volume creation) is podman-specific.
 
 ---
 
-## Build Order for Implementation Phases
+## Build Order Recommendation
 
-The following order respects dependencies and allows incremental validation:
+This order respects compile-time dependencies and allows incremental validation.
 
 ```
-Phase 1: Scaffold
-    scaffold kinder-site/ with Starlight template
-    configure astro.config.mjs (title, social, sidebar structure)
-    add public/CNAME for custom domain
-    verify: npm run dev shows Starlight default site locally
+Step 1: Provider code deduplication (foundational, de-risks all else)
+    1a. Write common/node.go — verify nodes.Node interface is satisfied
+    1b. Update docker/provider.go: add binaryName, use common.Node in node()
+    1c. Update nerdctl/provider.go: use common.Node in node()
+    1d. Update podman/provider.go: use common.Node in node()
+    1e. Delete docker/node.go, nerdctl/node.go, podman/node.go
+    1f. Run: go build ./... (must compile)
+    1g. Run: go test ./pkg/cluster/internal/providers/...
 
-Phase 2: Deploy pipeline
-    add .github/workflows/deploy-site.yml
-    configure GitHub Pages: Source = GitHub Actions, Custom Domain
-    configure DNS: CNAME record
-    verify: push to main deploys placeholder site to kinder.patrykgolabek.dev
+    1h. Write common/provision.go — shared generateMountBindings, generatePortMappings, createContainer
+    1i. Update docker/provision.go: delegate to common, delete duplicated functions
+    1j. Update nerdctl/provision.go: delegate to common, delete duplicated functions
+    1k. Podman/provision.go: keep runArgsForNode, delegate rest to common
+    1l. Run: go build ./... + go test ./...
 
-Phase 3: Dark theme
-    add src/custom.css with CSS variable overrides
-    verify: dark terminal aesthetic in local dev and deployed
+Step 2: Config types for new addons (required before action code references cfg.Addons.*)
+    2a. Add LocalRegistry, CertManager to v1alpha4/types.go
+    2b. Add LocalRegistry, CertManager to internal config/types.go
+    2c. Update convert_v1alpha4.go
+    2d. Update default.go (set defaults)
+    2e. Run: go build ./... (config package must compile before actions reference it)
 
-Phase 4: Documentation pages
-    write src/content/docs/getting-started.mdx
-    write src/content/docs/configuration.mdx
-    write src/content/docs/addons/*.mdx (one per addon)
-    verify: sidebar shows all pages; search works; prev/next navigation works
+Step 3: Local Registry addon
+    3a. Create actions/installlocalregistry/manifests/ (registry-info ConfigMap YAML)
+    3b. Implement actions/installlocalregistry/localregistry.go
+    3c. Wire into create.go runAddon (before CertManager in dependency order)
+    3d. Manual test: kinder create cluster, verify registry reachable from node
 
-Phase 5: Landing page
-    implement src/pages/index.astro
-    implement src/components/ (Hero, FeatureGrid, AddonCard, QuickStart)
-    verify: / renders landing page without sidebar; /docs/* still renders with sidebar
+Step 4: cert-manager addon
+    4a. Download cert-manager.yaml, place in actions/installcertmanager/manifests/
+    4b. Implement actions/installcertmanager/certmanager.go
+    4c. Wire into create.go runAddon
+    4d. Manual test: kinder create cluster, verify cert-manager-webhook Available
 
-Phase 6: Polish
-    add logo to Starlight config
-    add favicon
-    verify: mobile responsive; Lighthouse score acceptable
+Step 5: CLI commands (env, doctor)
+    5a. Implement pkg/cmd/kind/env/env.go
+    5b. Implement pkg/cmd/kind/doctor/doctor.go
+    5c. Register both in pkg/cmd/kind/root.go
+    5d. Run: go build ./...; kinder env --help; kinder doctor
+
+Step 6: Bug fixes (independent of steps 1-5, can be done in any order)
 ```
 
-**Why deploy pipeline before content:** Validates the deployment plumbing early. If GitHub Pages configuration or DNS is broken, finding it in Phase 2 is much cheaper than discovering it after writing all the content.
+---
+
+## Duplication Analysis: What Is Actually Shared
+
+The three provider implementations share the following code verbatim (or with only a binaryName parameter difference). This is what goes into `common/`:
+
+| Code Unit | Docker | Nerdctl | Podman | Shareable? |
+|-----------|--------|---------|--------|------------|
+| `node` struct fields | name string | name+binaryName | name string | YES — add binaryName to all |
+| `node.String()` | identical | identical | identical | YES |
+| `node.Role()` | identical except binary | identical | identical | YES (binaryName param) |
+| `node.IP()` | identical except binary | identical | identical | YES (binaryName param) |
+| `node.Command()` | identical except binary | identical | identical | YES (binaryName param) |
+| `node.CommandContext()` | identical except binary | identical | identical | YES (binaryName param) |
+| `node.SerialLogs()` | identical except binary | identical | identical | YES (binaryName param) |
+| `nodeCmd` struct | no binaryName | has binaryName | no binaryName | YES — add binaryName to all |
+| `nodeCmd.Run()` | identical except binary | identical | identical | YES (binaryName param) |
+| `generateMountBindings()` | identical | identical | identical | YES |
+| `generatePortMappings()` | identical | identical | podman: empty string for 0 | MOSTLY — podman has one extra line; factor out or use a flag |
+| `createContainer()` | identical except binary | identical | identical | YES (binaryName param) |
+| `createContainerWithWait...()` | identical except binary | identical | identical | YES (binaryName param) |
+| `getSubnets()` | docker JSON format | same | podman JSON — DIFFERENT | NO — keep per-provider |
+| `runArgsForNode()` | standard mounts | identical to docker | anon volume for /var | PARTIALLY — podman differs |
+| `ensureNetwork()` | docker network API + duplicate removal | nerdctl network API | podman JSON network API | NO — all three differ |
+| `info()` / `Info()` | docker JSON | same as docker | podman JSON — different struct | NO — all three differ |
+
+---
+
+## Scalability Considerations
+
+| Concern | Now (3 providers) | After deduplication | If 4th provider added |
+|---------|-------------------|--------------------|-----------------------|
+| Adding new node method | 3 files to update | 1 file (common/node.go) | 1 file |
+| Adding new provision arg | 3 files to update | 1-2 files | 1-2 files |
+| Testing coverage | 3x test surface | 1x shared + per-provider specifics | Same |
+| Adding new addon | 1 action pkg + 1 line in create.go + 5 config locations | Same (no change from dedup) | Same |
 
 ---
 
 ## Sources
 
-- [Starlight Project Structure](https://starlight.astro.build/guides/project-structure/) — HIGH confidence (official Starlight docs)
-- [Starlight Getting Started](https://starlight.astro.build/getting-started/) — HIGH confidence (official)
-- [Starlight Configuration Reference](https://starlight.astro.build/reference/configuration/) — HIGH confidence (official)
-- [Starlight Customization Guide](https://starlight.astro.build/guides/customization/) — HIGH confidence (official)
-- [Starlight Sidebar Navigation](https://starlight.astro.build/guides/sidebar/) — HIGH confidence (official)
-- [Astro Deploy to GitHub Pages](https://docs.astro.build/en/guides/deploy/github/) — HIGH confidence (official Astro docs)
-- [withastro/action GitHub README](https://github.com/withastro/action) — HIGH confidence (official action repo, verified `path` parameter)
-- [Astro content collections](https://docs.astro.build/en/guides/content-collections/) — HIGH confidence (official)
-- [Starlight 0.37.6 release](https://github.com/withastro/starlight/releases) — HIGH confidence (verified latest version)
-- [Astro 5.x on npm](https://www.npmjs.com/package/astro) — MEDIUM confidence (npm registry, version 5.16.6 current as of 2026-03)
-- Existing kinder repo read directly at `/Users/patrykattc/work/git/kinder` — HIGH confidence
+All findings from direct codebase read at `/Users/patrykattc/work/git/kinder` — HIGH confidence.
+
+Key files examined:
+- `pkg/cluster/internal/providers/{docker,nerdctl,podman}/{provider,node,provision,images,network,util,constants}.go`
+- `pkg/cluster/internal/providers/common/*.go`
+- `pkg/cluster/internal/providers/provider.go`
+- `pkg/cluster/internal/create/create.go`
+- `pkg/cluster/internal/create/actions/action.go`
+- `pkg/cluster/internal/create/actions/{installdashboard,installmetallb}/`
+- `pkg/apis/config/v1alpha4/types.go`
+- `pkg/internal/apis/config/types.go`
+- `pkg/cmd/kind/root.go`
+- `pkg/cmd/kind/get/get.go`
+- `pkg/cmd/kind/create/cluster/createcluster.go`
 
 ---
-*Architecture research for: Astro/Starlight website integration into kinder Go CLI repo*
-*Researched: 2026-03-01*
+*Architecture research for: kinder v1.3 — local registry addon, cert-manager addon, env/doctor commands, provider code deduplication*
+*Researched: 2026-03-03*

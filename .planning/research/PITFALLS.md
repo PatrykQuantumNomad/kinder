@@ -1,405 +1,556 @@
-# Pitfalls Research: Kinder Website
+# Domain Pitfalls: Kinder v1.3
 
-**Domain:** Astro static site on GitHub Pages with custom domain, dark theme, and developer-tool aesthetic — added to an existing Go CLI monorepo
-**Researched:** 2026-03-01
-**Confidence:** HIGH (official Astro docs + GitHub Pages docs + verified community issues)
+**Domain:** Go Kubernetes tool — adding local registry addon, cert-manager addon, CLI diagnostic commands, and provider code deduplication to an existing kind fork
+**Researched:** 2026-03-03
+**Confidence:** HIGH (sourced from actual kinder codebase review, official kind/containerd/cert-manager docs, verified community issues)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause the site to not load at all, custom domain to silently reset, or assets to 404 in production.
+Mistakes that cause cluster breakage, data loss, or require rewrites.
 
 ---
 
-### Pitfall C1: Jekyll Strips the `_astro` Assets Folder
+### Pitfall C1: defer-in-Loop Port Release — Ports Held Until Function Returns
 
 **What goes wrong:**
-The site builds locally and the Astro dev server works perfectly. After deploying to GitHub Pages via a branch push, the site loads but has no styles, no JavaScript, and all images are broken. The 404 errors point to paths under `/_astro/...`.
+The `generatePortMappings` function in all three provider packages (docker, podman, nerdctl) calls `defer releaseHostPortFn()` inside a `for` loop over `portMappings`. Go's defer stack executes at function return, not at loop iteration end. The dummy TCP listener that holds the free port open is not closed until the entire function returns — after all ports have already been reserved. The result: if you have two port mappings that both request random ports (HostPort=0), the first port is still held when the second port probe runs, preventing collision. This is accidentally correct. However, if the cluster creation fails partway through and the function returns early, none of the port-holding listeners are released before the function exits — they leak until garbage collected. On high-node-count clusters with many port mappings, this manifests as transient "bind: address already in use" errors on the next creation attempt.
 
 **Why it happens:**
-GitHub Pages runs all content through Jekyll by default. Jekyll ignores any file or directory whose name starts with an underscore — treating them as Jekyll internals. Astro outputs all compiled JS, CSS, and image hashes into `dist/_astro/` by default. Jekyll silently drops the entire folder. The site HTML loads (it does not start with an underscore) but every asset reference 404s.
+The pattern `if releaseHostPortFn != nil { defer releaseHostPortFn() }` appears identically in all three providers (docker/provision.go:397, podman/provision.go:406, nerdctl/provision.go:363). This is copy-paste drift — the original code likely worked accidentally because it was written for a single port mapping. It was copied without understanding that defers accumulate on the stack.
 
-**How to avoid:**
-Two complementary fixes — apply both:
-
-1. Add an empty `.nojekyll` file to the Astro `public/` directory. Astro copies `public/` verbatim to `dist/`, so `.nojekyll` ends up at the root of the deploy artifact and tells GitHub Pages to skip Jekyll entirely.
-
-2. Change the assets directory name in `astro.config.mjs`:
-```js
-export default defineConfig({
-  build: {
-    assets: 'assets',  // replaces default '_astro'
-  },
-});
-```
-Fix 1 alone is sufficient if using GitHub Actions deployment (which is recommended). Fix 2 is belt-and-suspenders and protects against future GitHub Pages policy changes around underscores.
-
-**Warning signs:**
-- CSS/JS 404s after deploy; works in `astro dev` and `astro preview`
-- Browser network tab shows requests to `/_astro/*.js` returning 404
-- GitHub Pages deploy log shows no Jekyll errors (Jekyll silently drops the folder)
-
-**Phase to address:** Phase 1 (repo scaffolding and initial deploy) — must be done before the first production deploy
-
----
-
-### Pitfall C2: Custom Domain Resets to `username.github.io` on Every Deploy
-
-**What goes wrong:**
-Custom domain `kinder.patrykgolabek.dev` is configured in GitHub Pages settings. It works. Then a new commit is pushed and the deploy workflow runs. After the deploy, the custom domain field in repository Settings → Pages is blank, and the site reverts to the default `username.github.io` URL. This happens silently on every push.
-
-**Why it happens:**
-GitHub Pages stores the custom domain setting as a `CNAME` file in the root of the deployment artifact. When deploying from a branch, if the branch does not include a `CNAME` file, the deploy overwrites the existing one with nothing. The GitHub UI setting writes the CNAME file, but if the build pipeline replaces the branch contents, the file is gone.
-
-When deploying via GitHub Actions (the recommended method for Astro), the CNAME file is handled differently: the `actions/deploy-pages` action does not read the CNAME from the branch — it reads it from the Pages settings API. This means the CNAME file in the repo source controls the domain, and if it is missing from the build output, the domain resets.
-
-**How to avoid:**
-Create `public/CNAME` in the Astro project with a single line containing the custom domain:
-```
-kinder.patrykgolabek.dev
-```
-Astro copies `public/` verbatim to `dist/`. The CNAME file will be in the deploy artifact on every build. This is the one permanent fix — commit it once and never touch it again.
-
-Also set `site` in `astro.config.mjs` to match:
-```js
-export default defineConfig({
-  site: 'https://kinder.patrykgolabek.dev',
-});
+**Actual code (identical in docker, podman, nerdctl):**
+```go
+hostPort, releaseHostPortFn, err := common.PortOrGetFreePort(pm.HostPort, pm.ListenAddress)
+if err != nil {
+    return nil, errors.Wrap(err, "failed to get random host port for port mapping")
+}
+if releaseHostPortFn != nil {
+    defer releaseHostPortFn()  // BUG: runs at function return, not iteration end
+}
 ```
 
-**Warning signs:**
-- Site URL reverts to `patrykgolabek.github.io/kinder` after a push
-- GitHub Settings → Pages shows blank "Custom domain" field
-- HTTPS certificate is revoked and re-issued after every deploy
+**Consequences:**
+- Port listeners accumulate in memory across all iterations before release
+- On error return, listeners may be GC'd non-deterministically, causing race with the container runtime attempting to bind those ports
+- When provider deduplication extracts this into shared code, the bug must be fixed before extraction — otherwise the shared function inherits it and it becomes harder to trace
 
-**Phase to address:** Phase 1 (initial site scaffolding) — prevents an entire class of silent deploy regressions
+**Prevention:**
+Wrap the port acquisition and use in an immediately-invoked function literal:
 
----
-
-### Pitfall C3: `base` Config Set When Using a Custom Domain (Breaks All Links)
-
-**What goes wrong:**
-Developer follows GitHub Pages tutorials that say "set `base: '/repo-name'`" and does so in `astro.config.mjs`. The site deploys to the custom domain `kinder.patrykgolabek.dev` but all internal links resolve as `kinder.patrykgolabek.dev/kinder/docs/...` (double prefix), navigation fails, and CSS/JS paths break.
-
-**Why it happens:**
-The `base` config option is only needed when deploying to a subdirectory path (e.g., `username.github.io/kinder/`). When using a custom domain at the root (`kinder.patrykgolabek.dev`), the site is served from `/`, and `base` must not be set (or set to `'/'`). Many tutorials conflate the two cases because most tutorial authors deploy to the default `*.github.io` URL.
-
-**How to avoid:**
-- When using a custom domain: set `site` only, omit `base` (or explicitly set `base: '/'`)
-- When using `username.github.io/kinder` (no custom domain): set both `site` and `base: '/kinder'`
-- Never hardcode absolute paths in components; use Astro's built-in `<a href="/">` and image imports which respect the `base` setting automatically
-
-Correct config for this project:
-```js
-export default defineConfig({
-  site: 'https://kinder.patrykgolabek.dev',
-  // base: NOT set — custom domain serves from root
-});
-```
-
-**Warning signs:**
-- `console.log(import.meta.env.BASE_URL)` returns `/kinder/` instead of `/`
-- Navigation links point to `/kinder/docs` instead of `/docs`
-- Canonical URLs in `<head>` include the repo name twice
-
-**Phase to address:** Phase 1 (initial Astro configuration)
-
----
-
-### Pitfall C4: `astro.config.mjs` `site` Mismatch Breaks Sitemap and Canonical URLs
-
-**What goes wrong:**
-Sitemap entries and canonical `<link>` tags reference the wrong domain — either the old `username.github.io` URL or `localhost:4321` from development — causing duplicate content signals to search engines and social preview cards pointing to the wrong URL.
-
-**Why it happens:**
-`site` in `astro.config.mjs` is the canonical source of truth for sitemaps, canonical links, OG URLs, and `Astro.site`. If left unset during development, `Astro.site` is `undefined` and the sitemap integration skips generation entirely. If set to the wrong URL (e.g., copied from a tutorial), every canonical tag points elsewhere.
-
-**How to avoid:**
-Set `site` immediately when scaffolding the project, before writing any page content:
-```js
-site: 'https://kinder.patrykgolabek.dev',
-```
-The `@astrojs/sitemap` integration reads this value at build time. Verify by checking `dist/sitemap-index.xml` after `astro build` — every URL must start with `https://kinder.patrykgolabek.dev`.
-
-**Warning signs:**
-- Sitemap not generated at all (`dist/sitemap-index.xml` missing)
-- OG image preview URLs contain `localhost` or `github.io`
-- Google Search Console shows canonical pointing to wrong URL
-
-**Phase to address:** Phase 1 (initial Astro configuration)
-
----
-
-### Pitfall C5: Dark Mode FOUC — Page Flashes White Before Script Applies Dark Theme
-
-**What goes wrong:**
-On every page load or navigation, the page briefly renders in white/light mode before snapping to dark. On slow connections or fast machines with visible repaints, this produces a jarring flash. Using `prefers-color-scheme` alone does not eliminate it because the browser must still parse CSS and run JavaScript before applying the correct class.
-
-**Why it happens:**
-Astro sends HTML from the server with no knowledge of the user's theme preference stored in `localStorage`. The browser renders the HTML with default (light) styles first, then client-side JavaScript reads `localStorage`, applies the `dark` class to `<html>`, and Tailwind's `dark:` variants kick in. The visible interval between initial paint and script execution is the FOUC.
-
-This is compounded by Astro's View Transitions: navigating between pages triggers a new page load, resetting the document before the `astro:after-swap` event fires. Without explicit handling, theme flickers on every View Transition navigation even if the initial load is fine.
-
-**How to avoid:**
-Inject a blocking inline script in the `<head>` — before any CSS or body content — that reads `localStorage` and applies the dark class synchronously:
-
-```html
-<!-- In your base layout's <head>, with is:inline to prevent bundling -->
-<script is:inline>
-  (function() {
-    const stored = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (stored === 'dark' || (!stored && prefersDark)) {
-      document.documentElement.classList.add('dark');
+```go
+if err := func() error {
+    hostPort, releaseHostPortFn, err := common.PortOrGetFreePort(pm.HostPort, pm.ListenAddress)
+    if err != nil {
+        return errors.Wrap(err, "failed to get random host port for port mapping")
     }
-  })();
-</script>
+    if releaseHostPortFn != nil {
+        defer releaseHostPortFn()  // now defers to the inner function, runs per-iteration
+    }
+    // ... use hostPort ...
+    return nil
+}(); err != nil {
+    return nil, err
+}
 ```
 
-For View Transitions, also listen to `astro:after-swap`:
-```js
-document.addEventListener('astro:after-swap', () => {
-  const stored = localStorage.getItem('theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  if (stored === 'dark' || (!stored && prefersDark)) {
-    document.documentElement.classList.add('dark');
-  }
-});
-```
+**Detection:**
+- `go vet` with `loopclosure` linter
+- `staticcheck` SA9003 / SA2001 warnings
+- Manual grep: `defer.*releaseHostPort` inside any `for` loop
 
-The `is:inline` directive is critical: Astro normally bundles and defers scripts, which delays execution until after paint. `is:inline` forces the script to remain in the `<head>` and execute synchronously before the body renders.
-
-**Warning signs:**
-- Page visibly flashes light on load in dark mode
-- Flash is reproducible with browser DevTools throttled to "Slow 3G"
-- Flash occurs on every page navigation when View Transitions are enabled
-- `document.documentElement.classList` does not contain `dark` during `DOMContentLoaded`
-
-**Phase to address:** Phase 2 (dark theme implementation) — must be baked in from the start, not patched later
+**Phase to address:** Phase 1 (bug fixes) — must be fixed in all three providers BEFORE provider deduplication begins; fixing it after extraction means the fix propagates automatically but finding it is harder
 
 ---
 
-### Pitfall C6: GitHub Actions Workflow Lacks Required `pages: write` and `id-token: write` Permissions
+### Pitfall C2: tar Extraction Treating io.EOF as Success — Silent Data Truncation
 
 **What goes wrong:**
-The GitHub Actions workflow runs, Astro builds successfully, but the deploy step fails with: `Error: HttpError: Resource not accessible by integration` or `RequestError: Deployment not created`. The site is never published.
+In Go's `archive/tar` package, `tr.Next()` returns `io.EOF` at the end of a well-formed archive. Any other error from `tr.Next()` signals a malformed or truncated archive. The pattern `if err == io.EOF { break }` is correct. The silent failure bug is when code uses `if err != nil { break }` or doesn't check `err` from the reader at all — both treat a mid-archive truncation identically to a clean end-of-archive. The extracted output is silently incomplete.
 
-**Why it happens:**
-Deploying to GitHub Pages via `actions/deploy-pages` requires two non-default permissions: `pages: write` (to create a Pages deployment) and `id-token: write` (to request an OIDC JWT token for authentication). The default `GITHUB_TOKEN` in a new workflow does not have either. Additionally, the repository Pages setting must be configured to use "GitHub Actions" as the deployment source — using "Deploy from a branch" disables the Actions-based deploy API.
+**Why it matters here:**
+The kinder CONCERNS.md notes "Entire tar archives processed sequentially and synchronously" (pkg/cluster/nodeutils/util.go line 67). Any tar extraction code that treats a non-EOF error as a break condition (rather than returning the error) will silently extract a partial tarball when the underlying stream is interrupted — for example, when extracting an image layer during cluster creation over a slow or dropped connection.
 
-**How to avoid:**
-The workflow must explicitly declare:
-```yaml
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+**Correct pattern:**
+```go
+for {
+    header, err := tr.Next()
+    if err == io.EOF {
+        break  // clean end of archive
+    }
+    if err != nil {
+        return fmt.Errorf("tar extraction error: %w", err)  // must NOT break silently
+    }
+    // process header...
+}
 ```
 
-And the repository Pages setting (Settings → Pages → Source) must be set to "GitHub Actions", not "Deploy from a branch".
+**Consequences:**
+- Partial image extraction produces containers that appear to start but fail at runtime with missing binaries or configs
+- The failure is non-deterministic: only triggered when the source stream truncates
+- Extremely hard to debug because the extracted filesystem looks superficially correct
 
-Also required: the deploy job must reference the `github-pages` environment:
-```yaml
-environment:
-  name: github-pages
-  url: ${{ steps.deployment.outputs.page_url }}
-```
+**Prevention:**
+- Audit every `archive/tar` usage site with `grep -n "tr.Next\|tar.Next" --include="*.go" -r .`
+- Enforce the pattern: only `io.EOF` is a break condition; all other errors are returned
+- Add a test that feeds a truncated tar stream and verifies an error is returned (not nil)
 
-**Warning signs:**
-- Astro build step passes, deploy step fails with HTTP 403 or resource error
-- Deployment shows in Actions but no corresponding Pages deployment appears in Settings → Pages
-- The `pages-build-deployment` workflow is not triggered after the custom workflow runs
+**Detection:**
+- `errcheck` linter flags ignored errors from `tr.Next()`
+- Manual code review of every tar read loop
 
-**Phase to address:** Phase 1 (CI/CD pipeline setup)
+**Phase to address:** Phase 1 (bug fixes) — before any new addon that ships files via tar extraction
 
 ---
 
-### Pitfall C7: Workflow Triggers Without Path Filtering — Every Go Code Change Triggers Site Rebuild
+### Pitfall C3: ListInternalNodes Missing defaultName() Call — Wrong Cluster Targeted
 
 **What goes wrong:**
-The site deploy workflow runs on every push to `main`, including Go source changes that have nothing to do with the website. This wastes CI minutes, causes unnecessary deploys, and adds noise to the deployment history.
+If `ListInternalNodes` (or the equivalent cluster lookup) does not call `defaultName()` to resolve an empty cluster name to the configured default, commands with no explicit `--name` flag silently target the wrong cluster or fail with a confusing "no cluster found" error. The user experience is: `kinder env` with no flags fails when multiple clusters exist, even though one is named "kind" (the default).
 
 **Why it happens:**
-GitHub Actions workflows trigger on `push` to the specified branch by default, with no file-path filtering. Without path filtering, a change to `pkg/cluster/create.go` triggers a full Astro build and Pages deploy.
+The pattern in the existing codebase uses `defaultName()` to coerce an empty string to the configured default cluster name before any lookup. When new code paths are added (like `kinder env` or `kinder doctor`) that call internal node listing functions directly, missing the `defaultName()` normalization produces commands that only work when the cluster name is explicitly passed.
 
-The inverse problem also exists: Go CI workflows (which already use `paths-ignore: ['site/**']`) correctly skip site changes, but the new site workflow must similarly ignore Go source changes.
+**Consequences:**
+- `kinder env` and `kinder doctor` appear broken for the default cluster case
+- Confusing error: "cluster not found" when the cluster clearly exists
+- Intermittent: works when user passes `--name kind`, fails without it
 
-**How to avoid:**
-Scope the site deploy workflow to run only on changes under `kinder-site/`:
-```yaml
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'kinder-site/**'
-  workflow_dispatch:
+**Prevention:**
+In every new CLI command that accepts an optional `--name` flag:
+```go
+clusterName = provider.ByName(clusterName).defaultName()
+```
+Or use the existing helper pattern found in other commands:
+```go
+if clusterName == "" {
+    clusterName = kind.DefaultClusterName
+}
+```
+Apply the normalization as the very first step after flag parsing, before any provider interaction.
+
+**Detection:**
+- Integration test: run `kinder env` without `--name` on a cluster named "kind" — must succeed
+- Unit test: assert that the name resolver is called before any provider lookup
+
+**Phase to address:** Phase 3 (kinder env/doctor CLI commands) — build the normalization in from the start; do not assume the caller will always pass a name
+
+---
+
+### Pitfall C4: Network Sort Comparator — Incorrect Stable Sort Ordering
+
+**What goes wrong:**
+The `sortNetworkInspectEntries` function in docker/network.go uses a comparator that has a logical error. The intent is "networks with more containers are preferred (sorted first), with ID as tiebreaker." The current implementation:
+
+```go
+sort.Slice(networks, func(i, j int) bool {
+    if len(networks[i].Containers) > len(networks[j].Containers) {
+        return true
+    }
+    return networks[i].ID < networks[j].ID
+})
 ```
 
-The `withastro/action` action supports a `path` input for projects not at the repo root:
-```yaml
-- uses: withastro/action@v3
-  with:
-    path: kinder-site/
+This is not a strict weak ordering when `len(networks[i].Containers) < len(networks[j].Containers)` — the function returns `false` but then falls through to the ID comparison, which may return `true`. This means that for two networks where `i` has fewer containers than `j`, the comparator may incorrectly say `i < j` based on ID. The sort result is non-deterministic across Go versions (sort.Slice does not guarantee stability; the behavior depends on the internal sort algorithm's comparison calls).
+
+**Correct comparator:**
+```go
+sort.Slice(networks, func(i, j int) bool {
+    ci, cj := len(networks[i].Containers), len(networks[j].Containers)
+    if ci != cj {
+        return ci > cj  // more containers = higher priority (sort first)
+    }
+    return networks[i].ID < networks[j].ID  // stable tiebreaker
+})
 ```
 
-Also ensure all existing Go CI workflows include `kinder-site/**` in their `paths-ignore` (the existing workflows already use `site/**` for the Hugo site — update this to cover `kinder-site/**`).
+**Consequences:**
+- Duplicate network cleanup may delete the wrong network (the one with active containers)
+- Cluster nodes lose connectivity after the wrong network is deleted
+- Non-deterministic: may work correctly 90% of the time and silently fail the rest
 
-**Warning signs:**
-- GitHub Actions → Deployments shows tens of deploys per week from unrelated commits
-- Site rebuild takes several minutes on every Go code change
-- Actions bill shows unexpected usage
+**Prevention:**
+Always write sort comparators as strict weak orderings: for every pair (i, j), exactly one of `less(i,j)` or `less(j,i)` is true, or neither (equal). Test with at least 3 elements including ties.
 
-**Phase to address:** Phase 1 (CI/CD pipeline setup)
+**Detection:**
+- Unit test with networks of [0, 1, 2] containers and verify the expected ordering
+- `go test -race` on the network sort function with concurrent invocations
 
----
-
-## Technical Debt Patterns
-
-Shortcuts that seem fine during initial build but create rework.
-
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Hardcode absolute image paths in Markdown (`/images/hero.png`) instead of using Astro imports | Simpler docs writing | Breaks if `base` is ever set; images never optimized by Astro | Never — use `public/` for images that must be absolute, or import for optimization |
-| Use `theme="dark"` class fixed in HTML rather than system-preference detection | No FOUC | Users with light-mode preference see dark forcibly; no toggle possible | Only if explicitly building a "dark only" site with no toggle |
-| Deploy by pushing build output to `gh-pages` branch instead of GitHub Actions | Simpler initial setup | CNAME reset on every push; no build cache; leaks build artifacts into repo history | Never — use GitHub Actions source |
-| Skip lockfile commit (`package-lock.json` or `pnpm-lock.yaml`) | Fewer git changes | `withastro/action` cannot detect package manager; falls back to npm which may conflict; Dependabot cannot pin deps | Never — commit the lockfile |
-| Use `@astrojs/starlight` for docs instead of hand-built pages | Faster docs setup | Hard to match a fully custom dark developer-tool aesthetic; Starlight has opinionated CSS hard to override | Acceptable if design flexibility is not needed; not appropriate for a custom visual identity |
-| Keep the Hugo `site/` directory alongside `kinder-site/` | Preserves kind upstream compat | Confusion about which site is authoritative; two build systems in one repo | Only during transition; remove Hugo `site/` once Astro site is live |
+**Phase to address:** Phase 1 (bug fixes) — fix before any new code relies on network selection order
 
 ---
 
-## Integration Gotchas
+## Critical Integration Pitfall: Provider Deduplication Masking Provider-Specific Behavior
 
-Common mistakes when connecting the Astro site to external services and the repo.
+### Pitfall C5: Shared Code Hiding Divergent Provider Semantics
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| GitHub Pages custom domain | Configuring domain only in GitHub UI settings | Add `public/CNAME` to the Astro project so CNAME persists through every deploy |
-| GitHub Pages HTTPS enforcement | Trying to enable "Enforce HTTPS" immediately after adding the domain | Wait up to 1 hour for GitHub to provision the Let's Encrypt certificate; HTTPS checkbox is greyed out until cert is issued |
-| DNS for `kinder.patrykgolabek.dev` (subdomain) | Adding an A record (apex-only) | Add a `CNAME` record for `kinder` pointing to `patrykgolabek.github.io` — subdomains use CNAME, not A records |
-| DNS propagation and HTTPS cert | Expecting HTTPS to work immediately after DNS change | DNS propagation takes up to 24 hours; GitHub cert provisioning takes an additional hour after DNS resolves correctly; plan 2+ hours between DNS change and testing HTTPS |
-| `withastro/action` with `kinder-site/` subdirectory | Pointing workflow at repo root | Use `path: kinder-site/` input; ensure `out-dir` matches Astro's `outDir` config (default `dist`) |
-| Go CI existing workflows | Forgetting to update `paths-ignore` | Add `kinder-site/**` to `paths-ignore` in all four existing Go CI workflow files (`docker.yaml`, `nerdctl.yaml`, `podman.yml`, `vm.yaml`) |
-| `netlify.toml` conflict | Netlify config exists at repo root pointing to `site/` (Hugo); GitHub Pages picks different source | `netlify.toml` does not affect GitHub Pages; the file is inert but can confuse contributors — add a comment clarifying that Netlify is for the old kind upstream Hugo site, not the kinder Astro site |
-| Dark mode and `prefers-color-scheme` on initial deploy | Assuming the CSS media query eliminates FOUC without JavaScript | The media query controls CSS only; without the blocking inline script, the JS-managed `dark` class causes flicker regardless |
+**What goes wrong:**
+The three provider packages (docker, podman, nerdctl) are 70-80% identical by line count, but the ~20-30% that differs is not cosmetic — it encodes fundamental behavioral differences:
 
----
+| Function | Docker | Podman | Nerdctl |
+|----------|--------|--------|---------|
+| `commonArgs` | Has `--restart=on-failure:1`, `--cgroupns=private`, `--init=false` | Has `--cgroupns=private`, `-e container=podman` (no init flag) | Has `--restart=on-failure:1`, `--init=false` (no cgroupns) |
+| `runArgsForNode` | `--volume /var` (anonymous) | `--volume $varVolume:/var:suid,exec,dev` (named pre-created) | `--volume /var` (anonymous, same as docker) |
+| Port format | `host:port/tcp` | Strips trailing `:0` → `host:/protocol` (Podman random port quirk) | `host:port/protocol` (lowercase, same as docker) |
+| Image name | Used directly | Sanitized via `sanitizeImage()` | Used directly |
+| Network env var | `KIND_EXPERIMENTAL_DOCKER_NETWORK` | `KIND_EXPERIMENTAL_PODMAN_NETWORK` | `KIND_EXPERIMENTAL_DOCKER_NETWORK` |
+| Subnet inspection | Docker template format | JSON parsing of Podman v3/v4 structure | Docker template format |
+| IP masquerade | Yes: `com.docker.network.bridge.enable_ip_masquerade=true` | N/A | No: comment says "Not supported in nerdctl yet" |
 
-## Performance Traps
+**Why it matters:**
+When extracting shared code to a `common` package or a shared helper, it is tempting to unify all of the above. Doing so produces a generic implementation that works for Docker but silently breaks Podman (wrong volume flags, wrong port format) and nerdctl (wrong network options). The failure is not a compile error — it's a runtime failure when users with those runtimes create clusters.
 
-Patterns that build fast but degrade the experience.
+**Prevention strategy:**
+1. Extract shared code only for genuinely identical logic (the easy 70%)
+2. For divergent logic, define a `ProviderBehavior` interface or strategy struct that each provider implements:
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Unoptimized images in `public/` | Slow LCP; hero images over 500 KB | Use Astro's `<Image>` component with `src/assets/` imports for images that need optimization; reserve `public/` for favicons and icons | Immediately on Lighthouse audit |
-| All docs in a single long Markdown file | Content loads fast initially; no granular caching | Structure docs as individual `.md` files in a content collection; each gets its own URL and CDN cache entry | When docs grow beyond 5–10 sections |
-| No `astro:prefetch` on navigation links | Each docs page feels slow on click | Add `<link rel="prefetch">` via Astro's prefetch integration or enable `prefetch: true` in Astro config | Any page with navigation to multiple docs |
-| Code blocks without syntax highlighting lazy loading | Long TTFB on first code block render | Use Astro's built-in Shiki syntax highlighter (zero JS to client); configure in `astro.config.mjs` with `shikiConfig` | First page with a code block |
-| No `concurrency` group in deploy workflow | Rapid pushes queue multiple simultaneous Pages deployments; GitHub Pages rejects all but one | Add `concurrency: { group: "pages", cancel-in-progress: false }` to the deploy workflow | After the second rapid push to main |
+```go
+type ProviderBehavior interface {
+    ContainerArgs() []string              // provider-specific container flags
+    VolumeArgs(volName string) []string   // provider-specific volume mount args
+    FormatPortMapping(host, port, proto string) string
+    NetworkEnvVar() string
+}
+```
 
----
+3. Run all three providers' existing tests after each extraction step — before moving to the next
+4. Never merge provider-specific env var names, volume semantics, or port formatting into shared code
 
-## Security Mistakes
+**Detection:**
+- Each provider package must retain its own `provision_test.go`
+- Cross-provider integration test: create a cluster with each provider after deduplication and verify node connectivity
+- Review diff of shared code: any reference to "docker", "podman", or "nerdctl" strings in shared code is a red flag
 
-Domain-specific security issues for a static developer-tool site.
-
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Storing API keys or tokens in Astro env vars committed to repo | Credential leak in public repo | Static sites have no server — any secret in the build is in the HTML; use only `PUBLIC_` prefixed vars, which are expected to be public |
-| Not enforcing HTTPS on the custom domain | Traffic to `http://kinder.patrykgolabek.dev` is unencrypted | Enable "Enforce HTTPS" in Settings → Pages as soon as the cert is provisioned |
-| CAA DNS record blocking Let's Encrypt | GitHub Pages cannot provision TLS certificate | If the DNS zone has CAA records, add `0 issue "letsencrypt.org"` or the HTTPS certificate issuance fails silently |
-| Wide RBAC token printed in docs | If docs show an example token, bots scrape it | Use obviously-fake placeholder tokens in documentation examples (`<your-token-here>`, never real base64 JWT fragments) |
-
----
-
-## UX Pitfalls
-
-Common mistakes in developer-tool site design.
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Light-mode-only design | Alienates developers who use dark terminals and IDEs; kinder's target audience (DevOps/platform engineers) skews strongly toward dark mode | Implement dark mode as the default; offer a toggle for light mode; test both |
-| Missing "copy to clipboard" on code blocks | Users manually select and copy CLI commands; frequent source of copy errors with trailing newlines | Add copy button to every `<pre>` code block; Astro + Shiki make this straightforward with a small client-side script |
-| Navigation with no active state | Users cannot tell which docs page they are on | Use `Astro.url.pathname` to compare against nav link `href` and apply an active class |
-| Docs page with no table of contents | Long docs pages feel unmapped | Generate ToC from heading anchors; Astro's `remark-toc` plugin or a custom component using `getHeadings()` |
-| Hero section with no immediate CLI command | Landing page is abstract; developers want to see the install command immediately | Put `brew install / go install` command front and center on the landing page, before feature list |
-| OG image is the default GitHub social card | Social previews look unprofessional when shared on Slack or Twitter/X | Create a custom OG image (`og-image.png` in `public/`) and reference it in the base layout's `<meta property="og:image">` tag |
+**Phase to address:** Phase 2 (provider deduplication) — define the interface before writing any shared code; do not start with "extract what looks the same"
 
 ---
 
-## "Looks Done But Isn't" Checklist
+## Critical Pitfall: Local Registry Addon
 
-Things that appear complete in local dev but are missing or broken in production.
+### Pitfall C6: Registry Container Network Connectivity — localhost Means Different Things
 
-- [ ] **Custom domain:** Verify `public/CNAME` exists and contains `kinder.patrykgolabek.dev` — open `dist/CNAME` after `astro build`
-- [ ] **Jekyll bypass:** Verify `public/.nojekyll` exists — open `dist/.nojekyll` after `astro build`
-- [ ] **Assets directory:** Confirm `dist/assets/` exists (not `dist/_astro/`) after build if `build.assets` was set
-- [ ] **HTTPS enforced:** After first deploy, check Settings → Pages → "Enforce HTTPS" is checked (not greyed out)
-- [ ] **Dark mode on first load:** Open the site in a fresh private window with `prefers-color-scheme: dark` (Chrome DevTools → Rendering → Emulate CSS media) and confirm no white flash
-- [ ] **Dark mode after navigation:** Navigate between two pages and confirm the theme does not flicker during View Transition
-- [ ] **Sitemap correct domain:** Check `https://kinder.patrykgolabek.dev/sitemap-index.xml` — every URL starts with the custom domain, not `localhost` or `github.io`
-- [ ] **OG tags correct:** Paste the URL into Twitter Card Validator or opengraph.xyz — confirm image, title, and description appear correctly
-- [ ] **Code blocks copyable:** Every code block on landing page and docs has a copy button
-- [ ] **404 page styled:** Visit `https://kinder.patrykgolabek.dev/nonexistent` — confirm the 404 page uses the site's dark theme and has a navigation link back home (GitHub Pages serves `404.html` from the deploy root)
-- [ ] **Workflow path filter correct:** Push a Go source change and confirm the site deploy workflow does NOT trigger
-- [ ] **Go CI unaffected:** Push a site-only change and confirm Go CI workflows do NOT trigger
+**What goes wrong:**
+When a local registry is started on the host at `localhost:5000`, it is accessible from the host but NOT from inside kind node containers. Inside each kind node, `localhost` refers to the container's own loopback interface, not the host. Requests to `localhost:5000` from inside a node will fail with "connection refused."
 
----
+The official kind local registry workaround requires:
+1. The registry container must be on the same Docker network as the kind nodes (network named "kind")
+2. The registry must be referenced by its container name (e.g., `kind-registry:5000`), not `localhost:5000`, from inside node containers
+3. containerd inside each node must be configured to treat `kind-registry:5000` as a valid mirror host via `containerdConfigPatches`
 
-## Recovery Strategies
+**For Podman:**
+Podman's rootless mode uses a different networking stack (pasta/slirp4netns). Joining a container to the "kind" network requires explicit `--network kind` at creation. The container DNS resolution behavior differs from Docker's embedded DNS.
 
-When pitfalls occur despite prevention.
+**For nerdctl:**
+nerdctl uses CNI networking, not Docker's networking stack. The "kind" network created by nerdctl uses CNI bridge plugins. Container name DNS resolution works differently and the `nerdctl network connect` equivalent may not work identically.
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Custom domain reset | LOW | Re-enter domain in Settings → Pages; add `public/CNAME` before next push; wait for DNS + cert reprovisioning |
-| Jekyll stripping `_astro/` | LOW | Add `public/.nojekyll` and redeploy; or switch to GitHub Actions deployment source |
-| HTTPS cert not issued | MEDIUM | Check DNS records with `dig kinder.patrykgolabek.dev CNAME`; check for conflicting A records; check for CAA records blocking letsencrypt.org; remove and re-add the custom domain to force cert re-request |
-| Dark mode FOUC in production | LOW | Add `is:inline` blocking script to `<head>` in base layout; redeploy |
-| `base` config set incorrectly — all links broken | MEDIUM | Remove `base` from config; grep codebase for hardcoded base path prefixes; update any `href="/kinder/..."` to `href="/..."`; rebuild and redeploy |
-| Go CI workflows now triggering on site changes | LOW | Add `kinder-site/**` to `paths-ignore` in all four existing Go CI workflow YAML files |
-| Concurrent deploys queued and failing | LOW | Add concurrency group to workflow; re-run the failed workflow manually via `workflow_dispatch` |
+**Prevention:**
+- Registry container must be created with `--network kind` (or equivalent for each provider)
+- containerd config patch must be applied to every node after the registry is connected
+- After applying the patch, containerd must be restarted inside each node: `systemctl restart containerd`
+- The registry hostname used in the patch must match exactly the container name on the kind network
+
+**Detection:**
+- After registry setup: `docker exec <node-name> curl http://kind-registry:5000/v2/` should return `{}`
+- After containerd restart: `docker exec <node-name> crictl pull kind-registry:5000/test:latest` should succeed
+
+**Phase to address:** Phase 4 (local registry addon)
 
 ---
 
-## Pitfall-to-Phase Mapping
+### Pitfall C7: containerd Config Patches Not Surviving Cluster Restart
 
-How roadmap phases should address these pitfalls.
+**What goes wrong:**
+The containerd config patch that configures the local registry as an insecure mirror is applied to `/etc/containerd/config.toml` inside each node. When the Docker host reboots, kind node containers restart (due to `--restart=on-failure:1`). However, the `/etc/containerd/config.toml` changes written during addon setup DO survive the restart IF they were written to the container filesystem (not a tmpfs mount).
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Jekyll strips `_astro/` (C1) | Phase 1: scaffolding + initial deploy | `dist/.nojekyll` exists; `dist/assets/` exists (not `dist/_astro/`) |
-| Custom domain resets on deploy (C2) | Phase 1: scaffolding + initial deploy | `dist/CNAME` exists with correct domain after every build |
-| Wrong `base` config breaks links (C3) | Phase 1: initial Astro configuration | `import.meta.env.BASE_URL` is `/`; all nav links go to correct paths |
-| `site` mismatch in sitemap/canonical (C4) | Phase 1: initial Astro configuration | `dist/sitemap-index.xml` contains only `https://kinder.patrykgolabek.dev` URLs |
-| Dark mode FOUC (C5) | Phase 2: dark theme implementation | No white flash in private window with dark system preference; no flash during page navigation |
-| Workflow missing permissions (C6) | Phase 1: CI/CD pipeline setup | Deploy workflow succeeds end-to-end; pages deployment visible in Settings → Pages |
-| No path filtering — Go changes trigger site rebuild (C7) | Phase 1: CI/CD pipeline setup | Push Go change → site workflow does not appear in Actions |
-| No concurrency group — overlapping deploys | Phase 1: CI/CD pipeline setup | Rapid pushes do not queue multiple conflicting deployments |
-| DNS + HTTPS timing issues | Phase 1: custom domain setup | HTTPS enforced; site loads at `https://kinder.patrykgolabek.dev` |
-| Missing OG image and social meta | Phase 3: landing page | Twitter Card Validator shows correct preview for the domain |
-| Prose not dark-mode-styled (Tailwind Typography) | Phase 2: dark theme + Phase 4: docs | `prose dark:prose-invert` applied to all Markdown-rendered content |
+The pitfall is that containerd itself may be restarted by systemd during node startup without re-reading the patched config if the service unit is mis-configured or if the config was applied at a path not monitored by containerd's config-drop-in system.
+
+A subtler variant: if the registry container stops but the kind cluster nodes continue running, the containerd config still references a hostname (`kind-registry`) that no longer resolves on the kind network. Image pulls fail silently because the mirror is unavailable but containerd does not fallback to the original registry (depending on containerd version and mirror configuration).
+
+**Prevention:**
+- Write the registry config to `/etc/containerd/certs.d/<registry-host>/hosts.toml` (containerd v2 directory-based config) rather than patching `config.toml` — the directory-based config is the supported extension mechanism
+- Use `containerd v2` config format when the cluster's containerd version supports it
+- The registry addon's `Teardown()` method must remove the config drop-in, not just stop the registry container
+- Add a health check in `kinder doctor` that verifies registry connectivity from each node
+
+**Detection:**
+- After host reboot: push a test image to the registry, then `kubectl run test --image=kind-registry:5000/test:latest` — must succeed without manual intervention
+- Verify with: `docker exec <node> cat /etc/containerd/certs.d/kind-registry:5000/hosts.toml`
+
+**Phase to address:** Phase 4 (local registry addon)
+
+---
+
+### Pitfall C8: Insecure Registry Configuration Diverges Between Docker and Podman Hosts
+
+**What goes wrong:**
+The registry runs as HTTP (no TLS) for local development. Each container runtime on the HOST needs to be configured to allow insecure communication with the registry:
+
+- **Docker host:** requires `"insecure-registries": ["kind-registry:5000"]` in `/etc/docker/daemon.json` and a Docker daemon restart — OR the registry container must be on the `kind` bridge network (same network as the kind nodes) so Docker's own daemon does not validate TLS
+- **Podman host:** uses `registries.conf` and the `[registries.insecure]` stanza, in `/etc/containers/registries.conf`
+- **nerdctl host:** inherits containerd's configuration
+
+The pitfall is writing an addon that only handles one of these cases. On a Podman host, the Docker-style insecure registry setup does nothing, and the registry addon appears to install successfully but image pushes from the HOST fail.
+
+**Prevention:**
+- The registry addon must detect the active provider and emit provider-appropriate host configuration instructions in its output
+- The containerd-inside-node config (for image pulls BY PODS) is the same across all providers — only the host-side push configuration differs
+- Document the host-side requirement explicitly; do not attempt to automate it (requires daemon restart and root access)
+
+**Phase to address:** Phase 4 (local registry addon)
+
+---
+
+## Cert-Manager Addon Pitfalls
+
+### Pitfall C9: cert-manager CRDs Must Install Before cert-manager Pods Are Ready
+
+**What goes wrong:**
+cert-manager requires its Custom Resource Definitions (CRDs) to be installed before the cert-manager controller, webhook, and cainjector pods can function. If the addon applies the cert-manager Helm chart or manifest without first ensuring CRDs are in `Established` state, the webhook server starts but cannot process `Certificate` objects. Attempts to create a `ClusterIssuer` immediately after manifest application fail with "no kind Certificate is registered."
+
+**Prevention:**
+- Apply CRDs first: `kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.x.y/cert-manager.crds.yaml`
+- Wait for CRD establishment before applying the main manifest:
+  ```bash
+  kubectl wait --for condition=established --timeout=60s crd/certificates.cert-manager.io
+  ```
+- Only then apply cert-manager deployment manifests
+
+**Phase to address:** Phase 5 (cert-manager addon)
+
+---
+
+### Pitfall C10: Envoy Gateway Addon Dependency — cert-manager Must Be Ready Before Gateway Provisions TLS
+
+**What goes wrong:**
+The cert-manager addon must be fully ready (all three pods: controller, webhook, cainjector) before the Envoy Gateway addon attempts to create `Certificate` resources. The Envoy Gateway integration uses cert-manager's mutating webhook to inject certificate data. If Envoy Gateway's `Gateway` resource is created before the cert-manager webhook is ready, the Gateway object is created without TLS, and cert-manager's reconciliation does not retroactively fix it — you must delete and recreate the Gateway.
+
+**Specific failure mode:**
+cert-manager's webhook requires a valid TLS certificate for itself (its own webhook). During initial cert-manager installation, there is a bootstrapping window (typically 30-90 seconds) where the webhook pod is running but its own certificate is not yet provisioned. Any cert-manager API request during this window returns a webhook timeout error.
+
+**Prevention:**
+- The cert-manager addon must wait for ALL THREE components: `deployment/cert-manager`, `deployment/cert-manager-webhook`, `deployment/cert-manager-cainjector`
+- Wait with: `kubectl rollout status deployment cert-manager-webhook -n cert-manager --timeout=120s`
+- Add an additional check: create a test `Certificate` resource and wait for it to reach `Ready=True` before declaring the addon healthy
+- In `kinder doctor`, check cert-manager webhook readiness separately from pod running state
+
+**Phase to address:** Phase 5 (cert-manager addon) — install ordering is critical
+
+---
+
+### Pitfall C11: cert-manager Installed Twice — Duplicate CRD Registration
+
+**What goes wrong:**
+If cert-manager is installed as a standalone addon AND also pulled in as a dependency of another addon (e.g., Envoy Gateway's Helm chart may bundle cert-manager), CRDs are applied twice. The second application of CRDs fails if the versions differ. The cert-manager pods then run in a state where the actual CRD version in the cluster does not match what the controller expects.
+
+**Prevention:**
+- The cert-manager addon must check for existing cert-manager CRDs before installing: `kubectl get crd certificates.cert-manager.io`
+- If cert-manager is already installed, the addon must skip installation and log a warning
+- Do not bundle cert-manager inside other addon Helm charts — declare it as a prerequisite instead
+
+**Phase to address:** Phase 5 (cert-manager addon)
+
+---
+
+## Provider Deduplication Pitfalls
+
+### Pitfall C12: Extracting Shared Code Without Tests Running First
+
+**What goes wrong:**
+The provider packages (docker, podman, nerdctl) have separate test files. The standard approach to deduplication is: (1) identify identical code, (2) move to shared location, (3) update callers. The pitfall is doing step 2 before verifying all existing tests pass. The existing tests are the only specification of what the provider must do — if they fail after extraction, the refactor broke something.
+
+**Specifically for kinder:**
+- `pkg/cluster/internal/providers/docker/provision_test.go` (exists)
+- `pkg/cluster/internal/providers/podman/provision_test.go` (exists)
+- `pkg/cluster/internal/providers/nerdctl/provision_test.go` (exists)
+- `pkg/cluster/internal/providers/podman/images_test.go` (exists)
+- `pkg/cluster/internal/providers/nerdctl/network_test.go` (exists)
+
+These tests must all pass on main BEFORE extraction begins. If they don't currently pass, fix them first. If they pass before extraction and fail after, the extraction changed behavior.
+
+**Prevention:**
+```bash
+# Run before starting any deduplication work
+go test ./pkg/cluster/internal/providers/... -v
+# Must exit 0; any failure must be resolved before touching shared code
+```
+
+Commit after each individual function extraction, not in batch. Use `git bisect` if a test starts failing.
+
+**Phase to address:** Phase 2 (provider deduplication) — run tests first, commit atomically
+
+---
+
+### Pitfall C13: Podman Port Mapping Quirk — Trailing :0 Stripped for Random Ports
+
+**What goes wrong:**
+Podman requires that a random port mapping be expressed as `host::container/proto` (empty host port, not `host:0:container/proto`). The Docker and nerdctl providers use `host:0:container/proto` to request a random port. If the shared `generatePortMappings` function is extracted without preserving the Podman-specific stripping of `:0`, Podman clusters will fail to start with a parse error from the Podman CLI.
+
+**Actual divergence in current code:**
+```go
+// docker/provision.go — does NOT strip :0
+args = append(args, fmt.Sprintf("--publish=%s:%d/%s", hostPortBinding, pm.ContainerPort, protocol))
+
+// podman/provision.go — strips trailing :0 for random ports
+if strings.HasSuffix(hostPortBinding, ":0") {
+    hostPortBinding = strings.TrimSuffix(hostPortBinding, "0")
+}
+args = append(args, fmt.Sprintf("--publish=%s:%d/%s", hostPortBinding, pm.ContainerPort, strings.ToLower(protocol)))
+```
+
+Note also: Podman uses `strings.ToLower(protocol)` but Docker does not. A unified function that omits either behavior is wrong for one of them.
+
+**Prevention:**
+This behavior must stay provider-specific. If extracting `generatePortMappings` to shared code, pass a `PortFormatter` function as a parameter:
+
+```go
+type PortFormatter func(hostPortBinding string, containerPort int32, protocol string) string
+```
+
+Each provider supplies its own formatter. Never merge the Podman `:0` stripping into the Docker or nerdctl path.
+
+**Phase to address:** Phase 2 (provider deduplication)
+
+---
+
+### Pitfall C14: Podman Anonymous Volume Creation vs Docker Anonymous Volume
+
+**What goes wrong:**
+In `podman/provision.go`, the `/var` volume is created as a named anonymous volume BEFORE the container is created (`createAnonymousVolume(name)`), then mounted as `--volume $varVolume:/var:suid,exec,dev`. In Docker and nerdctl, the volume is declared inline as `--volume /var` (Docker manages the anonymous volume lifecycle).
+
+The Podman approach uses `suid,exec,dev` mount options which are required for Podman's security model. The Docker approach does not need these because Docker uses different defaults for container capabilities.
+
+If the shared `runArgsForNode` function is extracted and uses Docker's inline `--volume /var` syntax for Podman containers, the Podman nodes will fail to run workloads that require SUID binaries or device access inside `/var`.
+
+**Prevention:**
+- Do not extract `runArgsForNode` to shared code — it is the most divergent function
+- If extraction is required, use a `NodeVolumeArgs(name string) []string` method on the provider behavior interface
+- The Podman provider must always pre-create the volume and clean it up on node deletion
+
+**Phase to address:** Phase 2 (provider deduplication)
+
+---
+
+## CLI Diagnostic Command Pitfalls
+
+### Pitfall C15: kinder env/doctor Commands Assuming All Providers Are Available
+
+**What goes wrong:**
+`kinder doctor` checks environment health. A common mistake is implementing checks that assume Docker is available when the user might be running Podman or nerdctl. For example:
+
+- Running `docker info` to check container runtime status — fails on Podman-only systems
+- Checking `/var/run/docker.sock` for socket availability — irrelevant for nerdctl
+- Hard-coding Docker-specific JSON output parsing in diagnostic output
+
+**Prevention:**
+- `kinder doctor` must detect the active provider FIRST (using the existing `DetectNodeProvider()` function in `pkg/cluster/provider.go`)
+- All provider-specific checks must be gated on the detected provider
+- Checks that apply to all providers (e.g., "can we list clusters?") must use the provider interface, not raw CLI calls
+
+**Detection:**
+- Run `kinder doctor` on a machine with only Podman installed — must not error with "docker: command not found"
+- Run `kinder doctor` on a machine with only nerdctl — same requirement
+
+**Phase to address:** Phase 3 (kinder env/doctor commands)
+
+---
+
+### Pitfall C16: kinder env Output Format — Machine-Readable vs Human-Readable Conflict
+
+**What goes wrong:**
+`kinder env` is typically used in shell scripts via `eval $(kinder env)` to set environment variables. If the output includes human-readable text (progress lines, warnings, header comments) mixed with the `export VAR=value` lines, `eval` will fail with a syntax error.
+
+Conversely, if the output is ONLY machine-readable with no way to get human-readable output, the command is hard to debug interactively.
+
+**Prevention:**
+- By default, emit only `export VAR=value` lines — nothing else to stdout
+- Warnings go to stderr only
+- Add a `--shell` flag (default: auto-detect from `$SHELL`) and a `--no-export` flag for fish shell compatibility (fish uses `set -x VAR value`)
+- Add a `--human` or `--verbose` flag that adds comments and headers for interactive use
+
+**Detection:**
+- Test: `eval $(kinder env)` in bash must succeed when a cluster exists
+- Test: `kinder env` when no cluster exists must exit non-zero and emit a human-readable error to stderr (not stdout)
+
+**Phase to address:** Phase 3 (kinder env/doctor commands)
+
+---
+
+## Bug Fix Regression Pitfalls
+
+### Pitfall C17: Fixing One Provider's Bug Without Fixing All Three
+
+**What goes wrong:**
+All four bugs identified (defer-in-loop, tar extraction, ListInternalNodes, network sort) exist because of copy-paste replication across providers. The risk: fix the bug in `docker/provision.go` but forget `podman/provision.go` and `nerdctl/provision.go`. The fixed provider passes tests, but the other two remain broken.
+
+**Prevention:**
+- For each bug fix, search for the identical pattern in all three providers: `grep -rn "releaseHostPortFn\|defer.*release" pkg/cluster/internal/providers/`
+- Write a test that covers the fix for each provider, not just docker
+- Use the checklist: docker fixed? podman fixed? nerdctl fixed? each test added?
+
+**Detection:**
+- Run `go vet ./pkg/cluster/internal/providers/...` after each fix
+- If the same test exists in all three providers' test files, all three must pass
+
+**Phase to address:** Phase 1 (bug fixes)
+
+---
+
+### Pitfall C18: Bug Fixes That Change Provider External Behavior
+
+**What goes wrong:**
+The network sort comparator fix (Pitfall C4) changes which network is selected as the "primary" when duplicates exist. This could break existing clusters if they were relying on the old (incorrect) selection order. Similarly, fixing the defer-in-loop changes the timing of port release, which could theoretically affect port allocation behavior.
+
+**Prevention:**
+- For the network sort fix: the new sort produces a STABLE ordering (more containers first, then ID). The old sort was non-deterministic. The fix cannot produce a worse outcome than random selection.
+- For the defer-in-loop fix: ports should be released AFTER the container is created, not BEFORE. The fix (IIFE pattern) releases ports at the end of each iteration — still before the next iteration's port probe. This is safe.
+- Document the behavioral change in the commit message for each bug fix
+- Add a regression test that exercises the fixed scenario
+
+**Phase to address:** Phase 1 (bug fixes)
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Bug fixes (defer-in-loop) | Fix in docker but not podman/nerdctl | Grep-and-fix all three, add tests for all three |
+| Bug fixes (tar extraction) | Treat non-EOF as break instead of error | Always `return err` on non-EOF; add truncated tar test |
+| Bug fixes (ListInternalNodes) | Forget defaultName() in new commands | Normalize cluster name as first step in every command |
+| Bug fixes (network sort) | Non-strict comparator re-introduced | Write sort test with 3-element array including ties |
+| Provider deduplication | Merging Podman port stripping into shared path | Use PortFormatter interface; test Podman port format explicitly |
+| Provider deduplication | Podman volume pre-creation removed | Keep Podman volume creation in provider-specific code |
+| Provider deduplication | Shared commonArgs misses provider-specific flags | Define ProviderBehavior interface; test each provider's common args |
+| Provider deduplication | Tests broken after extraction | Run all tests before each extraction step; commit atomically |
+| kinder env command | Human text mixed with eval output | stdout = machine-readable only; stderr = human/warnings |
+| kinder doctor command | Docker-specific checks on Podman system | Detect provider first; gate all checks on detected provider |
+| Local registry addon | Registry unreachable from inside nodes | Registry must be on kind network; containerd must be patched and restarted |
+| Local registry addon | Config not surviving cluster restart | Use containerd certs.d directory format; verify after simulated restart |
+| Local registry addon | Host-side push fails on non-Docker system | Document provider-specific host config; detect and warn at addon install time |
+| cert-manager addon | CRDs not established before controller starts | Wait for CRD establishment; then wait for webhook readiness |
+| cert-manager addon | Envoy Gateway creates Gateway before cert-manager webhook ready | Install and health-check cert-manager before Envoy Gateway configuration |
+| cert-manager addon | Double installation via dependency chain | Check for existing cert-manager CRDs before installing |
 
 ---
 
 ## Sources
 
-- [Astro GitHub Pages deploy guide](https://docs.astro.build/en/guides/deploy/github/) — official source for `site`, `base`, CNAME, and workflow permissions
-- [withastro/action GitHub README](https://github.com/withastro/action) — `path` input for subdirectory projects; `cache` option; lockfile detection
-- [Astro issue #14247: `_astro` folder ignored by GitHub Pages](https://github.com/withastro/astro/issues/14247) — confirmed Jekyll underscore-stripping behavior
-- [Starlight issue #3339: Add .nojekyll File](https://github.com/withastro/starlight/issues/3339) — community confirmation + fix
-- [GitHub community: Custom Domain Field Clears Every Deploy](https://github.com/orgs/community/discussions/48422) — CNAME reset root cause
-- [GitHub community: Custom domain deleted after workflow deploy](https://github.com/orgs/community/discussions/159544) — confirms CNAME must be in build artifact
-- [GitHub Pages DNS troubleshooting docs](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/troubleshooting-custom-domains-and-github-pages) — CAA records, HTTPS timing, DNS propagation
-- [Astro dark mode flicker — simonporter.co.uk](https://www.simonporter.co.uk/posts/what-the-fouc-astro-transitions-and-tailwind/) — `is:inline` blocking script pattern; `astro:after-swap` handling
-- [Astro dark mode flicker — danielnewton.dev](https://www.danielnewton.dev/blog/dark-mode-astro-tailwind-fouc/) — Tailwind + localStorage pattern
-- [Astro issue #8711: Flicker with ViewTransition and dark mode](https://github.com/withastro/astro/issues/8711) — confirmed FOUC during View Transitions
-- [GitHub community: concurrency group for Pages](https://github.com/orgs/community/discussions/67961) — overlapping deploy behavior
-- [GitHub Actions concurrency docs](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) — `cancel-in-progress: false` for Pages deploys
-- [Tailwind CSS Typography dark mode](https://tailwindcss.com/blog/tailwindcss-typography-v0-5) — `prose-invert` class for dark mode prose styling
-- [Medium: GitHub Pages for Astro — Branch vs GitHub Actions](https://medium.com/vlead-tech/github-pages-for-astro-project-deploying-from-branch-vs-using-github-actions-af1f909322ee) — exhaustive comparison of both deploy methods and their trade-offs
+- [kind local registry guide](https://kind.sigs.k8s.io/docs/user/local-registry/) — official containerd config patch pattern and registry-on-kind-network requirement (HIGH confidence)
+- [containerd registry configuration](https://github.com/containerd/containerd/blob/main/docs/cri/registry.md) — certs.d directory-based config for containerd v2 (HIGH confidence)
+- [cert-manager kind development guide](https://cert-manager.io/docs/contributing/kind/) — cert-manager + kind integration, webhook readiness bootstrapping (HIGH confidence)
+- [cert-manager Envoy Gateway TLS guide](https://gateway.envoyproxy.io/docs/tasks/security/tls-cert-manager/) — dependency ordering between cert-manager and Envoy Gateway (HIGH confidence)
+- [Go defer in loop — JetBrains Inspectopedia](https://www.jetbrains.com/help/inspectopedia/GoDeferInLoop.html) — canonical documentation of the defer accumulation problem (HIGH confidence)
+- [Go archive/tar package](https://pkg.go.dev/archive/tar) — `io.EOF` return semantics for `Next()` (HIGH confidence)
+- [kinder CONCERNS.md](planning/codebase/CONCERNS.md) — codebase analysis identifying the four bugs, provider duplication fragility, and test coverage gaps (HIGH confidence — primary source)
+- [kinder docker/provision.go](pkg/cluster/internal/providers/docker/provision.go) — direct code evidence of defer-in-loop in generatePortMappings (HIGH confidence)
+- [kinder podman/provision.go](pkg/cluster/internal/providers/podman/provision.go) — direct code evidence of Podman port format divergence and volume pre-creation (HIGH confidence)
+- [kinder nerdctl/provision.go](pkg/cluster/internal/providers/nerdctl/provision.go) — direct code evidence of nerdctl network flag divergence (HIGH confidence)
+- [kinder docker/network.go](pkg/cluster/internal/providers/docker/network.go) — direct code evidence of network sort comparator (HIGH confidence)
+- [Interface pollution in Go — 100 Go Mistakes](https://100go.co/5-interface-pollution/) — guidance on when to define interfaces for behavior extraction (MEDIUM confidence)
+- [kind issue: containerd race restarting with config patches](https://github.com/kubernetes-sigs/kind/issues/2262) — confirmed timing issue with containerd restart after config patching (HIGH confidence)
 
 ---
-*Pitfalls research for: Kinder website — Astro + GitHub Pages + custom domain + dark theme*
-*Researched: 2026-03-01*
+
+*Pitfalls research for: kinder v1.3 — local registry, cert-manager, CLI diagnostic tools, provider deduplication, and bug fixes*
+*Researched: 2026-03-03*

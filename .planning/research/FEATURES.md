@@ -1,208 +1,258 @@
-# Feature Research
+# Feature Landscape
 
-**Domain:** CLI tool website — landing page + documentation site (Astro, GitHub Pages)
-**Researched:** 2026-03-01
-**Confidence:** HIGH (based on direct analysis of Bun, Deno, Astro, Headlamp, k9s, kind, DevSpace sites + Evil Martians study of 100 dev tool landing pages)
+**Domain:** Kubernetes local development CLI tool — v1.3 Harden & Extend milestone
+**Researched:** 2026-03-03
+**Confidence:** HIGH (based on direct codebase analysis + official docs for kind, cert-manager, registry:2)
 
 ---
 
 ## Context
 
-This research covers the **v1.1 website milestone** — not the CLI addons (v1.0 already shipped). kinder is a batteries-included kind fork. The website must explain what kinder is, why you'd use it over vanilla kind, how to install it, and how to configure its 5 addons. The audience is developers who know Kubernetes and have probably used kind before.
+This research covers the **v1.3 milestone**, not the v1.1 website work. The four feature areas are:
+
+1. **Local registry addon** — `addons.localRegistry: true`, replaces kind's external shell script pattern
+2. **cert-manager addon** — `addons.certManager: true`, TLS management for local services
+3. **`kinder env` command** — Show cluster environment/config info for debugging
+4. **`kinder doctor` command** — Diagnose common setup issues before they cause cluster creation failures
+5. **Provider code deduplication** — Extract shared docker/podman/nerdctl code to `common/` package
+
+There are also **four bug fixes** that are table stakes for this milestone (not new features, but blocking quality). These are documented separately in PITFALLS.md.
+
+The existing Addons struct is `{MetalLB, EnvoyGateway, MetricsServer, CoreDNSTuning, Dashboard}`, all `*bool`. New addons follow the same `*bool` opt-out pattern.
 
 ---
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
-
-Features a dev tool site must have. Missing these makes the site feel broken or untrustworthy.
+Features users expect from a batteries-included Kubernetes tool. Missing these makes v1.3 feel incomplete or unreliable.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| One-line install command in hero | Developers copy-paste this before reading anything else; it's the first signal of quality | LOW | Platform-conditional: Linux/macOS curl, Homebrew, go install. Show the most universal first. |
-| Copy-to-clipboard on all code blocks | Standard expectation since 2020; not having it feels unfinished | LOW | Astro Starlight provides this for doc pages; hero page code block needs manual implementation |
-| Syntax-highlighted code blocks | Raw monospace code looks amateur; highlights communicate intent | LOW | Astro has Shiki built in; Starlight uses it by default |
-| Dark mode (default dark) | Developer audience expects dark mode; kinder targets dev-tool aesthetic explicitly | LOW | Starlight provides dark/light toggle; set dark as default to match project brief |
-| Mobile-responsive layout | Google rankings, people reading docs on phones | LOW | Starlight is responsive by default; landing page needs explicit responsive design |
-| Installation guide page | Deeplinked from hero, GitHub README, blog posts, Stack Overflow answers | LOW | Standalone `/docs/install/` page covering all platforms and methods |
-| Configuration reference page | Developers paste config and need to know what every field does | MEDIUM | Documents `kinder.dev/v1alpha4` config schema with all addon fields, defaults, examples |
-| Docs for each addon | Users need to know what each addon does, how to disable it, and what to expect | MEDIUM | One page per addon: MetalLB, Envoy Gateway, Metrics Server, CoreDNS Tuning, Headlamp |
-| GitHub link in nav | Developers distrust tools with no visible source; stars are social proof | LOW | Link to github.com/patrykg/kinder in top nav and footer |
-| Clear value proposition in hero | Visitors decide in under 10 seconds; "kind but with batteries" must be immediately obvious | LOW | Headline + subtitle must name the problem kind has (manual addon setup) and kinder's answer |
-| Working anchor links in docs | Navigation within long reference pages | LOW | Starlight generates these from headings automatically |
-| Page titles and meta descriptions | SEO, browser tabs, social share previews | LOW | Astro and Starlight handle this with frontmatter |
-| 404 page | GitHub Pages serves a 404; custom page keeps users in the site | LOW | Add `public/404.html` or configure Astro to generate it |
+| Local registry at `localhost:5001` | kind docs show this as the recommended pattern; every "kind + local dev" tutorial uses it; developers expect `docker push localhost:5001/myapp:tag` to just work | MEDIUM | Must create a `registry:2` container, configure containerd on every node via `/etc/containerd/certs.d/localhost:5001/hosts.toml`, create the `kind` network connection, and post the discovery ConfigMap to `kube-public/local-registry-hosting` |
+| ConfigMap discovery for local registry | Tilt, Skaffold, and other dev tools look for `kube-public/local-registry-hosting` ConfigMap to auto-detect the registry; without it, third-party tools won't auto-configure | LOW | A single ConfigMap apply after registry container is up; data key is `localRegistryHosting.v1` |
+| cert-manager installs and CRDs are ready | Users who enable `certManager: true` expect `kubectl apply -f my-certificate.yaml` to work immediately after cluster creation; CRD not-ready errors are silent killers | MEDIUM | cert-manager single-manifest install (all CRDs + controller in one YAML); must wait for webhook deployment readiness before cluster reported ready |
+| Self-signed ClusterIssuer bootstrapped | cert-manager alone is not useful; a `ClusterIssuer` named `selfsigned` must exist so users can immediately create certificates without any manual setup | LOW | Two-resource apply: `ClusterIssuer` (selfSigned) + a CA `Certificate` + a CA `Issuer`; or minimally just the `ClusterIssuer`; depends on target use case |
+| `kinder env` output machine-readable or clearly structured | CLI diagnostic commands must produce parseable output; mixing prose with data prevents scripting | LOW | Follow Go CLI convention: key=value lines or a clear table; support `--json` or structured format |
+| `kinder env` shows provider, node image, cluster name, config path | These are the four things developers look up when something goes wrong ("which docker am I using?", "what image version?") | LOW | All data available from existing provider detection + config loading code; no new infrastructure needed |
+| `kinder doctor` checks binary prerequisites | Checks that docker/podman/nerdctl is available and running before create; users expect an explicit diagnostic step, not cryptic "failed to list clusters" errors | LOW | Path lookup + a `docker info`/`podman info`/`nerdctl info` call; fail fast with actionable message |
+| `kinder doctor` checks resource availability | Memory and disk space warnings before cluster creation prevents confusing OOM failures mid-cluster-setup | MEDIUM | Platform-specific syscall or parsing `/proc/meminfo`; 4GB RAM and 10GB disk are reasonable minimum thresholds for kind clusters |
+| Provider code deduplication does not break existing behavior | Any refactoring of docker/podman/nerdctl providers must produce identical runtime behavior; this is pure internal quality work | HIGH | The three provider files share 70-80% logic; only the binary name and minor behavioral quirks differ; extract to `common/` without changing observable behavior |
+| Bug fixes ship in v1.3 | The four identified bugs (defer-in-loop port leak, tar extraction data loss, ListInternalNodes default name, network sort) are correctness issues; they must be fixed | LOW-MEDIUM | Each bug is self-contained; see PITFALLS.md for details |
 
-### Differentiators (Competitive Advantage)
+---
 
-Features that set kinder's site apart from kind's plain Hugo site and generic tool docs. These are what make Bun, Deno, and Astro sites feel high quality.
+## Differentiators
+
+Features that go beyond what kind offers or what users minimally expect. These are what make kinder's batteries-included promise feel complete.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Animated terminal demo in hero | Shows exactly what `kinder create cluster` output looks like; replaces abstract feature claims with reality | MEDIUM | Use asciinema embed or CSS-animated terminal component. Bun, k9s both do this effectively. Pure CSS animation is simpler and loads faster than asciinema. |
-| "What you get" addon grid on landing page | Five addons are the product differentiator; calling them out visually makes the value concrete | LOW | Card grid showing each addon with icon, name, and one-line description (e.g. "LoadBalancer IPs — MetalLB v0.15.3"). Link each to its doc page. |
-| Before/after comparison | Developers already know kind; "kind gives you X, kinder gives you X + these 5 things" is the fastest conversion pitch | LOW | Side-by-side comparison block: `kind create cluster` (bare cluster) vs `kinder create cluster` (what you get). No library needed, just styled HTML. |
-| Platform-specific install tabs | macOS / Linux / Windows tabs so users see exactly their command without reading all variations | LOW | Simple tab component; or code block with OS detection via JavaScript. Headlamp does this well. |
-| Version badge in hero or nav | Shows the project is active and tells users what they're installing | LOW | Static badge from shields.io or hardcoded version string (update on release) |
-| Quickstart page separate from full install guide | Developers want the path of least resistance first; don't bury it in a long install doc | LOW | Short page: prerequisites, one install command, `kinder create cluster`, `kubectl get nodes`. Maximum 5 steps. |
-| Inline feature showcase on landing page | Moves from "what it is" to "here's the actual output" within a single scroll | MEDIUM | Show terminal output for `kubectl top nodes`, `kubectl get svc` with EXTERNAL-IP populated, Headlamp screenshot |
-| Cluster config file example on landing page | Kinder's opt-out config is a key DX feature; showing it early sets expectations | LOW | A short YAML block showing addons section with comments explaining each field |
-| Favicon + og:image | Site identity; og:image appears in Slack/Discord/Twitter shares | LOW | Use kinder logo as favicon; create 1200x630 og:image with logo + tagline |
-| Breadcrumbs in docs | Navigation orientation within documentation hierarchy | LOW | Starlight provides breadcrumbs automatically |
+| Registry addon integrated with containerd config patches | kind's official local registry guide is a 50-line shell script that users must run manually; kinder does it via `addons.localRegistry: true` in YAML — same interface as all other addons | MEDIUM | Uses `ContainerdConfigPatches` mechanism already in kind config to inject `config_path` into containerd; then patches each node's `/etc/containerd/certs.d/` directory post-creation |
+| cert-manager as default-enabled addon (or easy opt-in) | No other kind-based tool ships cert-manager integrated; developers doing TLS work spend 30-60 minutes manually setting it up for every cluster | MEDIUM | Must embed the cert-manager release manifest (currently v1.17.x, ~1.5MB YAML); wait for cert-manager webhook pod readiness before proceeding |
+| `kinder doctor` checks addon-specific prerequisites | MetalLB requires subnet detection (macOS/Windows warning is already implemented); cert-manager requires cert-manager CRDs to be ready; a doctor command should surface these in advance | MEDIUM | Requires knowing which addons are enabled in the current config; doctor should accept a `--config` flag or infer from default config location |
+| `kinder env` shows which addons are enabled | When debugging a cluster, knowing "did cert-manager actually get installed?" is the first question; `kinder env` should show the enabled/disabled state of each addon | LOW | Requires reading the config that was used to create the cluster; consider storing config summary in a cluster label or file |
+| Pull-through cache mode for local registry | Configuring the registry as a Docker Hub mirror eliminates rate limiting in CI and speeds up iterative development; kind has an open issue requesting this | HIGH | Requires passing mirror config to containerd; adds complexity to registry setup; defer to v1.4 unless trivially composable |
+| `kinder doctor` output has exit codes | Scripts testing infrastructure rely on `kinder doctor && kinder create cluster`; non-zero exit code on failure enables this pattern | LOW | Standard CLI convention; just ensure `os.Exit(1)` on any failed check |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+---
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Blog section | Looks like a complete site; content marketing | Requires ongoing content creation; a stale blog (last post 3 months ago) signals a dead project; v1.1 scope is launch, not content | Add a blog only after cadence is established; link to GitHub releases for now |
-| Newsletter/email signup | Community building | No audience to justify the friction; adds GDPR complexity; creates expectation of emails that won't get sent | Link to GitHub for release notifications (`Watch > Releases`) |
-| Search bar on landing page | Seems useful | Redundant with browser find; landing page has no indexed content; complicates layout | Docs pages get search (Starlight Pagefind) automatically; landing page doesn't need it |
-| Version dropdown for docs | Enterprise docs pattern (React, Python) | kinder is pre-v2; maintaining versioned docs creates ongoing overhead immediately | Single version of docs; mention version compatibility in text where needed |
-| Interactive playground / sandbox | Conversion boost | kinder requires Docker; you can't spin up a real cluster in a browser sandbox; a fake demo breaks trust | Asciinema recording or animated terminal component showing real output |
-| Dark/light mode toggle in hero section | User preference | Adds implementation complexity; kinder targets a developer-tool aesthetic with dark default | Provide Starlight's built-in toggle in docs; keep landing page dark by default |
-| Changelog page separate from GitHub releases | Keeps users on site | Duplicates GitHub releases; creates maintenance burden (updating two places) | Link directly to GitHub releases page; possibly embed latest release info via static build step |
-| Comment system on docs | Community engagement | Docs pages aren't blog posts; comments add noise and spam risk | Link to GitHub Discussions or GitHub Issues for feedback |
-| Cookie consent banner | Legal compliance | Heavy-handed for a GitHub Pages static site with no analytics; breaks the clean aesthetic | Don't add analytics. If you do add analytics, use Plausible (privacy-preserving, no cookie banner needed) |
-| Auto-redirects based on OS detection | Personalization | JavaScript-dependent; degrades on curl/wget; confusing when not on expected OS | Show platform tabs that default to the most common platform (Linux/macOS) and let users click |
+## Anti-Features
+
+Features that seem relevant but should explicitly not be built in v1.3.
+
+| Anti-Feature | Why Requested | Why Problematic | What to Do Instead |
+|--------------|---------------|-----------------|-------------------|
+| Harbor as local registry | Harbor has a UI, scanning, RBAC, replication — "proper" registry | Harbor requires Helm; requires 3+ pods; 500MB+ images; defeats local dev zero-config goal | Use `registry:2` (Docker Distribution); it's 25MB, zero config, sufficient for local push/pull |
+| ACME/Let's Encrypt issuer in cert-manager addon | "Real" TLS for local services | ACME requires internet reachability and public DNS; local clusters can't get Let's Encrypt certs | Ship with self-signed `ClusterIssuer` only; document that ACME issuers require additional setup |
+| cert-manager trust-manager addon | Distributes CA certs across namespaces automatically | Adds another CRD bundle and controller; cross-namespace trust is an edge case for local dev | Document that users needing cross-namespace trust can install trust-manager separately |
+| Interactive `kinder doctor --fix` | Auto-fixing detected issues (e.g., starting Docker daemon) | Side effects without user consent are dangerous; "fix" for one issue may break something else | Print clear instructions for how to fix each issue; leave execution to the user |
+| `kinder doctor` as an ongoing health monitor | Polling cluster health | This is `kubectl get componentstatuses` territory; doctor is a pre-creation diagnostic tool, not a monitoring agent | Keep doctor as a point-in-time check; document `kubectl get nodes` and `kubectl cluster-info` for runtime health |
+| Registry UI (docker registry UI) | Visual interface for browsing pushed images | Adds a second container; requires port mapping; not standard in kind-like tools | Use `docker images` or `curl localhost:5001/v2/_catalog` for introspection; document in addon docs |
+| Helm-based cert-manager install | Helm gives more configuration options | Kinder has explicitly avoided Helm as a dependency (PROJECT.md constraint); Helm install adds complexity | Embed the official cert-manager `kubectl apply` manifest; pin a specific version |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Landing Page Hero
-    └──requires──> Install command finalized (can't show command before release binary exists)
-    └──requires──> Addon descriptions (for the addon grid)
-    └──enhances via──> Animated terminal demo (optional, adds significantly to conversion)
+Local Registry Addon
+    requires──> ContainerdConfigPatches mechanism (already in kind/kinder config)
+    requires──> Provider.Provision() completes (nodes must exist before patching containerd)
+    requires──> Network connection between registry container and kind network
+    enables──> cert-manager addon can pull images from registry (optional but nice)
+    enables──> Any future CI/CD addon that needs a push target
 
-Docs: Installation Guide
-    └──requires──> Binary distribution method decided (GitHub Releases, Homebrew tap, go install)
-    └──requires──> Platform support matrix confirmed (Linux amd64, arm64, macOS, Windows?)
+cert-manager Addon
+    requires──> Cluster is running (CRDs applied via kubectl)
+    requires──> waitforready action completes (apiserver must be up)
+    enables──> Envoy Gateway TLS termination (existing addon gains TLS capability)
+    enables──> any user Certificate resources
+    ordering──> Must come AFTER Envoy Gateway addon (so cert-manager can issue certs
+                for Gateway routes if desired; Gateway CRDs must exist first)
 
-Docs: Configuration Reference
-    └──requires──> v1alpha4 config schema finalized (already done in v1.0)
-    └──is required by──> Each addon doc page (config field for that addon lives here)
+kinder env command
+    requires──> Existing provider detection code (already in pkg/cluster/provider.go)
+    requires──> Config loading machinery (already in pkg/internal/apis/config/encoding/)
+    no new infrastructure needed
 
-Docs: Addon Pages (×5)
-    └──requires──> Configuration Reference (cross-reference config fields)
-    └──requires──> Installation Guide (prerequisite page in user journey)
+kinder doctor command
+    requires──> Binary detection code (same as provider detection)
+    enhanced by──> Reading config file to know which addons to check
+    depends on──> kinder env output (may share underlying data gathering)
 
-GitHub Pages Deployment
-    └──requires──> CNAME file at public/CNAME with kinder.patrykgolabek.dev
-    └──requires──> DNS: CNAME record pointing to patrykattc.github.io
-    └──requires──> GitHub Actions workflow (.github/workflows/deploy.yml using withastro/action)
-    └──requires──> astro.config.mjs: site = "https://kinder.patrykgolabek.dev" (no base path)
-
-Starlight Docs Site
-    └──enhances──> Landing Page (search, nav, all doc pages)
-    └──requires──> Content in MDX/Markdown files under src/content/docs/
-
-Addon Grid (landing page)
-    └──enhances──> Docs: each addon page (click-through from cards)
+Provider Deduplication
+    requires──> Understanding all three provider implementations (done: analysis above)
+    blocks──> Adding Binary() method uniformly to all providers (nerdctl already has it;
+              docker and podman hardcode the binary name as a const)
+    enables──> Local registry addon (registry container management reuses provider binary)
+    enables──> Easier future provider additions
+    risk──> Must not change observable behavior; needs tests for all three providers
 ```
 
 ### Dependency Notes
 
-- **Install command requires binary distribution:** The landing page hero cannot finalize its install command until the release pipeline (GitHub Releases or Homebrew tap) is in place. If releasing via GitHub Releases, the install command is `curl ... | sh` or direct binary download link. If releasing via go install, that's simpler but requires users to have Go.
-- **Config reference requires schema finalized:** The v1.0 work already finalized the schema (`kinder.dev/v1alpha4` with addons section). This unblocks the config reference page immediately.
-- **Custom domain requires DNS config before site goes live:** The CNAME file deploys with the site but DNS propagation takes time. Set DNS before the first deployment.
+- **Provider deduplication should come first:** The local registry addon needs to manage a registry container using whichever container runtime is active (docker/podman/nerdctl). If provider code is consolidated first, the registry addon can use the provider's binary uniformly. If not, registry will hardcode the binary or add its own detection.
+- **cert-manager requires embedded manifest:** At ~1.5MB, the cert-manager YAML is larger than MetalLB (~300KB). The `go:embed` approach (already used for all other addons) handles this without issue. The file must be version-pinned.
+- **Local registry is provider-aware:** On Docker, the registry container connects to the `kind` Docker network. On Podman, networking differences may apply (Podman uses a different network model for rootless). On nerdctl, the network is nerdctl-specific. The registry addon must use the detected provider binary consistently.
+- **`kinder doctor` is additive:** It adds a new top-level command alongside `create`, `delete`, `get`. It follows the existing Cobra command pattern in `pkg/cmd/kind/`.
 
 ---
 
-## MVP Definition
+## MVP Definition for v1.3
 
-### Launch With (v1.1)
+### Must Ship (v1.3)
 
-The minimum site that replaces a blank GitHub Pages URL and gives users enough to evaluate and install kinder.
+The minimum changes that fulfill the milestone promise.
 
-- [ ] Landing page with hero, value proposition, one-line install command, addon grid — essential for first impressions
-- [ ] Installation guide doc page (Linux/macOS/Windows, go install + binary download) — without this, users cannot install the tool
-- [ ] Configuration reference doc page (all v1alpha4 fields, addon flags, defaults) — without this, power users cannot self-serve
-- [ ] One doc page per addon ×5 (what it installs, what you get, how to disable, known constraints) — completes the documentation set for launched features
-- [ ] Quickstart page (5-step flow from zero to working cluster) — conversion funnel; users need an easy path
-- [ ] GitHub Actions deploy workflow to GitHub Pages with CNAME for kinder.patrykgolabek.dev — gets the site live
-- [ ] Favicon and og:image — site identity; og:image appears in every share
-- [ ] Custom 404 page — avoids GitHub's default 404 breaking the site experience
+- Bug fixes (defer-in-loop, tar extraction, ListInternalNodes default name, network sort) — correctness, not optional
+- Provider code deduplication — precondition for registry addon; also reduces drift risk
+- Local registry addon (`addons.localRegistry: true`) with registry container, containerd config, and discovery ConfigMap
+- cert-manager addon (`addons.certManager: true`) with embedded manifest and self-signed ClusterIssuer
+- `kinder env` command showing provider, node image, cluster name, addon states
+- `kinder doctor` command checking binary availability, daemon running, resource minimums
+- Updated `go.mod` minimum version and dependency pins
 
-### Add After Validation (v1.x)
+### Explicitly Out of Scope for v1.3
 
-- [ ] Animated terminal demo in hero — add when basic conversion data suggests users aren't understanding the value proposition
-- [ ] Before/after comparison block — add if analytics show high bounce rate from landing page
-- [ ] Platform-specific install tabs (if multi-platform binary distribution is added) — add when Homebrew tap or additional platform binaries are released
-
-### Future Consideration (v2+)
-
-- [ ] Blog section — only after regular content cadence is established
-- [ ] Versioned docs — only when a breaking change between kinder versions requires it
-- [ ] Changelog page — only if GitHub releases become hard to discover
+- Pull-through cache mode for local registry — added complexity, defer to v1.4
+- trust-manager alongside cert-manager — edge case, defer
+- `kinder doctor --fix` auto-remediation — too risky
+- ACME/Let's Encrypt issuer — requires internet, not suitable for local dev
 
 ---
 
-## Feature Prioritization Matrix
+## Complexity Assessment
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Landing page hero + install command | HIGH | LOW | P1 |
-| Addon grid on landing page | HIGH | LOW | P1 |
-| Installation guide doc page | HIGH | LOW | P1 |
-| Quickstart doc page | HIGH | LOW | P1 |
-| Configuration reference doc page | HIGH | MEDIUM | P1 |
-| Addon doc pages (×5) | HIGH | MEDIUM | P1 |
-| GitHub Actions deploy + CNAME | HIGH | LOW | P1 |
-| Dark mode (Starlight default) | MEDIUM | LOW | P1 (built in) |
-| Copy-to-clipboard code blocks | MEDIUM | LOW | P1 (built in) |
-| Favicon + og:image | MEDIUM | LOW | P1 |
-| Custom 404 page | LOW | LOW | P1 |
-| Before/after comparison block | MEDIUM | LOW | P2 |
-| Platform-specific install tabs | MEDIUM | LOW | P2 |
-| Animated terminal demo | HIGH | MEDIUM | P2 |
-| Version badge | LOW | LOW | P2 |
-| Blog section | LOW | MEDIUM | P3 |
-| Versioned docs | LOW | HIGH | P3 |
-
-**Priority key:**
-- P1: Must have for launch
-- P2: Should have, add when possible (v1.1.x)
-- P3: Nice to have, future consideration
+| Feature | Estimated Complexity | Primary Risk |
+|---------|---------------------|--------------|
+| Bug fixes (4 bugs) | LOW each | Regression if not tested |
+| Provider deduplication | HIGH | Breaking behavioral changes in one of three providers |
+| Local registry addon | MEDIUM | Networking differences across Docker/Podman/nerdctl providers |
+| cert-manager addon | MEDIUM | Webhook readiness timing; large embedded manifest |
+| `kinder env` command | LOW | None; purely read-only data display |
+| `kinder doctor` command | LOW-MEDIUM | Platform-specific resource checks (disk/memory differ by OS) |
 
 ---
 
-## Competitor Feature Analysis
+## Implementation Notes
 
-Reference sites studied: Bun (bun.com), Deno (deno.com), Astro (astro.build), kind (kind.sigs.k8s.io), Headlamp (headlamp.dev), k9s (k9scli.io), DevSpace (devspace.sh).
+### Local Registry Addon — Key Technical Details
 
-| Feature | Bun / Deno | kind (parent project) | Our Approach |
-|---------|------------|-----------------------|--------------|
-| Hero headline | Action-oriented, benefit-led ("A fast all-in-one JS runtime") | Descriptive only ("tool for running local Kubernetes clusters") | Benefit-led: "Local Kubernetes clusters, batteries included" or similar |
-| Install command in hero | Yes (prominent, copy-to-clipboard) | Yes (in body text, not hero) | Yes, in hero, copy-to-clipboard |
-| Performance benchmarks | Central to Bun/Deno pitch (10x faster) | N/A | Not applicable to kinder; kinder's value is DX, not speed |
-| Addon/feature grid | Feature cards | Bullet list in README-style | Visual card grid on landing page |
-| Dark mode | Yes | No (light only) | Yes, dark default |
-| Animated terminal / asciinema | Bun has code tabs; Deno has terminal-style output | No | Target: CSS-animated terminal block in landing page hero |
-| Documentation search | Yes (Bun uses Algolia; Deno has built-in search) | No search | Starlight Pagefind (built-in, no API key) |
-| Sidebar navigation in docs | Yes | Yes | Yes (Starlight auto-generates from file structure) |
-| Separate quickstart vs full docs | Yes (both) | Quick Start is one page | Yes, short quickstart + full reference separate |
-| Before/after comparison | Deno does this (Deno vs Node) | No | Yes (kinder vs kind) |
-| GitHub stars displayed | Bun: displayed prominently | No | Optional; add after star count is worth showing |
+The official kind local registry guide (https://kind.sigs.k8s.io/docs/user/local-registry/) establishes the pattern. The addon must:
+
+1. Create a `registry:2` container (e.g., named `kinder-registry`) on the host
+2. Connect it to the kind docker/podman/nerdctl network
+3. Patch containerd config on every node to enable `config_path = "/etc/containerd/certs.d"`
+4. Create `/etc/containerd/certs.d/localhost:5001/hosts.toml` on each node:
+   ```
+   [host."http://kinder-registry:5000"]
+   ```
+5. Apply the discovery ConfigMap to `kube-public` namespace:
+   ```yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: local-registry-hosting
+     namespace: kube-public
+   data:
+     localRegistryHosting.v1: |
+       host: "localhost:5001"
+       help: "https://kinder.patrykgolabek.dev/docs/addons/local-registry"
+   ```
+
+Port mapping: host `localhost:5001` → registry container `5000`. Image push command: `docker push localhost:5001/myapp:tag`.
+
+**Provider difference:** The registry container itself needs to be created using the same container runtime as the cluster nodes. The `Binary()` method (already present on nerdctl provider, absent from docker/podman) must be uniformly available post-deduplication.
+
+### cert-manager Addon — Key Technical Details
+
+Standard installation via `kubectl apply -f cert-manager.yaml` using go:embed. Current stable: v1.17.x (check releases for exact pin). The addon must:
+
+1. Apply the single-file cert-manager manifest (all CRDs + namespace + controllers)
+2. Wait for the cert-manager webhook deployment to be ready (webhook not ready = certificate requests fail silently)
+3. Apply a `ClusterIssuer` for self-signed usage:
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: ClusterIssuer
+   metadata:
+     name: selfsigned
+   spec:
+     selfSigned: {}
+   ```
+
+The webhook readiness wait is the critical step — cert-manager is known for failing silently if you create a `Certificate` resource before the webhook pod is ready. Wait pattern: same as existing addons (check deployment rollout).
+
+### Provider Deduplication — Key Technical Details
+
+From direct code analysis, docker and nerdctl `provider.go` files are structurally identical except:
+- nerdctl passes `binaryName string` through all functions (where docker hardcodes `"docker"`)
+- podman has a different JSON port parsing path for its API versioning history
+- `dockerInfo` struct is duplicated verbatim in both docker and nerdctl
+
+The `info()` function, `dockerInfo` struct, `CollectLogs()`, `ListClusters()`, `ListNodes()`, `DeleteNodes()`, `GetAPIServerEndpoint()`, and `GetAPIServerInternalEndpoint()` are all near-identical across the three providers.
+
+The `common/` package already exists (`pkg/cluster/internal/providers/common/`). The refactoring strategy is: extract all binary-agnostic shared logic to `common/`, pass `binaryName string` as a parameter. Podman's unique path-parsing logic stays in `podman/`.
+
+### `kinder env` Command — Key Technical Details
+
+Placement: `pkg/cmd/kind/env/env.go` (new directory following existing command pattern).
+
+Data sources:
+- Provider: from `cluster.DetectNodeProvider()` or stored in cluster
+- Node image: from cluster node containers (inspect labels)
+- Config path: from `--config` flag or default `~/.kinder/config.yaml`
+- Addon state: from the config that was used to create the cluster
+
+Output format: structured key-value for easy grepping; optional `--json` for scripting.
+
+### `kinder doctor` Command — Key Technical Details
+
+Placement: `pkg/cmd/kind/doctor/doctor.go` (new directory).
+
+Checks to implement (ordered by severity):
+1. Container runtime binary found in PATH
+2. Container runtime daemon is running (`docker info`, `podman info`, `nerdctl info`)
+3. Minimum memory available (warn at < 4GB, error at < 2GB)
+4. Minimum disk space available (warn at < 10GB free)
+5. `kubectl` binary found in PATH (warn, not error — kinder bundles its own kubectl calls)
+6. Existing cluster name conflict check (if `--name` flag provided)
+
+Exit codes: 0 = all checks passed, 1 = any check failed, 2 = any check warns (if distinguishing warnings from errors).
 
 ---
 
 ## Sources
 
-- [Evil Martians: We studied 100 dev tool landing pages](https://evilmartians.com/chronicles/we-studied-100-devtool-landing-pages-here-is-what-actually-works-in-2025) — MEDIUM confidence (paywalled content partially accessible)
-- [Bun landing page](https://bun.com) — HIGH confidence (direct analysis)
-- [Deno landing page](https://deno.com) — HIGH confidence (direct analysis; includes install command, benchmarks, feature sections, CTAs)
-- [Astro landing page](https://astro.build) — HIGH confidence (direct analysis; Islands architecture showcase, framework integration grid, social proof)
-- [kind website](https://kind.sigs.k8s.io/) — HIGH confidence (direct analysis; baseline comparison — plain Hugo, no visual hierarchy, no dark mode)
-- [Headlamp landing page](https://headlamp.dev) — HIGH confidence (direct analysis; multi-platform install commands, feature cards, no screenshots — notable gap)
-- [k9s website](https://k9scli.io) — HIGH confidence (direct analysis; terminal preview/asciinema, feature list, sponsorship CTA)
-- [DevSpace landing page](https://devspace.sh) — HIGH confidence (direct analysis; Kubernetes dev tool, 5-reason feature showcase, CLI command examples)
-- [Astro Starlight documentation](https://starlight.astro.build) — HIGH confidence (official; lists all built-in features: search, nav, dark mode, code blocks, SEO, i18n)
-- [Astro GitHub Pages deployment guide](https://docs.astro.build/en/guides/deploy/github/) — HIGH confidence (official Astro docs; CNAME, workflow, astro.config.mjs settings)
-- [Starlight vs Docusaurus comparison](https://blog.logrocket.com/starlight-vs-docusaurus-building-documentation/) — MEDIUM confidence (community blog, verified against Starlight docs)
-- [Astro in 2026](https://sitepins.com/blog/astro-sitepins-2026) — LOW confidence (community blog, used only for Cloudflare acquisition context)
+- [kind Local Registry Guide](https://kind.sigs.k8s.io/docs/user/local-registry/) — HIGH confidence (official docs; defines the canonical pattern kinder should automate)
+- [cert-manager Installation via kubectl](https://cert-manager.io/docs/installation/kubectl/) — HIGH confidence (official cert-manager docs)
+- [cert-manager SelfSigned Issuer Configuration](https://cert-manager.io/docs/configuration/selfsigned/) — HIGH confidence (official docs)
+- [cert-manager GitHub Releases](https://github.com/cert-manager/cert-manager/releases) — HIGH confidence (for version pinning)
+- [Docker Distribution (registry:2) Pull-Through Cache](https://distribution.github.io/distribution/recipes/mirror/) — HIGH confidence (official CNCF distribution docs)
+- [MicroK8s cert-manager addon](https://microk8s.io/docs/addon-cert-manager) — MEDIUM confidence (precedent for cert-manager as a batteries-included addon)
+- Kinder codebase direct analysis (`pkg/cluster/internal/providers/*/provider.go`, `provision.go`, `network.go`) — HIGH confidence (first-party source)
+- Kinder `.planning/PROJECT.md` and `.planning/codebase/` docs — HIGH confidence (project documentation)
 
 ---
-*Feature research for: kinder website (v1.1 milestone)*
-*Researched: 2026-03-01*
+
+*Feature research for: kinder v1.3 Harden & Extend milestone*
+*Researched: 2026-03-03*
