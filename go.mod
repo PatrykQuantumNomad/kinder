@@ -8,7 +8,9 @@ module sigs.k8s.io/kind
 // See ./.go-version for the go compiler version used when building binaries
 //
 // https://go.dev/doc/modules/gomod-ref#go
-go 1.17
+go 1.21.0
+
+toolchain go1.26.0
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1

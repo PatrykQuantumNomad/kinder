@@ -228,8 +228,9 @@ func (p *provider) GetAPIServerInternalEndpoint(cluster string) (string, error) 
 
 // node returns a new node handle for this provider
 func (p *provider) node(name string) nodes.Node {
-	return &node{
-		name: name,
+	return &common.Node{
+		Name:       name,
+		BinaryName: "docker",
 	}
 }
 
