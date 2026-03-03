@@ -47,7 +47,16 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(No active requirements — next milestone not yet defined)
+## Current Milestone: v1.4 Code Quality & Features
+
+**Goal:** Clean up remaining code quality issues, improve architecture, add unit tests for addon actions, and deliver new developer-facing features — based on remaining CODEBASE_REVIEW.md items plus a fresh broad codebase sweep.
+
+**Target features:**
+- Finish remaining code quality items (layer violations, go.mod, error naming, permissions, etc.)
+- Architecture improvements (addon registry, version package, context.Context)
+- Unit tests for addon actions
+- New features (parallel addon install, structured JSON output, cluster presets)
+- Fresh codebase analysis findings
 
 ### Out of Scope
 
@@ -122,4 +131,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Provider.Name() via fmt.Stringer | Type assertion instead of new interface method; zero-impact on existing code | ✓ Good |
 
 ---
-*Last updated: 2026-03-03 after v1.3 milestone*
+*Last updated: 2026-03-03 after v1.4 milestone started*

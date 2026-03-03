@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Planning next milestone
+**Current focus:** v1.4 Code Quality & Features
 
 ## Current Position
 
-Phase: 24 of 24 (all phases complete)
-Plan: N/A
-Status: v1.3 milestone shipped — ready for next milestone
-Last activity: 2026-03-03 — v1.3 Harden & Extend milestone complete
-
-Progress: [██████████] 100% (v1.3 complete — 4 milestones shipped)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-03 — Milestone v1.4 started
 
 ## Performance Metrics
 
@@ -43,5 +41,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: v1.3 milestone archived and tagged
+Stopped at: v1.4 milestone started, defining requirements
 Resume file: None
