@@ -117,6 +117,11 @@ func TestLoadCurrent(t *testing.T) {
 			Path:        "./testdata/v1alpha4/valid-addons-absent.yaml",
 			ExpectError: false,
 		},
+		{
+			TestName:    "v1alpha4 config with new addon fields disabled",
+			Path:        "./testdata/v1alpha4/valid-addons-new-fields.yaml",
+			ExpectError: false,
+		},
 	}
 	for _, c := range cases {
 		c := c // capture loop variable
@@ -162,6 +167,12 @@ func TestAddonsDefaults(t *testing.T) {
 	if !cfg.Addons.Dashboard {
 		t.Error("expected Dashboard to default to true when addons section absent")
 	}
+	if !cfg.Addons.LocalRegistry {
+		t.Error("expected LocalRegistry to default to true when addons section absent")
+	}
+	if !cfg.Addons.CertManager {
+		t.Error("expected CertManager to default to true when addons section absent")
+	}
 
 	// Test 2: Some addons disabled — explicit false should be respected
 	cfg2, err := Load("./testdata/v1alpha4/valid-addons-some-disabled.yaml")
@@ -191,5 +202,17 @@ func TestAddonsDefaults(t *testing.T) {
 	}
 	if !cfg3.Addons.MetalLB || !cfg3.Addons.EnvoyGateway || !cfg3.Addons.MetricsServer || !cfg3.Addons.CoreDNSTuning || !cfg3.Addons.Dashboard {
 		t.Error("expected all addons to be true when explicitly set to true")
+	}
+
+	// Test 4: New addon fields can be set to false
+	cfg4, err := Load("./testdata/v1alpha4/valid-addons-new-fields.yaml")
+	if err != nil {
+		t.Fatalf("failed to load config with new addon fields disabled: %v", err)
+	}
+	if cfg4.Addons.LocalRegistry {
+		t.Error("expected LocalRegistry to be false when explicitly set to false")
+	}
+	if cfg4.Addons.CertManager {
+		t.Error("expected CertManager to be false when explicitly set to false")
 	}
 }

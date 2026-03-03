@@ -53,6 +53,8 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 		MetricsServer: boolVal(in.Addons.MetricsServer),
 		CoreDNSTuning: boolVal(in.Addons.CoreDNSTuning),
 		Dashboard:     boolVal(in.Addons.Dashboard),
+		LocalRegistry: boolVal(in.Addons.LocalRegistry),
+		CertManager:   boolVal(in.Addons.CertManager),
 	}
 
 	for i := range in.KubeadmConfigPatchesJSON6902 {
