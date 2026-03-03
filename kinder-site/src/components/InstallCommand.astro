@@ -1,24 +1,51 @@
 ---
-const command = `curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/') && chmod +x kinder && sudo mv kinder /usr/local/bin/`;
+const base = "https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder";
 ---
 
 <div class="install-command not-content">
-  <code class="command-text"><Fragment set:text={command} /></code>
+  <code class="command-text"></code>
   <button class="copy-btn">Copy</button>
 </div>
 
-<script define:vars={{ command }}>
-  const btn = document.querySelector(".copy-btn");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      navigator.clipboard.writeText(command).then(() => {
-        btn.textContent = "Copied!";
-        setTimeout(() => {
-          btn.textContent = "Copy";
-        }, 2000);
-      });
-    });
+<script define:vars={{ base }}>
+  async function detectBinary() {
+    const ua = navigator.userAgent.toLowerCase();
+    let os = "linux";
+    if (ua.includes("mac")) os = "darwin";
+    else if (ua.includes("win")) os = "windows";
+
+    let arch = "amd64";
+    if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+      try {
+        const hints = await navigator.userAgentData.getHighEntropyValues(["architecture"]);
+        if (hints.architecture === "arm") arch = "arm64";
+      } catch {}
+    } else if (ua.includes("arm64") || ua.includes("aarch64")) {
+      arch = "arm64";
+    }
+
+    return `${base}-${os}-${arch}`;
   }
+
+  async function init() {
+    const url = await detectBinary();
+    const command = `curl -Lo kinder ${url} && chmod +x kinder && sudo mv kinder /usr/local/bin/`;
+
+    const code = document.querySelector(".command-text");
+    if (code) code.textContent = command;
+
+    const btn = document.querySelector(".copy-btn");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(command).then(() => {
+          btn.textContent = "Copied!";
+          setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+        });
+      });
+    }
+  }
+
+  init();
 </script>
 
 <style>
