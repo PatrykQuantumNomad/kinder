@@ -11,7 +11,7 @@ Requirements for v1.4 Code Quality & Features milestone. Each maps to roadmap ph
 
 - [x] **FOUND-01**: go.mod minimum bumped from 1.17/1.21 to 1.23 (settled at 1.24.0 due to toolchain go1.26)
 - [x] **FOUND-02**: golang.org/x/sys updated from v0.6.0 to v0.41.0
-- [ ] **FOUND-03**: golangci-lint upgraded from v1.62.2 to v2.10.1 with migrated config
+- [x] **FOUND-03**: golangci-lint upgraded from v1.62.2 to v2.10.1 with migrated config
 - [x] **FOUND-04**: Version package moved from pkg/cmd/kind/version to pkg/internal/kindversion (layer violation fixed)
 - [x] **FOUND-05**: rand.NewSource comment-gated dead code cleaned up after 1.23 bump
 - [ ] **FOUND-06**: SHA-1 replaced with SHA-256 for subnet generation in all providers
@@ -87,7 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | FOUND-01 | Phase 25 | Complete |
 | FOUND-02 | Phase 25 | Complete |
-| FOUND-03 | Phase 25 | Pending |
+| FOUND-03 | Phase 25 | Complete (25-02) |
 | FOUND-04 | Phase 25 | Complete (25-03) |
 | FOUND-05 | Phase 25 | Complete |
 | FOUND-06 | Phase 25 | Pending |

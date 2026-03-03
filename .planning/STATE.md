@@ -39,6 +39,9 @@ Progress: [████████░░░░░░░░░░░░] 40% (v1
 - [Phase 25 Plan 01]: go directive settled at 1.24.0 (toolchain go1.26 enforces minimum; go 1.23 reverts on every tidy)
 - [Phase 25 Plan 01]: rand.Int31() used in buildcontext.go (math/rand v1 has no Int32; v2 not yet adopted)
 - [Phase 25 Plan 03]: pkg/internal/kindversion/ is the canonical location for all CLI version constants; Makefile linker -X flags and hack/release/create.sh VERSION_FILE both updated to this path
+- [Phase 25 Plan 02]: golangci-lint v2 typecheck is always-active; remove from linters.enable or get fatal config error
+- [Phase 25 Plan 02]: errcheck for deferred Close calls suppressed with //nolint:errcheck (cannot meaningfully handle in defer context)
+- [Phase 25 Plan 02]: var-naming exclusions added for established package names (common, errors, log, version) to avoid mass rename refactor
 
 ### Pending Todos
 
@@ -53,5 +56,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 25 Plan 03 complete; ready for Phase 25 Plan 04
+Stopped at: Phase 25 Plans 02 and 03 complete (parallel wave); ready for Phase 25 Plan 04
 Resume file: None

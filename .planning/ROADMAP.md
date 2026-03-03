@@ -69,7 +69,7 @@ Phases 19-24: Bug Fixes, Provider Code Deduplication, Config Type Additions, Loc
 **Plans:** 4 plans
 Plans:
 - [x] 25-01-PLAN.md — Go ecosystem updates (go.mod 1.24.0, x/sys v0.41.0, dead rand code)
-- [ ] 25-02-PLAN.md — golangci-lint v1 to v2 migration
+- [x] 25-02-PLAN.md — golangci-lint v1 to v2 migration
 - [x] 25-03-PLAN.md — Layer violation fix (version package move to internal)
 - [ ] 25-04-PLAN.md — Code quality fixes (SHA-256, permissions, log level, naming, test helper)
 
