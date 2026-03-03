@@ -112,4 +112,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 after v1.3 milestone definition*
+*Last updated: 2026-03-03 — traceability confirmed against phases 19-24*
