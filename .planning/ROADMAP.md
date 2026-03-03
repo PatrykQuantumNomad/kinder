@@ -83,7 +83,9 @@ Plans:
   1. v1alpha4 Addons struct has LocalRegistry *bool and CertManager *bool fields, both defaulting to true when nil
   2. Internal config types, conversion, and defaults all reflect the new fields — the five-location pipeline is complete
   3. A cluster config with addons.localRegistry: false and addons.certManager: false parses and validates without error
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 21-01-PLAN.md — Add LocalRegistry and CertManager fields to all five config pipeline locations with test coverage
 
 ### Phase 22: Local Registry Addon
 **Goal**: Users get a working local container registry at localhost:5001 by default, accessible from all cluster nodes, with dev tool discovery support — all without any manual setup
@@ -128,7 +130,7 @@ Plans:
 | 15-18. Branding & Polish | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19. Bug Fixes | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 20. Provider Code Deduplication | v1.3 | 2/2 | Complete | 2026-03-03 |
-| 21. Config Type Additions | v1.3 | 0/TBD | Not started | - |
+| 21. Config Type Additions | v1.3 | 0/1 | Not started | - |
 | 22. Local Registry Addon | v1.3 | 0/TBD | Not started | - |
 | 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |
 | 24. CLI Commands | v1.3 | 0/TBD | Not started | - |
