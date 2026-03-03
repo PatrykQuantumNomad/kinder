@@ -85,41 +85,41 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| FOUND-04 | — | Pending |
-| FOUND-05 | — | Pending |
-| FOUND-06 | — | Pending |
-| FOUND-07 | — | Pending |
-| FOUND-08 | — | Pending |
-| FOUND-09 | — | Pending |
-| FOUND-10 | — | Pending |
-| ARCH-01 | — | Pending |
-| ARCH-02 | — | Pending |
-| ARCH-03 | — | Pending |
-| ARCH-04 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| TEST-04 | — | Pending |
-| TEST-05 | — | Pending |
-| TEST-06 | — | Pending |
-| PARA-01 | — | Pending |
-| PARA-02 | — | Pending |
-| PARA-03 | — | Pending |
-| PARA-04 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
-| CLI-04 | — | Pending |
-| CLI-05 | — | Pending |
+| FOUND-01 | Phase 25 | Pending |
+| FOUND-02 | Phase 25 | Pending |
+| FOUND-03 | Phase 25 | Pending |
+| FOUND-04 | Phase 25 | Pending |
+| FOUND-05 | Phase 25 | Pending |
+| FOUND-06 | Phase 25 | Pending |
+| FOUND-07 | Phase 25 | Pending |
+| FOUND-08 | Phase 25 | Pending |
+| FOUND-09 | Phase 25 | Pending |
+| FOUND-10 | Phase 25 | Pending |
+| ARCH-01 | Phase 26 | Pending |
+| ARCH-02 | Phase 26 | Pending |
+| ARCH-03 | Phase 26 | Pending |
+| ARCH-04 | Phase 26 | Pending |
+| TEST-01 | Phase 27 | Pending |
+| TEST-02 | Phase 27 | Pending |
+| TEST-03 | Phase 27 | Pending |
+| TEST-04 | Phase 27 | Pending |
+| TEST-05 | Phase 27 | Pending |
+| TEST-06 | Phase 27 | Pending |
+| PARA-01 | Phase 28 | Pending |
+| PARA-02 | Phase 28 | Pending |
+| PARA-03 | Phase 28 | Pending |
+| PARA-04 | Phase 28 | Pending |
+| CLI-01 | Phase 29 | Pending |
+| CLI-02 | Phase 29 | Pending |
+| CLI-03 | Phase 29 | Pending |
+| CLI-04 | Phase 29 | Pending |
+| CLI-05 | Phase 29 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 29 total
-- Mapped to phases: 0
-- Unmapped: 29 ⚠️
+- Mapped to phases: 29
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 after initial definition*
+*Last updated: 2026-03-03 after roadmap creation (phases 25-29 mapped)*
