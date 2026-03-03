@@ -22,9 +22,9 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 ### Config
 
-- [ ] **CFG-01**: Add LocalRegistry *bool to v1alpha4 Addons struct with default true
-- [ ] **CFG-02**: Add CertManager *bool to v1alpha4 Addons struct with default true
-- [ ] **CFG-03**: Wire both fields through internal config types, conversion, and defaults (5 locations)
+- [x] **CFG-01**: Add LocalRegistry *bool to v1alpha4 Addons struct with default true
+- [x] **CFG-02**: Add CertManager *bool to v1alpha4 Addons struct with default true
+- [x] **CFG-03**: Wire both fields through internal config types, conversion, and defaults (5 locations)
 
 ### Local Registry
 
@@ -89,9 +89,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | PROV-01 | Phase 20 | Complete |
 | PROV-02 | Phase 20 | Complete |
 | PROV-03 | Phase 20 | Complete |
-| CFG-01 | Phase 21 | Pending |
-| CFG-02 | Phase 21 | Pending |
-| CFG-03 | Phase 21 | Pending |
+| CFG-01 | Phase 21 | Complete |
+| CFG-02 | Phase 21 | Complete |
+| CFG-03 | Phase 21 | Complete |
 | REG-01 | Phase 22 | Pending |
 | REG-02 | Phase 22 | Pending |
 | REG-03 | Phase 22 | Pending |
@@ -112,4 +112,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 — Phase 20 Plan 02 complete: PROV-02 done; Phase 20 fully complete*
+*Last updated: 2026-03-03 — Phase 21 Plan 01 complete: CFG-01, CFG-02, CFG-03 done; Phase 21 fully complete*
