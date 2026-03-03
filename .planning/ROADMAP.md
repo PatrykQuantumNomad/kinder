@@ -70,7 +70,10 @@ Plans:
   2. common/provision.go exists with shared generateMountBindings, generatePortMappings, and createContainer; docker/provision.go and nerdctl/provision.go are deleted
   3. go.mod minimum directive is go 1.21.0 with toolchain go1.26.0 and the build passes with no new external dependencies
   4. go build ./... and go test ./... both pass identically before and after extraction — no behavior change across any provider
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 20-01-PLAN.md — Extract shared Node struct to common/node.go and update go.mod
+- [ ] 20-02-PLAN.md — Extract shared provision helpers to common/provision.go and restructure providers
 
 ### Phase 21: Config Type Additions
 **Goal**: LocalRegistry and CertManager addon fields exist in the public v1alpha4 API and are wired through all five config pipeline locations so action packages can reference them at compile time
@@ -124,7 +127,7 @@ Plans:
 | 9-14. Kinder Website | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. Branding & Polish | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19. Bug Fixes | v1.3 | 2/2 | Complete | 2026-03-03 |
-| 20. Provider Code Deduplication | v1.3 | 0/TBD | Not started | - |
+| 20. Provider Code Deduplication | v1.3 | 0/2 | Not started | - |
 | 21. Config Type Additions | v1.3 | 0/TBD | Not started | - |
 | 22. Local Registry Addon | v1.3 | 0/TBD | Not started | - |
 | 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |
