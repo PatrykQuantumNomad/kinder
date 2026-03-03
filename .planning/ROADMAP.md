@@ -41,8 +41,8 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
 - [x] **Phase 19: Bug Fixes** - Fix four correctness bugs across all providers before any new work
 - [x] **Phase 20: Provider Code Deduplication** - Extract shared docker/podman/nerdctl code to common/ package
 - [x] **Phase 21: Config Type Additions** - Add LocalRegistry and CertManager fields to v1alpha4 and wire through config pipeline
-- [ ] **Phase 22: Local Registry Addon** - Batteries-included local registry at localhost:5001 on the kind network
-- [ ] **Phase 23: cert-manager Addon** - Embedded cert-manager with self-signed ClusterIssuer ready immediately
+- [x] **Phase 22: Local Registry Addon** - Batteries-included local registry at localhost:5001 on the kind network
+- [x] **Phase 23: cert-manager Addon** - Embedded cert-manager with self-signed ClusterIssuer ready immediately
 - [ ] **Phase 24: CLI Commands** - kinder env and kinder doctor diagnostic commands
 
 ## Phase Details
@@ -110,7 +110,7 @@ Plans:
   3. Setting addons.certManager: false in cluster config skips cert-manager installation entirely — cluster creation is not delayed by webhook readiness waits
 **Plans:** 1 plan
 Plans:
-- [ ] 23-01-PLAN.md — Implement installcertmanager action package and wire into create.go
+- [x] 23-01-PLAN.md — Implement installcertmanager action package and wire into create.go
 
 ### Phase 24: CLI Commands
 **Goal**: Users have two diagnostic commands — kinder env for machine-readable cluster environment info and kinder doctor for prerequisite checking — both following the existing Cobra command patterns
@@ -136,7 +136,7 @@ Plans:
 | 20. Provider Code Deduplication | v1.3 | 2/2 | Complete | 2026-03-03 |
 | 21. Config Type Additions | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 22. Local Registry Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
-| 23. cert-manager Addon | v1.3 | 0/1 | Planned | - |
+| 23. cert-manager Addon | v1.3 | 1/1 | Complete | 2026-03-03 |
 | 24. CLI Commands | v1.3 | 0/TBD | Not started | - |
 
 ---

@@ -35,10 +35,10 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 ### cert-manager
 
-- [ ] **CERT-01**: Embed and apply cert-manager v1.17.6 manifest via go:embed
-- [ ] **CERT-02**: Wait for all 3 components (controller, webhook, cainjector) to reach Available status
-- [ ] **CERT-03**: Bootstrap self-signed ClusterIssuer so Certificate resources work immediately
-- [ ] **CERT-04**: Addon enabled by default, disableable via addons.certManager: false
+- [x] **CERT-01**: Embed and apply cert-manager v1.17.6 manifest via go:embed
+- [x] **CERT-02**: Wait for all 3 components (controller, webhook, cainjector) to reach Available status
+- [x] **CERT-03**: Bootstrap self-signed ClusterIssuer so Certificate resources work immediately
+- [x] **CERT-04**: Addon enabled by default, disableable via addons.certManager: false
 
 ### CLI Commands
 
@@ -96,10 +96,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | REG-02 | Phase 22 | Complete |
 | REG-03 | Phase 22 | Complete |
 | REG-04 | Phase 22 | Complete |
-| CERT-01 | Phase 23 | Pending |
-| CERT-02 | Phase 23 | Pending |
-| CERT-03 | Phase 23 | Pending |
-| CERT-04 | Phase 23 | Pending |
+| CERT-01 | Phase 23 | Complete |
+| CERT-02 | Phase 23 | Complete |
+| CERT-03 | Phase 23 | Complete |
+| CERT-04 | Phase 23 | Complete |
 | CLI-01 | Phase 24 | Pending |
 | CLI-02 | Phase 24 | Pending |
 | CLI-03 | Phase 24 | Pending |

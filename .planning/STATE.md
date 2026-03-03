@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 22 of 24 (Local Registry Addon)
+Phase: 23 of 24 (cert-manager Addon)
 Plan: 1 of 1 in current phase (phase complete)
-Status: Phase 22 complete
-Last activity: 2026-03-03 — Phase 22 Plan 01 complete (local registry action + create.go wiring)
+Status: Phase 23 complete
+Last activity: 2026-03-03 — Phase 23 Plan 01 complete (cert-manager addon: installcertmanager action + create.go wiring)
 
-Progress: [█████░░░░░] 33% (v1.3 — 4/6 phases complete, phase 22 1/1 done)
+Progress: [██████░░░░] 40% (v1.3 — 5/6 phases complete, phase 23 1/1 done)
 
 ## Performance Metrics
 
@@ -28,6 +28,7 @@ Progress: [█████░░░░░] 33% (v1.3 — 4/6 phases complete, ph
 **Phase 20, Plan 02:** 2 tasks, 6 created + 4 deleted, ~15 min, 2026-03-03
 **Phase 21, Plan 01:** 2 tasks, 5 modified + 1 created, ~10 min, 2026-03-03
 **Phase 22, Plan 01:** 2 tasks, 2 created + 1 modified, ~2 min, 2026-03-03
+**Phase 23, Plan 01:** 2 tasks, 2 created + 1 modified, ~10 min, 2026-03-03
 
 ## Accumulated Context
 
@@ -43,6 +44,7 @@ Progress: [█████░░░░░] 33% (v1.3 — 4/6 phases complete, ph
 - v1.3 Phase 20-02: CreateContainer takes binaryName as first parameter to support both docker and nerdctl from a single common function; podman keeps its own generatePortMappings (lowercase protocol, :0 strip); docker and nerdctl provision.go deleted in favour of create.go files calling common helpers
 - v1.3 Phase 21-01: LocalRegistry and CertManager both default to true (on-by-default opt-out, consistent with existing addon pattern); plain bool in internal types, *bool in v1alpha4 public API (matching MetalLB/Dashboard pattern)
 - v1.3 Phase 22-01: registry:2 (not :3); ContainerdConfigPatches injected in create.go before p.Provision() (cannot be done post-provisioning); ALL nodes patched with hosts.toml (not just control-plane); Podman rootless warn-and-continue; idempotent container ops via inspect-before-create/connect
+- v1.3 Phase 23-01: cert-manager v1.16.3 (v1.17.6 not yet released); --server-side apply required for 986KB manifest; webhook readiness gate — wait for all 3 deployments (300s) before applying ClusterIssuer to prevent "no endpoints available" errors
 
 ### Pending Todos
 
@@ -50,10 +52,10 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 23 (cert-manager): Confirm true/false default before phase begins — research recommends false (opt-in) to keep cluster creation fast; this is a product decision
+None.
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 22 Plan 01 complete — local registry addon phase done
+Stopped at: Phase 23 Plan 01 complete — cert-manager addon phase done
 Resume file: None
