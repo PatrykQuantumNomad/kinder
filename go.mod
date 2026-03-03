@@ -8,7 +8,7 @@ module sigs.k8s.io/kind
 // See ./.go-version for the go compiler version used when building binaries
 //
 // https://go.dev/doc/modules/gomod-ref#go
-go 1.21.0
+go 1.24.0
 
 toolchain go1.26.0
 
@@ -34,5 +34,5 @@ require (
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 )
