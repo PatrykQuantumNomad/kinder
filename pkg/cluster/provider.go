@@ -228,7 +228,7 @@ func (p *Provider) ListNodes(name string) ([]nodes.Node, error) {
 // ListInternalNodes returns the list of container IDs for the "nodes" in the cluster
 // that are not external
 func (p *Provider) ListInternalNodes(name string) ([]nodes.Node, error) {
-	n, err := p.provider.ListNodes(name)
+	n, err := p.provider.ListNodes(defaultName(name))
 	if err != nil {
 		return nil, err
 	}
