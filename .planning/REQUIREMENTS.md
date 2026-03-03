@@ -9,8 +9,8 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 ### Bug Fixes
 
-- [ ] **BUG-01**: Fix defer-in-loop port leak in generatePortMappings across all 3 providers
-- [ ] **BUG-02**: Fix tar extraction silent data loss on truncated files (return error instead of break)
+- [x] **BUG-01**: Fix defer-in-loop port leak in generatePortMappings across all 3 providers
+- [x] **BUG-02**: Fix tar extraction silent data loss on truncated files (return error instead of break)
 - [ ] **BUG-03**: Fix ListInternalNodes missing defaultName() call for consistent cluster name resolution
 - [ ] **BUG-04**: Fix network sort comparator to use strict weak ordering
 
@@ -82,8 +82,8 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BUG-01 | Phase 19 | Pending |
-| BUG-02 | Phase 19 | Pending |
+| BUG-01 | Phase 19 | Complete |
+| BUG-02 | Phase 19 | Complete |
 | BUG-03 | Phase 19 | Pending |
 | BUG-04 | Phase 19 | Pending |
 | PROV-01 | Phase 20 | Pending |

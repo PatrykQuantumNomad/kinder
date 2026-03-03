@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 19 of 24 (Bug Fixes)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-03 — v1.3 roadmap created (phases 19-24)
+Plan: 1 of TBD in current phase
+Status: In progress
+Last activity: 2026-03-03 — Completed plan 01 (BUG-01, BUG-02 fixes)
 
-Progress: [░░░░░░░░░░] 0% (v1.3)
+Progress: [█░░░░░░░░░] ~4% (v1.3)
 
 ## Performance Metrics
 
@@ -22,7 +22,7 @@ Progress: [░░░░░░░░░░] 0% (v1.3)
 **Velocity (v1.1):** 8 plans, 6 phases, 2 days
 **Velocity (v1.2):** 4 phases, 1 day
 
-*v1.3 metrics pending first plan completion*
+**Phase 19, Plan 01:** 2 tasks, 8 files modified, ~25 min, 2026-03-03
 
 ## Accumulated Context
 
@@ -32,6 +32,7 @@ Progress: [░░░░░░░░░░] 0% (v1.3)
 - v1.1: Astro + Starlight, kinder-site/ dir, dark-only mode, npm for CI
 - v1.2: Kinder logo from modified kind robot, favicon.ico over SVG, llms.txt for GEO
 - v1.3: Extract shared provider code to common/, local registry as addon, cert-manager alongside Envoy Gateway
+- v1.3 Phase 19-01: Release port listeners immediately in generatePortMappings loops (not deferred); return truncation error from extractTarball instead of silent break
 
 ### Pending Todos
 
@@ -46,5 +47,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: v1.3 roadmap written, ready to plan Phase 19
+Stopped at: Completed 19-01-PLAN.md (BUG-01 port leak, BUG-02 tar truncation)
 Resume file: None

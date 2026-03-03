@@ -58,7 +58,7 @@ Phases 15-18 delivered kinder logo (SVG/PNG/favicon/OG), SEO (llms.txt, JSON-LD,
   4. Network sort comparator satisfies strict weak ordering — identical networks compare equal, sort is deterministic
 **Plans:** 2 plans
 Plans:
-- [ ] 19-01-PLAN.md — Fix port leak (BUG-01) and tar truncation (BUG-02)
+- [x] 19-01-PLAN.md — Fix port leak (BUG-01) and tar truncation (BUG-02)
 - [ ] 19-02-PLAN.md — Fix empty cluster name (BUG-03) and network sort (BUG-04)
 
 ### Phase 20: Provider Code Deduplication
