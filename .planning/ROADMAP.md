@@ -72,7 +72,7 @@ Plans:
   4. go build ./... and go test ./... both pass identically before and after extraction — no behavior change across any provider
 **Plans:** 2 plans
 Plans:
-- [ ] 20-01-PLAN.md — Extract shared Node struct to common/node.go and update go.mod
+- [x] 20-01-PLAN.md — Extract shared Node struct to common/node.go and update go.mod
 - [ ] 20-02-PLAN.md — Extract shared provision helpers to common/provision.go and restructure providers
 
 ### Phase 21: Config Type Additions
@@ -127,7 +127,7 @@ Plans:
 | 9-14. Kinder Website | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. Branding & Polish | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19. Bug Fixes | v1.3 | 2/2 | Complete | 2026-03-03 |
-| 20. Provider Code Deduplication | v1.3 | 0/2 | Not started | - |
+| 20. Provider Code Deduplication | v1.3 | 1/2 | In progress | - |
 | 21. Config Type Additions | v1.3 | 0/TBD | Not started | - |
 | 22. Local Registry Addon | v1.3 | 0/TBD | Not started | - |
 | 23. cert-manager Addon | v1.3 | 0/TBD | Not started | - |

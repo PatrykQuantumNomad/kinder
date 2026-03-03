@@ -11,14 +11,14 @@ Requirements for v1.3 Harden & Extend milestone. Each maps to roadmap phases.
 
 - [x] **BUG-01**: Fix defer-in-loop port leak in generatePortMappings across all 3 providers
 - [x] **BUG-02**: Fix tar extraction silent data loss on truncated files (return error instead of break)
-- [ ] **BUG-03**: Fix ListInternalNodes missing defaultName() call for consistent cluster name resolution
-- [ ] **BUG-04**: Fix network sort comparator to use strict weak ordering
+- [x] **BUG-03**: Fix ListInternalNodes missing defaultName() call for consistent cluster name resolution
+- [x] **BUG-04**: Fix network sort comparator to use strict weak ordering
 
 ### Provider Refactor
 
-- [ ] **PROV-01**: Extract shared node.go to common/ package with binaryName parameter
+- [x] **PROV-01**: Extract shared node.go to common/ package with binaryName parameter
 - [ ] **PROV-02**: Extract shared provision.go functions (generateMountBindings, generatePortMappings, createContainer) to common/
-- [ ] **PROV-03**: Update go.mod minimum to go 1.21.0 with toolchain go1.26.0
+- [x] **PROV-03**: Update go.mod minimum to go 1.21.0 with toolchain go1.26.0
 
 ### Config
 
@@ -84,11 +84,11 @@ Deferred to future release. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | BUG-01 | Phase 19 | Complete |
 | BUG-02 | Phase 19 | Complete |
-| BUG-03 | Phase 19 | Pending |
-| BUG-04 | Phase 19 | Pending |
-| PROV-01 | Phase 20 | Pending |
+| BUG-03 | Phase 19 | Complete |
+| BUG-04 | Phase 19 | Complete |
+| PROV-01 | Phase 20 | Complete |
 | PROV-02 | Phase 20 | Pending |
-| PROV-03 | Phase 20 | Pending |
+| PROV-03 | Phase 20 | Complete |
 | CFG-01 | Phase 21 | Pending |
 | CFG-02 | Phase 21 | Pending |
 | CFG-03 | Phase 21 | Pending |
@@ -112,4 +112,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 — traceability confirmed against phases 19-24*
+*Last updated: 2026-03-03 — Phase 20 Plan 01 complete: PROV-01, PROV-03 done; BUG-03, BUG-04 marked complete*

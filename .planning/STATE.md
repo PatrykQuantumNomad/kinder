@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 20 of 24 (Provider Code Deduplication)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-03 — Phase 19 verified and complete (4/4 bugs fixed)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-03 — Phase 20 Plan 01 complete (provider node deduplication)
 
-Progress: [█░░░░░░░░░] 17% (v1.3 — 1/6 phases complete)
+Progress: [██░░░░░░░░] 21% (v1.3 — 1/6 phases complete, phase 20 plan 1/2 done)
 
 ## Performance Metrics
 
@@ -24,6 +24,7 @@ Progress: [█░░░░░░░░░] 17% (v1.3 — 1/6 phases complete)
 
 **Phase 19, Plan 01:** 2 tasks, 8 files modified, ~25 min, 2026-03-03
 **Phase 19, Plan 02:** 2 tasks, 4 files modified, ~4 min, 2026-03-03
+**Phase 20, Plan 01:** 2 tasks, 6 files modified + 3 deleted, ~15 min, 2026-03-03
 
 ## Accumulated Context
 
@@ -35,6 +36,7 @@ Progress: [█░░░░░░░░░] 17% (v1.3 — 1/6 phases complete)
 - v1.3: Extract shared provider code to common/, local registry as addon, cert-manager alongside Envoy Gateway
 - v1.3 Phase 19-01: Release port listeners immediately in generatePortMappings loops (not deferred); return truncation error from extractTarball instead of silent break
 - v1.3 Phase 19-02: All Provider methods accepting cluster name must wrap with defaultName(); sort.Slice primary/secondary key comparators must use != guard (not >-only) for strict weak ordering
+- v1.3 Phase 20-01: Use exported Node struct with BinaryName string field (not interface/callback) for provider dispatch; keep nodeCmd unexported; go.mod to go 1.21.0 with toolchain go1.26.0
 
 ### Pending Todos
 
@@ -42,12 +44,11 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 20 (Provider Deduplication): ProviderBehavior interface design (callback vs interface for port formatting/volume args) must be decided before writing any shared code — see SUMMARY.md Phase 2 research flag
 - Phase 22 (Local Registry): Verify --network kind + container name DNS resolution works in Podman rootless before committing to implementation — see SUMMARY.md Phase 4 research flag
 - Phase 23 (cert-manager): Confirm true/false default before phase begins — research recommends false (opt-in) to keep cluster creation fast; this is a product decision
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 19 complete — ready to plan Phase 20
+Stopped at: Phase 20 Plan 01 complete — provider node deduplication done, ready for Plan 02
 Resume file: None
