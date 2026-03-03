@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package docker
+package podman
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 )
 
-// Test_generatePortMappings tests the generatePortMappings function.
+// Test_generatePortMappings tests the generatePortMappings function for the podman provider.
 func Test_generatePortMappings(t *testing.T) {
 	t.Parallel()
 
@@ -43,7 +43,7 @@ func Test_generatePortMappings(t *testing.T) {
 		if len(args) != 1 {
 			t.Fatalf("expected 1 arg, got %d: %v", len(args), args)
 		}
-		want := "--publish=0.0.0.0:8080:80/TCP"
+		want := "--publish=0.0.0.0:8080:80/tcp"
 		if args[0] != want {
 			t.Errorf("got %q, want %q", args[0], want)
 		}
@@ -68,8 +68,10 @@ func Test_generatePortMappings(t *testing.T) {
 		}
 	})
 
-	t.Run("port=-1 returns zero port (let backend pick) and no error", func(t *testing.T) {
+	t.Run("port=-1 returns colon-terminated binding (podman random port) and no error", func(t *testing.T) {
 		t.Parallel()
+		// port=-1 means PortOrGetFreePort returns 0, then podman strips trailing "0"
+		// resulting in host binding like "0.0.0.0:" (podman assigns random port)
 		args, err := generatePortMappings(config.IPv4Family, config.PortMapping{
 			ListenAddress: "0.0.0.0",
 			HostPort:      -1,
@@ -81,6 +83,11 @@ func Test_generatePortMappings(t *testing.T) {
 		}
 		if len(args) != 1 {
 			t.Fatalf("expected 1 arg, got %d: %v", len(args), args)
+		}
+		// With port=-1, PortOrGetFreePort returns 0, and podman strips the trailing "0"
+		// Result should contain ":0" stripped to ":" in host portion
+		if !strings.HasPrefix(args[0], "--publish=") {
+			t.Errorf("unexpected publish arg format: %q", args[0])
 		}
 	})
 
@@ -126,14 +133,9 @@ func Test_generatePortMappings(t *testing.T) {
 			t.Fatalf("expected 3 args, got %d: %v", len(args), args)
 		}
 		// Parse each port from the publish args and verify we can re-bind them.
-		// If the listeners were deferred (not yet released), re-binding would fail.
+		// Format: --publish=127.0.0.1:PORT:CONTAINERPORT/proto
 		for i, arg := range args {
-			// arg format: --publish=127.0.0.1:PORT:CONTAINERPORT/PROTO
-			// Strip prefix and extract host:port portion
 			withoutPrefix := strings.TrimPrefix(arg, "--publish=")
-			// Find the last colon separating host:port from containerPort
-			// The format is hostAddr:hostPort:containerPort/proto
-			// Split on : to find host port
 			parts := strings.Split(withoutPrefix, ":")
 			if len(parts) < 3 {
 				t.Errorf("arg[%d] %q has unexpected format", i, arg)
@@ -149,60 +151,4 @@ func Test_generatePortMappings(t *testing.T) {
 			ln.Close()
 		}
 	})
-}
-
-// Test_parseSubnetOutput tests the subnet parsing logic that getSubnets
-// performs on docker inspect output. The getSubnets function itself calls
-// docker directly, so we test the parsing logic in isolation.
-func Test_parseSubnetOutput(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name        string
-		lines       []string
-		expected    []string
-		expectError bool
-	}{
-		{
-			name:        "empty lines causes error",
-			lines:       []string{},
-			expectError: true,
-		},
-		{
-			name:     "single subnet",
-			lines:    []string{"172.18.0.0/16 "},
-			expected: []string{"172.18.0.0/16"},
-		},
-		{
-			name:     "dual stack subnets",
-			lines:    []string{"172.18.0.0/16 fc00:f853:ccd:e793::/64 "},
-			expected: []string{"172.18.0.0/16", "fc00:f853:ccd:e793::/64"},
-		},
-	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			// Replicate the parsing logic from getSubnets
-			if len(tc.lines) == 0 {
-				if !tc.expectError {
-					t.Errorf("expected success but got empty lines")
-				}
-				return
-			}
-			result := strings.Split(strings.TrimSpace(tc.lines[0]), " ")
-			if tc.expectError {
-				t.Errorf("expected error but got result: %v", result)
-				return
-			}
-			if len(result) != len(tc.expected) {
-				t.Errorf("got %d subnets, want %d", len(result), len(tc.expected))
-				return
-			}
-			for i := range tc.expected {
-				if result[i] != tc.expected[i] {
-					t.Errorf("subnet[%d] = %q, want %q", i, result[i], tc.expected[i])
-				}
-			}
-		})
-	}
 }

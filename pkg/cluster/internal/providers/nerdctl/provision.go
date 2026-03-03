@@ -363,14 +363,19 @@ func generatePortMappings(clusterIPFamily config.ClusterIPFamily, portMappings .
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get random host port for port mapping")
 		}
-		if releaseHostPortFn != nil {
-			defer releaseHostPortFn()
-		}
 
 		// generate the actual mapping arg
 		protocol := string(pm.Protocol)
 		hostPortBinding := net.JoinHostPort(pm.ListenAddress, fmt.Sprintf("%d", hostPort))
 		args = append(args, fmt.Sprintf("--publish=%s:%d/%s", hostPortBinding, pm.ContainerPort, protocol))
+
+		// Release the port listener immediately — we have the port number,
+		// the container runtime will bind it when the container starts.
+		// Using defer here would hold all listeners open until function return,
+		// which leaks file descriptors under high port-mapping counts.
+		if releaseHostPortFn != nil {
+			releaseHostPortFn()
+		}
 	}
 	return args, nil
 }
