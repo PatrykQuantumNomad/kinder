@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 25 of 29 (Foundation)
-Plan: 1 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: Executing
-Last activity: 2026-03-03 — Completed Phase 25 Plan 01 (go module baseline)
+Last activity: 2026-03-03 — Completed Phase 25 Plan 03 (layer violation fix)
 
 Progress: [████████░░░░░░░░░░░░] 40% (v1.0-v1.3 complete; v1.4 not started)
 
@@ -38,6 +38,7 @@ Progress: [████████░░░░░░░░░░░░] 40% (v1
 - [v1.4 entry]: Linker -X flags must be updated when version pkg moves to pkg/internal/kindversion/
 - [Phase 25 Plan 01]: go directive settled at 1.24.0 (toolchain go1.26 enforces minimum; go 1.23 reverts on every tidy)
 - [Phase 25 Plan 01]: rand.Int31() used in buildcontext.go (math/rand v1 has no Int32; v2 not yet adopted)
+- [Phase 25 Plan 03]: pkg/internal/kindversion/ is the canonical location for all CLI version constants; Makefile linker -X flags and hack/release/create.sh VERSION_FILE both updated to this path
 
 ### Pending Todos
 
@@ -52,5 +53,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 25 Plan 01 complete; ready for Phase 25 Plan 02
+Stopped at: Phase 25 Plan 03 complete; ready for Phase 25 Plan 04
 Resume file: None
