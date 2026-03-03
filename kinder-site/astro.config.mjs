@@ -63,6 +63,8 @@ export default defineConfig({
             { slug: 'addons/metrics-server' },
             { slug: 'addons/coredns' },
             { slug: 'addons/headlamp' },
+            { slug: 'addons/local-registry' },
+            { slug: 'addons/cert-manager' },
           ],
         },
         { slug: 'changelog' },
