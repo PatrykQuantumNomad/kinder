@@ -207,8 +207,8 @@ Write to: {phase_dir}/{phase_num}-RESEARCH.md
 
 ```
 Task(
-  prompt="First, read ./.claude/agents/gsd-phase-researcher.md for your role and instructions.\n\n" + research_prompt,
-  subagent_type="general-purpose",
+  prompt=research_prompt,
+  subagent_type="gsd-phase-researcher",
   model="{researcher_model}",
   description="Research Phase {phase}"
 )
@@ -257,13 +257,13 @@ ls "${PHASE_DIR}"/*-PLAN.md 2>/dev/null
 Extract from INIT JSON:
 
 ```bash
-STATE_PATH=$(echo "$INIT" | jq -r '.state_path // empty')
-ROADMAP_PATH=$(echo "$INIT" | jq -r '.roadmap_path // empty')
-REQUIREMENTS_PATH=$(echo "$INIT" | jq -r '.requirements_path // empty')
-RESEARCH_PATH=$(echo "$INIT" | jq -r '.research_path // empty')
-VERIFICATION_PATH=$(echo "$INIT" | jq -r '.verification_path // empty')
-UAT_PATH=$(echo "$INIT" | jq -r '.uat_path // empty')
-CONTEXT_PATH=$(echo "$INIT" | jq -r '.context_path // empty')
+STATE_PATH=$(printf '%s\n' "$INIT" | jq -r '.state_path // empty')
+ROADMAP_PATH=$(printf '%s\n' "$INIT" | jq -r '.roadmap_path // empty')
+REQUIREMENTS_PATH=$(printf '%s\n' "$INIT" | jq -r '.requirements_path // empty')
+RESEARCH_PATH=$(printf '%s\n' "$INIT" | jq -r '.research_path // empty')
+VERIFICATION_PATH=$(printf '%s\n' "$INIT" | jq -r '.verification_path // empty')
+UAT_PATH=$(printf '%s\n' "$INIT" | jq -r '.uat_path // empty')
+CONTEXT_PATH=$(printf '%s\n' "$INIT" | jq -r '.context_path // empty')
 ```
 
 ## 8. Spawn gsd-planner Agent
@@ -320,8 +320,8 @@ Output consumed by /gsd:execute-phase. Plans need:
 
 ```
 Task(
-  prompt="First, read ./.claude/agents/gsd-planner.md for your role and instructions.\n\n" + filled_prompt,
-  subagent_type="general-purpose",
+  prompt=filled_prompt,
+  subagent_type="gsd-planner",
   model="{planner_model}",
   description="Plan Phase {phase}"
 )
@@ -417,8 +417,8 @@ Return what changed.
 
 ```
 Task(
-  prompt="First, read ./.claude/agents/gsd-planner.md for your role and instructions.\n\n" + revision_prompt,
-  subagent_type="general-purpose",
+  prompt=revision_prompt,
+  subagent_type="gsd-planner",
   model="{planner_model}",
   description="Revise Phase {phase} plans"
 )
@@ -441,12 +441,19 @@ Route to `<offer_next>` OR `auto_advance` depending on flags/config.
 Check for auto-advance trigger:
 
 1. Parse `--auto` flag from $ARGUMENTS
-2. Read `workflow.auto_advance` from config:
+2. **Sync chain flag with intent** — if user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference):
    ```bash
+   if [[ ! "$ARGUMENTS" =~ --auto ]]; then
+     node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow._auto_chain_active false 2>/dev/null
+   fi
+   ```
+3. Read both the chain flag and user preference:
+   ```bash
+   AUTO_CHAIN=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
    AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
    ```
 
-**If `--auto` flag present OR `AUTO_CFG` is true:**
+**If `--auto` flag present OR `AUTO_CHAIN` is true OR `AUTO_CFG` is true:**
 
 Display banner:
 ```
@@ -454,43 +461,15 @@ Display banner:
  GSD ► AUTO-ADVANCING TO EXECUTE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Plans ready. Spawning execute-phase...
+Plans ready. Launching execute-phase...
 ```
 
-Spawn execute-phase as Task with direct workflow file reference (do NOT use Skill tool — Skills don't resolve inside Task subagents):
+Launch execute-phase using the Skill tool to avoid nested Task sessions (which cause runtime freezes due to deep agent nesting):
 ```
-Task(
-  prompt="
-    <objective>
-    You are the execute-phase orchestrator. Execute all plans for Phase ${PHASE}: ${PHASE_NAME}.
-    </objective>
-
-    <execution_context>
-    @./.claude/get-shit-done/workflows/execute-phase.md
-    @./.claude/get-shit-done/references/checkpoints.md
-    @./.claude/get-shit-done/references/tdd.md
-    @./.claude/get-shit-done/references/model-profile-resolution.md
-    </execution_context>
-
-    <arguments>
-    PHASE=${PHASE}
-    ARGUMENTS='${PHASE} --auto --no-transition'
-    </arguments>
-
-    <instructions>
-    1. Read execute-phase.md from execution_context for your complete workflow
-    2. Follow ALL steps: initialize, handle_branching, validate_phase, discover_and_group_plans, execute_waves, aggregate_results, close_parent_artifacts, verify_phase_goal, update_roadmap
-    3. The --no-transition flag means: after verification + roadmap update, STOP and return status. Do NOT run transition.md.
-    4. When spawning executor agents, use subagent_type='gsd-executor' with the existing @file pattern from the workflow
-    5. When spawning verifier agents, use subagent_type='gsd-verifier'
-    6. Preserve the classifyHandoffIfNeeded workaround (spot-check on that specific error)
-    7. Do NOT use the Skill tool or /gsd: commands
-    </instructions>
-  ",
-  subagent_type="general-purpose",
-  description="Execute Phase ${PHASE}"
-)
+Skill(skill="gsd:execute-phase", args="${PHASE} --auto --no-transition")
 ```
+
+The `--no-transition` flag tells execute-phase to return status after verification instead of chaining further. This keeps the auto-advance chain flat — each phase runs at the same nesting level rather than spawning deeper Task agents.
 
 **Handle execute-phase return:**
 - **PHASE COMPLETE** → Display final summary:
