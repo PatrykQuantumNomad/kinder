@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/kind/pkg/cmd/kind/completion"
 	"sigs.k8s.io/kind/pkg/cmd/kind/create"
 	"sigs.k8s.io/kind/pkg/cmd/kind/delete"
+	"sigs.k8s.io/kind/pkg/cmd/kind/doctor"
+	"sigs.k8s.io/kind/pkg/cmd/kind/env"
 	"sigs.k8s.io/kind/pkg/cmd/kind/export"
 	"sigs.k8s.io/kind/pkg/cmd/kind/get"
 	"sigs.k8s.io/kind/pkg/cmd/kind/load"
@@ -78,6 +80,8 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	cmd.AddCommand(get.NewCommand(logger, streams))
 	cmd.AddCommand(version.NewCommand(logger, streams))
 	cmd.AddCommand(load.NewCommand(logger, streams))
+	cmd.AddCommand(env.NewCommand(logger, streams))
+	cmd.AddCommand(doctor.NewCommand(logger, streams))
 	return cmd
 }
 
