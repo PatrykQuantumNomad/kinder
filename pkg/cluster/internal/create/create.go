@@ -270,11 +270,7 @@ func logSalutation(logger log.Logger) {
 		"Not sure what to do next? 😅  Check out https://kind.sigs.k8s.io/docs/user/quick-start/",
 		"Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂",
 	}
-	// NOTE: explicit seeding is required while the module minimum is Go 1.17.
-	// Once the minimum Go version is bumped to 1.20+, this can be simplified
-	// to just rand.Intn() since the global source is auto-seeded.
-	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	s := salutations[r.Intn(len(salutations))]
+	s := salutations[rand.Intn(len(salutations))]
 	logger.V(0).Info(s)
 }
 
