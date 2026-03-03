@@ -254,7 +254,7 @@ func (p *Provider) CollectLogs(name, dir string) error {
 	}
 
 	// ensure directory
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create logs directory")
 	}
 

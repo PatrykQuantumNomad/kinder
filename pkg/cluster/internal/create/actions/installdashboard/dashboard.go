@@ -105,7 +105,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	// Print token and port-forward command for the user
 	ctx.Logger.V(0).Info("")
 	ctx.Logger.V(0).Info("Dashboard:")
-	ctx.Logger.V(0).Infof("  Token: %s", token)
+	ctx.Logger.V(1).Infof("  Token: %s", token)
 	ctx.Logger.V(0).Info("  Port-forward: kubectl port-forward -n kube-system service/headlamp 8080:80")
 	ctx.Logger.V(0).Info("  Then open: http://localhost:8080")
 	ctx.Logger.V(0).Info("")

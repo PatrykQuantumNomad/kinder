@@ -17,7 +17,7 @@ limitations under the License.
 package podman
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/binary"
 	"net"
 	"strings"
@@ -130,7 +130,7 @@ func generateULASubnetFromName(name string, attempt int32) string {
 	ip := make([]byte, 16)
 	ip[0] = 0xfc
 	ip[1] = 0x00
-	h := sha1.New()
+	h := sha256.New()
 	_, _ = h.Write([]byte(name))
 	_ = binary.Write(h, binary.LittleEndian, attempt)
 	bs := h.Sum(nil)
