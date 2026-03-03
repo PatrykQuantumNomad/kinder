@@ -1,5 +1,31 @@
 # Project Milestones: Kinder
 
+## v1.3 Harden & Extend (Shipped: 2026-03-03)
+
+**Delivered:** Fixed 4 correctness bugs, eliminated ~525 lines of provider code duplication, and added batteries-included local registry, cert-manager addons, and CLI diagnostic tools.
+
+**Phases completed:** 19-24 (8 plans total)
+
+**Key accomplishments:**
+- Fixed 4 correctness bugs: port leak in generatePortMappings, tar truncation silent data loss, ListInternalNodes default name, network sort strict weak ordering
+- Extracted shared docker/podman/nerdctl provider code to common/ package, eliminating ~525 lines of duplication
+- Added local registry addon at localhost:5001 with containerd certs.d wiring and dev tool discovery ConfigMap
+- Added cert-manager addon with embedded v1.16.3 manifest, webhook readiness gate, and self-signed ClusterIssuer
+- Created kinder env (eval-safe machine-readable output) and kinder doctor (prerequisite checker with structured exit codes)
+- Extended v1alpha4 config API with LocalRegistry and CertManager addon fields wired through all 5 pipeline locations
+
+**Stats:**
+- 69 files created/modified
+- 21,695 lines inserted, 672 deleted
+- 6 phases, 8 plans, 43 commits
+- ~5 hours (single day, 2026-03-03)
+
+**Git range:** `docs(19)` → `docs(phase-24)`
+
+**What's next:** TBD — potential v1.4 with registry enhancements, trust-manager, kinder env --shell fish, kinder doctor --fix
+
+---
+
 ## v1.2 Branding & Polish (Shipped: 2026-03-02)
 
 **Delivered:** Distinct kinder visual identity, SEO discoverability, documentation rewrite, and dark-only theme enforcement — establishing kinder as its own project beyond the kind fork.

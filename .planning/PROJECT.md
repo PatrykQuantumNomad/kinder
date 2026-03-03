@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-included local Kubernetes development experience. Where kind gives you a bare cluster, kinder comes with LoadBalancer support (MetalLB), Gateway API ingress (Envoy Gateway), metrics (`kubectl top` / HPA), tuned DNS (CoreDNS autopath + cache), and a dashboard (Headlamp) — all working out of the box. Users run `kinder create cluster` and get a fully functional development environment with zero manual setup. The project website at kinder.patrykgolabek.dev provides documentation, installation guides, and addon references.
+Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-included local Kubernetes development experience. Where kind gives you a bare cluster, kinder comes with LoadBalancer support (MetalLB), Gateway API ingress (Envoy Gateway), metrics (`kubectl top` / HPA), tuned DNS (CoreDNS autopath + cache), a dashboard (Headlamp), a local container registry (localhost:5001), and cert-manager with self-signed TLS — all working out of the box. Users run `kinder create cluster` and get a fully functional development environment with zero manual setup. Diagnostic tools (`kinder env`, `kinder doctor`) help with troubleshooting. The project website at kinder.patrykgolabek.dev provides documentation, installation guides, and addon references.
 
 ## Core Value
 
@@ -37,20 +37,17 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ README rewrite for kinder identity — v1.2
 - ✓ Hero section with logo on landing page — v1.2
 
+- ✓ Fix port leak, tar truncation, cluster name resolution, network sort — v1.3
+- ✓ Provider code deduplication: shared common/ package for docker/nerdctl/podman — v1.3
+- ✓ Local registry addon at localhost:5001 with dev tool discovery — v1.3
+- ✓ cert-manager addon with self-signed ClusterIssuer — v1.3
+- ✓ v1alpha4 config API extended with LocalRegistry and CertManager fields — v1.3
+- ✓ kinder env command for machine-readable cluster environment info — v1.3
+- ✓ kinder doctor command for prerequisite checking with structured exit codes — v1.3
+
 ### Active
 
-## Current Milestone: v1.3 Harden & Extend
-
-**Goal:** Fix critical bugs, reduce provider code duplication, and add local registry, cert-manager addons and CLI diagnostic tools.
-
-**Target features:**
-- Fix critical bugs: defer-in-loop port leak, tar extraction data loss, ListInternalNodes default name, network sort
-- Provider code deduplication: extract shared docker/podman/nerdctl code to common package
-- Update go.mod minimum version and dependencies
-- Local registry addon (addons.localRegistry: true)
-- Cert-manager addon (addons.certManager: true)
-- `kinder env` command (show config, provider, node image info)
-- `kinder doctor` command (diagnose common issues)
+(No active requirements — next milestone not yet defined)
 
 ### Out of Scope
 
@@ -63,6 +60,9 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Versioned documentation — no breaking changes yet; overhead before kinder has multiple versions
 - Interactive playground — impossible with Docker dependency; fake demos break trust
 - Tailwind CSS — Starlight's CSS custom properties sufficient; Tailwind v4 integration unstable
+- Harbor registry — too heavy for local dev; registry:2 is sufficient
+- registry:3 image — v3 deprecated storage drivers; kind ecosystem on v2
+- ACME issuers — requires internet; incompatible with offline local clusters
 
 ## Context
 
@@ -70,11 +70,14 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Shipped v1.0 with ~1,950 LOC Go across 5 addon action packages
 - Shipped v1.1 with 878 LOC Astro/MDX/CSS/TS in kinder-site/
 - Shipped v1.2 with logo, SEO, branding polish
-- Codebase review identified 4 critical bugs, ~70-80% provider code duplication, and feature opportunities
+- Shipped v1.3 with bug fixes, provider dedup, local registry, cert-manager, CLI tools
+- Total codebase: ~28,216 LOC Go
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
-- Addon versions pinned: MetalLB v0.15.3, Metrics Server v0.8.1, Envoy Gateway v1.3.1, Headlamp v0.40.1
+- Addon versions pinned: MetalLB v0.15.3, Metrics Server v0.8.1, Envoy Gateway v1.3.1, Headlamp v0.40.1, cert-manager v1.16.3
+- 7 addons total: MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, Local Registry, cert-manager
+- Provider code deduplicated: shared common/ package for docker/nerdctl/podman
 - GitHub org: PatrykQuantumNomad/kinder
 
 ## Constraints
@@ -106,16 +109,17 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | npm over pnpm for CI | GitHub Actions compatibility; avoids extra setup step | ✓ Good |
 | Starlight with CSS custom properties | No Tailwind needed; theme overrides via CSS variables | ✓ Good |
 | `make install` as only install method | Binary distribution unconfirmed; build-from-source is reliable | ✓ Good |
-
----
 | Kinder logo from modified kind robot | Distinct identity, "er" in cyan matches theme | ✓ Good |
 | favicon.ico over favicon.svg | SVG had font rendering issues; ICO universally supported | ✓ Good |
 | llms.txt for GEO | AI crawler discoverability; emerging standard | ✓ Good |
 | JSON-LD SoftwareApplication schema | Rich snippets in search, author attribution | ✓ Good |
-
-| Extract shared provider code to common/ | Eliminate ~70-80% duplication, prevent drift bugs | — Pending |
-| Local registry as addon, not shell script | Consistent with batteries-included ethos | — Pending |
-| Cert-manager alongside Envoy Gateway | Natural pairing; TLS commonly needed with Gateway API | — Pending |
+| Extract shared provider code to common/ | Eliminate ~70-80% duplication, prevent drift bugs | ✓ Good |
+| Local registry as addon, not shell script | Consistent with batteries-included ethos | ✓ Good |
+| Cert-manager alongside Envoy Gateway | Natural pairing; TLS commonly needed with Gateway API | ✓ Good |
+| registry:2 not registry:3 | Kind ecosystem on v2; v3 deprecated storage drivers | ✓ Good |
+| ContainerdConfigPatches before Provision | Cannot inject post-provisioning; must be in create.go before p.Provision() | ✓ Good |
+| cert-manager v1.16.3 with --server-side | 986KB manifest exceeds 256KB annotation limit; v1.17.6 not yet released | ✓ Good |
+| Provider.Name() via fmt.Stringer | Type assertion instead of new interface method; zero-impact on existing code | ✓ Good |
 
 ---
-*Last updated: 2026-03-03 after v1.3 milestone start*
+*Last updated: 2026-03-03 after v1.3 milestone*
