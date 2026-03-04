@@ -119,10 +119,10 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 		return errors.Wrap(err, "failed to list cluster nodes")
 	}
 	for _, node := range allNodes {
-		if err := node.Command("mkdir", "-p", registryDir).Run(); err != nil {
+		if err := node.CommandContext(ctx.Context, "mkdir", "-p", registryDir).Run(); err != nil {
 			return errors.Wrapf(err, "failed to create certs.d dir on node %s", node)
 		}
-		if err := node.Command("tee", registryDir+"/hosts.toml").
+		if err := node.CommandContext(ctx.Context, "tee", registryDir+"/hosts.toml").
 			SetStdin(strings.NewReader(hostsTOML)).Run(); err != nil {
 			return errors.Wrapf(err, "failed to write hosts.toml on node %s", node)
 		}
@@ -138,7 +138,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	if len(controlPlanes) == 0 {
 		return errors.New("no control plane nodes found")
 	}
-	if err := controlPlanes[0].Command(
+	if err := controlPlanes[0].CommandContext(ctx.Context,
 		"kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "-f", "-",
 	).SetStdin(strings.NewReader(localRegistryHostingManifest)).Run(); err != nil {

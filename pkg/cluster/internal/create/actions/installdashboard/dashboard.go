@@ -59,7 +59,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	node := controlPlanes[0]
 
 	// Apply Headlamp manifest (SA, RBAC, Secret, Service, Deployment)
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "-f", "-",
@@ -68,7 +68,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Wait for Headlamp Deployment to be Available
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait",
@@ -82,7 +82,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Read the long-lived token from the Secret
 	var tokenBuf bytes.Buffer
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"get", "secret", "kinder-dashboard-token",

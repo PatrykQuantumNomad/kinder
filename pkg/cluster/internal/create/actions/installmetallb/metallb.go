@@ -94,13 +94,13 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Apply the embedded MetalLB manifest via kubectl
-	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
+	if err := node.CommandContext(ctx.Context, "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
 		SetStdin(strings.NewReader(metalLBManifest)).Run(); err != nil {
 		return errors.Wrap(err, "failed to apply MetalLB manifest")
 	}
 
 	// Wait for controller webhook readiness
-	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+	if err := node.CommandContext(ctx.Context, "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait", "--namespace=metallb-system",
 		"--for=condition=Available", "deployment/controller",
 		"--timeout=120s").Run(); err != nil {
@@ -121,7 +121,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Apply IPAddressPool + L2Advertisement CRs
 	crYAML := fmt.Sprintf(crTemplate, poolRange)
-	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
+	if err := node.CommandContext(ctx.Context, "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
 		SetStdin(strings.NewReader(crYAML)).Run(); err != nil {
 		return errors.Wrap(err, "failed to apply MetalLB CRs")
 	}

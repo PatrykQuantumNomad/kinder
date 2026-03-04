@@ -66,7 +66,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Step 1: Apply Envoy Gateway install.yaml (Gateway API CRDs + controller)
 	// --server-side is REQUIRED: httproutes CRD is 372 KB > 256 KB annotation limit for standard apply
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "--server-side", "-f", "-",
@@ -76,7 +76,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Step 2: Wait for certgen Job to complete (creates TLS Secrets for the controller)
 	// Job name "eg-gateway-helm-certgen" verified for v1.3.1; re-check on upgrade
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait",
@@ -89,7 +89,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Step 3: Wait for the Envoy Gateway controller Deployment to be Available
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait",
@@ -102,7 +102,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Step 4: Apply GatewayClass "eg" (not included in install.yaml)
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "-f", "-",
@@ -111,7 +111,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Step 5: Wait for GatewayClass to be accepted by the controller
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait",

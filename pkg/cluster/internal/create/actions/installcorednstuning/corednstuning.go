@@ -66,7 +66,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Step 2: Read current Corefile
 	var corefile bytes.Buffer
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"get", "configmap", "coredns",
 		"--namespace=kube-system",
@@ -84,7 +84,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Step 5: Write-back via ConfigMap YAML envelope
 	configMapYAML := fmt.Sprintf(configMapTemplate, indentCorefile(corefileStr))
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "-f", "-",
 	).SetStdin(strings.NewReader(configMapYAML)).Run(); err != nil {
@@ -92,7 +92,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	}
 
 	// Step 6: Rollout restart and wait
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"rollout", "restart",
 		"--namespace=kube-system",
@@ -100,7 +100,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	).Run(); err != nil {
 		return errors.Wrap(err, "failed to restart CoreDNS deployment")
 	}
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"rollout", "status",
 		"--namespace=kube-system",

@@ -66,7 +66,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	// Step 1 (CERT-01): Apply cert-manager manifest with --server-side.
 	// --server-side is REQUIRED: cert-manager CRDs exceed the 256KB last-applied-configuration
 	// annotation limit imposed by standard kubectl apply.
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "--server-side", "-f", "-",
@@ -82,7 +82,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 		"cert-manager-cainjector",
 		"cert-manager-webhook",
 	} {
-		if err := node.Command(
+		if err := node.CommandContext(ctx.Context,
 			"kubectl",
 			"--kubeconfig=/etc/kubernetes/admin.conf",
 			"wait", "--namespace=cert-manager",
@@ -96,7 +96,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 
 	// Step 3 (CERT-03): Apply self-signed ClusterIssuer.
 	// Standard client-side apply is correct here — ClusterIssuer is a small resource.
-	if err := node.Command(
+	if err := node.CommandContext(ctx.Context,
 		"kubectl",
 		"--kubeconfig=/etc/kubernetes/admin.conf",
 		"apply", "-f", "-",

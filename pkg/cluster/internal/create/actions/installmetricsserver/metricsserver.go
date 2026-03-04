@@ -57,13 +57,13 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	node := controlPlanes[0]
 
 	// Apply the embedded Metrics Server manifest via kubectl
-	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
+	if err := node.CommandContext(ctx.Context, "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-").
 		SetStdin(strings.NewReader(metricsServerManifest)).Run(); err != nil {
 		return errors.Wrap(err, "failed to apply Metrics Server manifest")
 	}
 
 	// Wait for deployment readiness
-	if err := node.Command("kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+	if err := node.CommandContext(ctx.Context, "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
 		"wait", "--namespace=kube-system",
 		"--for=condition=Available", "deployment/metrics-server",
 		"--timeout=120s").Run(); err != nil {
