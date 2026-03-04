@@ -9,12 +9,12 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 ### Release Pipeline
 
-- [ ] **REL-01**: GoReleaser config produces cross-platform binaries (linux/darwin amd64+arm64, windows amd64)
-- [ ] **REL-02**: GoReleaser generates SHA-256 checksums file for all release artifacts
-- [ ] **REL-03**: GoReleaser generates automated changelog from git commit history
-- [ ] **REL-04**: Release binaries show correct version metadata via `kinder version`
+- [x] **REL-01**: GoReleaser config produces cross-platform binaries (linux/darwin amd64+arm64, windows amd64)
+- [x] **REL-02**: GoReleaser generates SHA-256 checksums file for all release artifacts
+- [x] **REL-03**: GoReleaser generates automated changelog from git commit history
+- [x] **REL-04**: Release binaries show correct version metadata via `kinder version`
 - [ ] **REL-05**: GitHub Actions release workflow uses goreleaser-action replacing cross.sh + softprops
-- [ ] **REL-06**: GoReleaser explicitly sets `gomod.proxy: false` and `project_name: kinder` (fork safety)
+- [x] **REL-06**: GoReleaser explicitly sets `gomod.proxy: false` and `project_name: kinder` (fork safety)
 
 ### Homebrew
 
@@ -62,12 +62,12 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REL-01 | Phase 35 | Pending |
-| REL-02 | Phase 35 | Pending |
-| REL-03 | Phase 35 | Pending |
-| REL-04 | Phase 35 | Pending |
+| REL-01 | Phase 35 | Complete |
+| REL-02 | Phase 35 | Complete |
+| REL-03 | Phase 35 | Complete |
+| REL-04 | Phase 35 | Complete |
 | REL-05 | Phase 35 | Pending |
-| REL-06 | Phase 35 | Pending |
+| REL-06 | Phase 35 | Complete |
 | BREW-01 | Phase 36 | Pending |
 | BREW-02 | Phase 36 | Pending |
 | BREW-03 | Phase 36 | Pending |
