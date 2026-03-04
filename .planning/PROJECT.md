@@ -56,7 +56,15 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(Next milestone not yet defined — run `/gsd:new-milestone` to start)
+## Current Milestone: v2.0 Distribution & GPU Support
+
+**Goal:** Make kinder installable via Homebrew with pre-built binaries from GitHub Releases, and add full NVIDIA GPU stack as a new addon.
+
+**Target features:**
+- GoReleaser setup for automated cross-platform binary builds
+- First public GitHub Release (v2.0.0) with binaries on PatrykQuantumNomad/kinder
+- Homebrew custom tap for `brew install kinder`
+- NVIDIA GPU addon (GPU Operator + device plugin + container toolkit config)
 
 ### Out of Scope
 
@@ -139,4 +147,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
 ---
-*Last updated: 2026-03-04 after v1.5 milestone complete*
+*Last updated: 2026-03-04 after v2.0 milestone started*

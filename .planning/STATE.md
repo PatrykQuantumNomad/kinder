@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: Website Use Cases & Documentation
-status: shipped
-stopped_at: Milestone v1.5 archived
-last_updated: "2026-03-04T19:00:00.000Z"
-last_activity: 2026-03-04 — v1.5 milestone complete and archived
+milestone: v2.0
+milestone_name: Distribution & GPU Support
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-04T20:00:00.000Z"
+last_activity: 2026-03-04 — Milestone v2.0 started
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v2.0
 
 ## Current Position
 
-Phase: 34 of 34 (all v1.5 phases complete)
-Plan: All plans complete
-Status: v1.5 milestone shipped and archived
-Last activity: 2026-03-04 — v1.5 milestone archived
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-04 — Milestone v2.0 started
 
 ## Performance Metrics
 
@@ -63,6 +61,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T19:00:00.000Z
-Stopped at: Milestone v1.5 archived
+Last session: 2026-03-04T20:00:00.000Z
+Stopped at: null
 Resume file: None
