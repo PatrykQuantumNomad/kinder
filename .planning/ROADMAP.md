@@ -84,7 +84,7 @@ Plans:
   4. `go build ./...` and `go vet ./...` pass with no import cycles introduced
 **Plans:** 2 plans
 Plans:
-- [ ] 26-01-PLAN.md — Context field in ActionContext + AddonEntry registry loop
+- [x] 26-01-PLAN.md — Context field in ActionContext + AddonEntry registry loop
 - [ ] 26-02-PLAN.md — CommandContext propagation in all addons + context-aware waitforready
 
 ### Phase 27: Unit Tests

@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 26 of 29 (Architecture)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-03 — Phase 25 complete (verified, all 5 success criteria pass)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-04 — Plan 26-01 complete (context plumbing + AddonEntry registry)
 
 Progress: [█████████░░░░░░░░░░░] 45% (v1.0-v1.3 complete; v1.4 phase 25 done)
 
@@ -45,6 +45,8 @@ Progress: [█████████░░░░░░░░░░░] 45% (v1
 - [Phase 25 Plan 04]: SHA-256 replaces SHA-1 for subnet generation; subnet values change but clusters are transient so no impact
 - [Phase 25 Plan 04]: ErrNoNodeProviderDetected rename is technically breaking API but kinder is not consumed as a library
 - [Phase 25 Plan 04]: Dashboard token at V(1); other dashboard output (header, URL, instructions) remains at V(0) for user visibility
+- [Phase 26 Plan 01]: context.Background() at create.go call site — signal-wired context deferred to future phase
+- [Phase 26 Plan 01]: AddonEntry defined in create.go (not action.go) to avoid import cycle risk
 
 ### Pending Todos
 
@@ -58,6 +60,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Phase 25 complete and verified; ready to plan Phase 26
+Last session: 2026-03-04
+Stopped at: Phase 26 Plan 01 complete; ready to execute Plan 26-02
 Resume file: None
