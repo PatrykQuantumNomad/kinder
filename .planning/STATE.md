@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Distribution & GPU Support
-status: defining_requirements
+status: roadmap_complete
 stopped_at: null
 last_updated: "2026-03-04T20:00:00.000Z"
-last_activity: 2026-03-04 — Milestone v2.0 started
+last_activity: 2026-03-04 — v2.0 roadmap created (3 phases, 17 requirements mapped)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -21,14 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Defining requirements for v2.0
+**Current focus:** Phase 35 — GoReleaser Foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-04 — Milestone v2.0 started
+Phase: 35 of 37 (GoReleaser Foundation)
+Plan: 0 of 2 in current phase
+Status: Ready to plan
+Last activity: 2026-03-04 — v2.0 roadmap created, 3 phases covering 17 requirements
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -50,6 +52,7 @@ Last activity: 2026-03-04 — Milestone v2.0 started
 - v1.3: common/ provider dedup, local registry addon, cert-manager addon, CLI diagnostic tools
 - v1.4: Context in struct (not param), wave-based parallel (not DAG), sync.OnceValues for Nodes(), errgroup.SetLimit(3), flagpole/switch/json.NewEncoder pattern, CreateWithAddonProfile with 4 presets
 - v1.5: Core/optional addon grouping, Symptom/Cause/Fix troubleshooting pattern, tutorial structure (overview/prerequisites/steps/cleanup), ci profile = MetricsServer + CertManager only
+- v2.0 roadmap: SITE-01 merged into Phase 36 (Homebrew), SITE-02 merged into Phase 37 (GPU addon) — no standalone website phase needed; GPU addon independent of distribution pipeline
 
 ### Pending Todos
 
@@ -57,10 +60,13 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- Phase 37 (GPU): GPU Operator vs standalone device plugin decision must be resolved during planning (research flag: examine nvkind source). ContainerdConfigPatches vs post-provision-only also unresolved.
+- Phase 37 (GPU): End-to-end validation requires Linux host with real NVIDIA GPU — plan accordingly.
+- Phase 35 (GoReleaser): `gomod.proxy: false` and `project_name: kinder` are mandatory — fork's go.mod declares module sigs.k8s.io/kind; GoReleaser will build upstream kind without these.
+- Phase 36 (Homebrew): HOMEBREW_TAP_TOKEN PAT must be created and stored as repo secret before any tagged release; GITHUB_TOKEN cannot push cross-repo.
 
 ## Session Continuity
 
 Last session: 2026-03-04T20:00:00.000Z
-Stopped at: null
+Stopped at: Roadmap created — ready to plan Phase 35
 Resume file: None
