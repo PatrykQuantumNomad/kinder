@@ -48,7 +48,7 @@ Phases 19-24: Bug Fixes, Provider Code Deduplication, Config Type Additions, Loc
 
 ## Phase Summary
 
-- [ ] **Phase 25: Foundation** - go.mod bump, dependency updates, golangci-lint v2, layer violation fix, code quality cleanup
+- [x] **Phase 25: Foundation** - go.mod bump, dependency updates, golangci-lint v2, layer violation fix, code quality cleanup
 - [ ] **Phase 26: Architecture** - context.Context propagation, centralized addon registry, context-aware readiness waiting
 - [ ] **Phase 27: Unit Tests** - fakeNode/fakeCmd test infrastructure, unit tests for all addon action packages
 - [ ] **Phase 28: Parallel Execution** - dependency DAG documentation, sync.Once fix, wave-based parallel addon install, timing summary
@@ -128,7 +128,7 @@ Plans:
 | 9-14. v1.1 phases | v1.1 | 8/8 | Complete | 2026-03-02 |
 | 15-18. v1.2 phases | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
-| 25. Foundation | v1.4 | 4/4 | In Progress | - |
+| 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
 | 26. Architecture | v1.4 | 0/? | Not started | - |
 | 27. Unit Tests | v1.4 | 0/? | Not started | - |
 | 28. Parallel Execution | v1.4 | 0/? | Not started | - |
