@@ -18,6 +18,7 @@ limitations under the License.
 package clusters
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -29,22 +30,35 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/runtime"
 )
 
+type flagpole struct {
+	Output string
+}
+
 // NewCommand returns a new cobra.Command for getting the list of clusters
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
-	cmd := &cobra.Command{
+	flags := &flagpole{}
+	c := &cobra.Command{
 		Args: cobra.NoArgs,
 		// TODO(bentheelder): more detailed usage
 		Use:   "clusters",
 		Short: "Lists existing kind clusters by their name",
 		Long:  "Lists existing kind clusters by their name",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runE(logger, streams)
+			return runE(logger, streams, flags)
 		},
 	}
-	return cmd
+	c.Flags().StringVar(&flags.Output, "output", "", "output format; supported values: \"\", \"json\"")
+	return c
 }
 
-func runE(logger log.Logger, streams cmd.IOStreams) error {
+func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
+	switch flags.Output {
+	case "", "json":
+		// valid
+	default:
+		return fmt.Errorf("unsupported output format %q; supported values: \"\", \"json\"", flags.Output)
+	}
+
 	provider := cluster.NewProvider(
 		cluster.ProviderWithLogger(logger),
 		runtime.GetDefault(logger),
@@ -53,6 +67,14 @@ func runE(logger log.Logger, streams cmd.IOStreams) error {
 	if err != nil {
 		return err
 	}
+
+	if flags.Output == "json" {
+		if clusters == nil {
+			clusters = []string{} // avoid JSON null, emit []
+		}
+		return json.NewEncoder(streams.Out).Encode(clusters)
+	}
+
 	if len(clusters) == 0 {
 		logger.V(0).Info("No kind clusters found.")
 		return nil
