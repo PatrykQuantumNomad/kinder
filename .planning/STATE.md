@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 27 of 29 (Unit Tests)
-Plan: 2 of 7 in current phase — IN PROGRESS
-Status: Phase 27 Plan 02 complete; certmanager + dashboard tests added; ready for Plan 03
-Last activity: 2026-03-03 — Plan 27-02 complete (certmanager_test.go + dashboard_test.go)
+Plan: 3 of 3 in current phase — COMPLETE
+Status: Phase 27 complete; all 3 plans done (testutil/metricsserver/envoygw, certmanager/dashboard, localregistry)
+Last activity: 2026-03-03 — Plan 27-03 complete (localregistry_test.go with Docker-skip guards)
 
 Progress: [██████████░░░░░░░░░░] 50% (v1.0-v1.3 complete; v1.4 phases 25-26 done)
 
@@ -54,6 +54,9 @@ Progress: [██████████░░░░░░░░░░] 50% (v1
 - [Phase 27 Plan 01]: CommandContext accepts nil context pointer since FakeNode ignores it (test-only usage)
 - [Phase 27 Plan 02]: errContains for certmanager wait-loop failures uses deployment name substring (e.g. cert-manager-cainjector); name is in the error via Wrapf
 - [Phase 27 Plan 02]: dashboard success test feeds base64.StdEncoding.EncodeToString([]byte("test-token")) as FakeCmd.Output to exercise SetStdout/decode path
+- [Phase 27 Plan 03]: TestExecute_InfoError always runs without Docker; Provider.Info() is called before any exec.Command invocations in localregistry.Execute()
+- [Phase 27 Plan 03]: Docker-dependent tests use t.Skip guard via exec.Command("docker","version").Run() (sigs.k8s.io/kind/pkg/exec, not os/exec)
+- [Phase 27 Plan 03]: FakeProvider does not implement fmt.Stringer so binaryName defaults to "docker"; aligns with Docker skip guard
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 27 Plan 02 complete; certmanager_test.go (6 cases) + dashboard_test.go (5 cases) done; ready for Plan 03
+Stopped at: Phase 27 Plan 03 complete; localregistry_test.go done; Phase 27 complete; ready for Phase 28
 Resume file: None
