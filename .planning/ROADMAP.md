@@ -72,17 +72,17 @@ Phases 30-34: Foundation Fixes, Addon Page Depth, CLI Reference, Tutorials, Veri
 **Goal**: Users can download pre-built kinder binaries for all platforms from GitHub Releases, produced by an automated pipeline that replaces cross.sh
 **Depends on**: Phase 34 (v1.5 complete)
 **Requirements**: REL-01, REL-02, REL-03, REL-04, REL-05, REL-06
+**Plans:** 2 plans
 **Success Criteria** (what must be TRUE):
   1. Running `goreleaser build --snapshot --clean` locally produces correct kinder binaries for linux/darwin amd64+arm64 and windows/amd64 — not upstream kind
   2. `kinder version` on a snapshot binary shows the real git commit hash, not empty or "unknown"
   3. A tagged release on GitHub creates a Release page with five platform archives, a checksums.txt, and an auto-generated changelog — without any manual intervention
   4. The GitHub Actions release workflow uses goreleaser-action replacing cross.sh and softprops; the old cross.sh is retired in the same commit
   5. `goreleaser check` passes with zero errors and zero deprecation warnings
-**Plans**: TBD
 
 Plans:
-- [ ] 35-01: GoReleaser config and local snapshot validation
-- [ ] 35-02: Release workflow migration and end-to-end tag verification
+- [ ] 35-01-PLAN.md — GoReleaser config and local snapshot validation
+- [ ] 35-02-PLAN.md — Release workflow migration and cross.sh retirement
 
 ### Phase 36: Homebrew Tap
 **Goal**: macOS users can install kinder with a single `brew install` command from a maintained custom tap, without needing a Go toolchain
