@@ -96,7 +96,11 @@ Plans:
   2. `go test ./pkg/cluster/internal/create/actions/...` passes with no $KUBECONFIG or live cluster required
   3. Tests for installenvoygw, installlocalregistry, installcertmanager, installmetricsserver, and installdashboard each exercise the non-trivial logic paths of their respective Execute() methods
   4. `go test -race ./pkg/cluster/internal/create/actions/...` reports no data races
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 27-01-PLAN.md — testutil package (FakeNode/FakeCmd/FakeProvider) + metricsserver and envoygw tests
+- [ ] 27-02-PLAN.md — certmanager and dashboard tests (loop + stdout capture patterns)
+- [ ] 27-03-PLAN.md — localregistry tests (host-side exec.Command limitation handling)
 
 ### Phase 28: Parallel Execution
 **Goal**: Independent addons install concurrently in waves during cluster creation, reducing total creation time, with the Nodes() cache race fixed and per-addon durations printed in the summary
@@ -133,6 +137,6 @@ Plans:
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
 | 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
 | 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
-| 27. Unit Tests | v1.4 | 0/? | Not started | - |
+| 27. Unit Tests | v1.4 | 0/3 | Not started | - |
 | 28. Parallel Execution | v1.4 | 0/? | Not started | - |
 | 29. CLI Features | v1.4 | 0/? | Not started | - |
