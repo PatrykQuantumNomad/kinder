@@ -7,6 +7,56 @@ All notable changes to kinder since forking from [kind](https://kind.sigs.k8s.io
 
 ---
 
+## v0.4.0-alpha — Code Quality & Features
+
+**Released:** March 4, 2026
+
+Modernized the Go toolchain, added context.Context cancellation plumbing, built a comprehensive unit test suite, implemented wave-based parallel addon execution, and shipped JSON output and cluster profile presets for the CLI.
+
+### Go Toolchain & Code Quality
+
+- **Go 1.24 baseline** — go.mod bumped to 1.24.0, `golang.org/x/sys` updated to v0.41.0, `rand.NewSource` dead code cleaned up
+- **golangci-lint v2** — migrated from v1.62.2 to v2.10.1 with full config conversion, 55+ lint violations fixed across 60+ files
+- **Layer violation fix** — version package moved from `pkg/cmd/kind/version` to `pkg/internal/kindversion` to enforce clean `cmd -> cluster -> internal` import direction
+- **SHA-256 subnet hashing** — SHA-1 replaced with SHA-256 for Docker/Podman/Nerdctl subnet generation
+- **Code quality** — log directory permissions `0777` → `0755`, dashboard token at `V(1)`, error naming convention (`ErrNoNodeProviderDetected`)
+
+### Architecture
+
+- **context.Context plumbing** — `Context` field added to `ActionContext` and propagated through all 7 addon `Execute()` methods via `node.CommandContext()`. `waitForReady`/`tryUntil` are now cancellation-aware with `select` on `ctx.Done()`
+- **Centralized addon registry** — 7 hard-coded `runAddon()` calls replaced with a data-driven `[]AddonEntry` registry loop in `create.go`
+
+### Unit Tests
+
+- **Test infrastructure** — shared `testutil` package with `FakeNode`, `FakeCmd`, and `FakeProvider` types for testing addon actions without a live cluster
+- **Addon test coverage** — 30+ table-driven tests covering `installenvoygw`, `installmetricsserver`, `installcertmanager`, `installdashboard`, and `installlocalregistry`
+- **Race-detector clean** — all tests pass under `go test -race`
+
+### Parallel Addon Execution
+
+- **Wave-based execution** — 6 independent addons run concurrently via `errgroup.WithContext` + `SetLimit(3)` in Wave 1; EnvoyGateway runs sequentially in Wave 2 (depends on MetalLB)
+- **Race-free node caching** — `RWMutex`-based `cachedData` replaced with `sync.OnceValues` for exactly-once node caching, eliminating a TOCTOU race
+- **Install timing** — per-addon install duration printed in the creation summary (e.g., "MetalLB: 12.3s")
+- Added `golang.org/x/sync` dependency and `make test-race` Makefile target
+
+### CLI Features
+
+- **`--output json`** — added to `kinder env`, `kinder doctor`, `kinder get clusters`, and `kinder get nodes`. All produce clean, `jq`-parseable JSON on stdout; logger output redirected to stderr in JSON mode
+- **`--profile` flag** — `kinder create cluster --profile <name>` selects a named addon preset:
+  - `minimal` — no kinder addons (core kind only)
+  - `full` — all addons enabled
+  - `gateway` — MetalLB + Envoy Gateway only
+  - `ci` — MetalLB + Metrics Server (CI-optimized)
+- Default behavior (no `--profile`) is fully preserved
+
+### Internal
+
+- Added `golang.org/x/sync` v0.19.0 for `errgroup`
+- `CreateWithAddonProfile` nil-guards `o.Config` by loading default config when no `--config` flag given
+- `--profile` applied after `withConfig` so profile addons override config-file addon settings
+
+---
+
 ## v0.3.0-alpha — Harden & Extend
 
 **Released:** March 3, 2026

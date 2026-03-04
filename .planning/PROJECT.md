@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-included local Kubernetes development experience. Where kind gives you a bare cluster, kinder comes with LoadBalancer support (MetalLB), Gateway API ingress (Envoy Gateway), metrics (`kubectl top` / HPA), tuned DNS (CoreDNS autopath + cache), a dashboard (Headlamp), a local container registry (localhost:5001), and cert-manager with self-signed TLS — all working out of the box. Users run `kinder create cluster` and get a fully functional development environment with zero manual setup. Diagnostic tools (`kinder env`, `kinder doctor`) help with troubleshooting. The project website at kinder.patrykgolabek.dev provides documentation, installation guides, and addon references.
+Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-included local Kubernetes development experience. Where kind gives you a bare cluster, kinder comes with LoadBalancer support (MetalLB), Gateway API ingress (Envoy Gateway), metrics (`kubectl top` / HPA), tuned DNS (CoreDNS autopath + cache), a dashboard (Headlamp), a local container registry (localhost:5001), and cert-manager with self-signed TLS — all working out of the box. Addons install in parallel via wave-based execution for faster cluster creation. Users run `kinder create cluster` and get a fully functional development environment with zero manual setup, or use `--profile minimal|gateway|ci` for targeted addon presets. All read commands support `--output json` for scripting. Diagnostic tools (`kinder env`, `kinder doctor`) help with troubleshooting. The project website at kinder.patrykgolabek.dev provides documentation, installation guides, and addon references.
 
 ## Core Value
 
@@ -45,18 +45,16 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ kinder env command for machine-readable cluster environment info — v1.3
 - ✓ kinder doctor command for prerequisite checking with structured exit codes — v1.3
 
+- ✓ Go 1.24 baseline, golangci-lint v2, SHA-256 subnet hashing, layer violation fix — v1.4
+- ✓ context.Context propagated through all addon Execute() methods and waitForReady — v1.4
+- ✓ FakeNode/FakeCmd test infrastructure with 30+ unit tests for all addon actions — v1.4
+- ✓ Wave-based parallel addon execution with per-addon timing summary — v1.4
+- ✓ `--output json` on all read commands (env, doctor, get clusters, get nodes) — v1.4
+- ✓ `--profile` flag on create cluster with minimal/full/gateway/ci presets — v1.4
+
 ### Active
 
-## Current Milestone: v1.4 Code Quality & Features
-
-**Goal:** Clean up remaining code quality issues, improve architecture, add unit tests for addon actions, and deliver new developer-facing features — based on remaining CODEBASE_REVIEW.md items plus a fresh broad codebase sweep.
-
-**Target features:**
-- Finish remaining code quality items (layer violations, go.mod, error naming, permissions, etc.)
-- Architecture improvements (addon registry, version package, context.Context)
-- Unit tests for addon actions
-- New features (parallel addon install, structured JSON output, cluster presets)
-- Fresh codebase analysis findings
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -80,7 +78,8 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Shipped v1.1 with 878 LOC Astro/MDX/CSS/TS in kinder-site/
 - Shipped v1.2 with logo, SEO, branding polish
 - Shipped v1.3 with bug fixes, provider dedup, local registry, cert-manager, CLI tools
-- Total codebase: ~28,216 LOC Go
+- Shipped v1.4 with Go 1.24, context.Context, unit tests, parallel execution, JSON output, profile presets
+- Total codebase: ~29,592 LOC Go
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
@@ -129,6 +128,12 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | ContainerdConfigPatches before Provision | Cannot inject post-provisioning; must be in create.go before p.Provision() | ✓ Good |
 | cert-manager v1.16.3 with --server-side | 986KB manifest exceeds 256KB annotation limit; v1.17.6 not yet released | ✓ Good |
 | Provider.Name() via fmt.Stringer | Type assertion instead of new interface method; zero-impact on existing code | ✓ Good |
+| Context in ActionContext struct (not param) | Minimal call-site churn; deliberate trade-off | ✓ Good |
+| Wave-based parallel not full DAG | 7 addons with shallow deps; DAG adds 200+ lines for zero benefit | ✓ Good |
+| sync.OnceValues for Nodes() cache | Eliminates TOCTOU race; single-call guarantee over RWMutex | ✓ Good |
+| errgroup.SetLimit(3) for parallel addons | Bounds concurrent kubectl apply calls | ✓ Good |
+| Consistent flagpole/switch/json.NewEncoder | All JSON commands follow same pattern | ✓ Good |
+| CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
 ---
-*Last updated: 2026-03-03 after v1.4 milestone started*
+*Last updated: 2026-03-04 after v1.4 milestone*

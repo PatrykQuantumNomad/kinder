@@ -1,5 +1,31 @@
 # Project Milestones: Kinder
 
+## v1.4 Code Quality & Features (Shipped: 2026-03-04)
+
+**Delivered:** Modernized the Go toolchain, added context.Context cancellation, built a unit test suite for all addon actions, implemented wave-based parallel addon execution, and shipped JSON output + cluster profile presets for the CLI.
+
+**Phases completed:** 25-29 (13 plans total)
+
+**Key accomplishments:**
+- Go 1.24 baseline with golangci-lint v2 zero-issue pass across 60+ files, SHA-256 subnet hashing, and layer violation fix
+- context.Context propagated through all 7 addon Execute() methods and waitForReady loop for cancellation support
+- FakeNode/FakeCmd/FakeProvider test infrastructure with 30+ unit tests covering all addon actions without a live cluster
+- Wave-based parallel addon execution via errgroup.SetLimit(3) with race-free sync.OnceValues node caching and per-addon timing
+- `--output json` on all 4 read commands (env, doctor, get clusters, get nodes) with consistent flagpole pattern
+- `--profile` flag on `create cluster` with 4 presets (minimal, full, gateway, ci) backed by CreateWithAddonProfile
+
+**Stats:**
+- 195 files created/modified
+- 13,646 lines inserted, 3,775 deleted (29,592 total Go LOC)
+- 5 phases, 13 plans, 66 commits
+- 2 days (2026-03-03 → 2026-03-04)
+
+**Git range:** `feat(25-03)` → `docs(phase-29)`
+
+**What's next:** TBD
+
+---
+
 ## v1.3 Harden & Extend (Shipped: 2026-03-03)
 
 **Delivered:** Fixed 4 correctness bugs, eliminated ~525 lines of provider code duplication, and added batteries-included local registry, cert-manager addons, and CLI diagnostic tools.
