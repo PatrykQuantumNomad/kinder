@@ -28,6 +28,8 @@ Creating cluster "kind" ...
  ✓ Tuning CoreDNS
  ✓ Installing Envoy Gateway
  ✓ Installing Dashboard
+ ✓ Installing Local Registry
+ ✓ Installing cert-manager
 
 Addons:
  * MetalLB              installed
@@ -35,6 +37,8 @@ Addons:
  * CoreDNS Tuning       installed
  * Envoy Gateway        installed
  * Dashboard            installed
+ * Local Registry       installed
+ * cert-manager         installed
 Set kubectl context to "kind-kind"
 You can now use your cluster with:
 
@@ -42,6 +46,15 @@ kubectl cluster-info --context kind-kind
 ```
 
 kinder also prints a dashboard token and port-forward command — save these for later.
+
+:::tip[Addon profiles]
+`kinder create cluster` enables all 7 addons by default. Use `--profile` to select a preset:
+
+- `--profile minimal` — no kinder addons (plain kind cluster)
+- `--profile gateway` — MetalLB + Envoy Gateway only
+- `--profile ci` — Metrics Server + cert-manager (CI-optimized)
+- `--profile full` — all addons (same as default)
+:::
 
 ## What You Get
 
@@ -52,8 +65,10 @@ kinder also prints a dashboard token and port-forward command — save these for
 | Metrics Server | `kube-system` | `kubectl top` support |
 | CoreDNS tuning | `kube-system` | Optimised DNS caching |
 | Headlamp | `kube-system` | Web UI for cluster inspection |
+| Local Registry | `default` (host network) | Private container registry at localhost:5001 |
+| cert-manager | `cert-manager` | Automatic TLS certificates with self-signed ClusterIssuer |
 
-## Verify Addons
+## Verify Core Addons
 
 ### MetalLB
 
@@ -127,6 +142,8 @@ cache 60 {
 }
 ```
 
+## Verify Optional Addons
+
 ### Envoy Gateway
 
 Confirm the GatewayClass is accepted:
@@ -158,6 +175,74 @@ If you need to retrieve the token later:
 kubectl get secret kinder-dashboard-token -n kube-system \
   -o jsonpath='{.data.token}' | base64 -d
 ```
+
+### Local Registry
+
+Confirm the registry container is running and accessible:
+
+```sh
+docker ps --filter name=kind-registry
+```
+
+Expected output:
+
+```
+CONTAINER ID   IMAGE        COMMAND                  PORTS                    NAMES
+abc123def456   registry:2   "/entrypoint.sh /etc…"   0.0.0.0:5001->5000/tcp   kind-registry
+```
+
+Verify dev tool discovery ConfigMap is present:
+
+```sh
+kubectl get configmap local-registry-hosting -n kube-public
+```
+
+Expected output:
+
+```
+NAME                     DATA   AGE
+local-registry-hosting   1      60s
+```
+
+### cert-manager
+
+Check all three cert-manager components are running:
+
+```sh
+kubectl get pods -n cert-manager
+```
+
+Expected output:
+
+```
+NAME                                       READY   STATUS    RESTARTS   AGE
+cert-manager-...                           1/1     Running   0          60s
+cert-manager-cainjector-...                1/1     Running   0          60s
+cert-manager-webhook-...                   1/1     Running   0          60s
+```
+
+Confirm the self-signed ClusterIssuer is ready:
+
+```sh
+kubectl get clusterissuer selfsigned-issuer
+```
+
+Expected output:
+
+```
+NAME                READY   AGE
+selfsigned-issuer   True    60s
+```
+
+## Something wrong?
+
+Run `kinder doctor` to check prerequisites and identify issues:
+
+```sh
+kinder doctor
+```
+
+This checks that Docker (or Podman/nerdctl), kubectl, and other dependencies are installed and reachable.
 
 ## Delete the Cluster
 
