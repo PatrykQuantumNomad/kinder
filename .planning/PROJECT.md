@@ -52,17 +52,11 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ `--output json` on all read commands (env, doctor, get clusters, get nodes) — v1.4
 - ✓ `--profile` flag on create cluster with minimal/full/gateway/ci presets — v1.4
 
+- ✓ Website updated with 3 tutorials, 3 CLI reference pages, 7 enriched addon pages, 19-page clean build — v1.5
+
 ### Active
 
-#### Current Milestone: v1.5 Website Use Cases & Documentation
-
-**Goal:** Update the kinder website with detailed use cases, tutorials, and CLI reference pages so users can see how to actually use every feature.
-
-**Target features:**
-- Hands-on tutorials (TLS web app, HPA auto-scaling, local dev workflow)
-- Practical examples on each addon page (common scenarios, troubleshooting)
-- CLI reference pages (kinder env, kinder doctor, --output json, --profile)
-- Update existing pages (landing page, quick-start, configuration) to cover v1.3-v1.4 features
+(Next milestone not yet defined — run `/gsd:new-milestone` to start)
 
 ### Out of Scope
 
@@ -87,7 +81,8 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Shipped v1.2 with logo, SEO, branding polish
 - Shipped v1.3 with bug fixes, provider dedup, local registry, cert-manager, CLI tools
 - Shipped v1.4 with Go 1.24, context.Context, unit tests, parallel execution, JSON output, profile presets
-- Total codebase: ~29,592 LOC Go
+- Shipped v1.5 with 3 tutorials, 3 CLI reference pages, 7 enriched addon pages, 19-page clean production build
+- Total codebase: ~29,592 LOC Go, ~3,386 LOC site (Astro/MDX/TS/CSS)
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
@@ -144,4 +139,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
 ---
-*Last updated: 2026-03-04 after v1.5 milestone started*
+*Last updated: 2026-03-04 after v1.5 milestone complete*

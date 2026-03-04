@@ -1,5 +1,30 @@
 # Project Milestones: Kinder
 
+## v1.5 Website Use Cases & Documentation (Shipped: 2026-03-04)
+
+**Delivered:** Updated the kinder website with detailed use cases, tutorials, and CLI reference pages — enriching all 7 addon pages with practical examples and troubleshooting, writing 3 end-to-end tutorials, and creating 3 CLI reference pages.
+
+**Phases completed:** 30-34 (7 plans total)
+
+**Key accomplishments:**
+- Updated landing page, quick-start, and configuration to document all 7 addons with core/optional grouping
+- Added practical examples and Symptom/Cause/Fix troubleshooting to all 7 addon pages
+- Created 3 CLI reference pages: profile comparison (4 presets x 7 addons), JSON output with jq recipes, env/doctor troubleshooting with exit codes
+- Wrote 3 end-to-end tutorials: TLS web app (4 addons), HPA auto-scaling, local dev workflow
+- Fixed ci profile documentation bug and Go version mismatch, verified 19-page clean production build
+
+**Stats:**
+- 46 files created/modified
+- 6,830 lines inserted, 66 deleted (3,386 site LOC)
+- 5 phases, 7 plans, 35 commits
+- 1 day (2026-03-04)
+
+**Git range:** `feat(30-01)` → `docs(phase-34)`
+
+**What's next:** TBD
+
+---
+
 ## v1.4 Code Quality & Features (Shipped: 2026-03-04)
 
 **Delivered:** Modernized the Go toolchain, added context.Context cancellation, built a unit test suite for all addon actions, implemented wave-based parallel addon execution, and shipped JSON output + cluster profile presets for the CLI.
