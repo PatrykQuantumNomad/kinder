@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 27 — Unit Tests (v1.4)
+**Current focus:** Phase 28 — Parallel Addon Execution (v1.4)
 
 ## Current Position
 
-Phase: 27 of 29 (Unit Tests)
-Plan: 3 of 3 in current phase — COMPLETE
-Status: Phase 27 complete; all 3 plans done (testutil/metricsserver/envoygw, certmanager/dashboard, localregistry)
-Last activity: 2026-03-03 — Plan 27-03 complete (localregistry_test.go with Docker-skip guards)
+Phase: 28 of 29 (Parallel Addon Execution)
+Plan: 1 of 2 complete — Plan 02 next
+Status: Phase 28 Plan 01 complete; sync.OnceValues cache + golang.org/x/sync dep added; ready for Plan 02
+Last activity: 2026-03-03 — Plan 28-01 complete (race-free Nodes() cache with sync.OnceValues)
 
-Progress: [████████████░░░░░░░░] 60% (v1.0-v1.3 complete; v1.4 phases 25-27 done)
+Progress: [█████████████░░░░░░░] 65% (v1.0-v1.3 complete; v1.4 phases 25-28 in progress)
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ Progress: [████████████░░░░░░░░] 60% (v1
 - [Phase 27 Plan 03]: TestExecute_InfoError always runs without Docker; Provider.Info() is called before any exec.Command invocations in localregistry.Execute()
 - [Phase 27 Plan 03]: Docker-dependent tests use t.Skip guard via exec.Command("docker","version").Run() (sigs.k8s.io/kind/pkg/exec, not os/exec)
 - [Phase 27 Plan 03]: FakeProvider does not implement fmt.Stringer so binaryName defaults to "docker"; aligns with Docker skip guard
+- [Phase 28 Plan 01]: sync.OnceValues used over RWMutex-based cachedData: eliminates TOCTOU race, single-call guarantee
+- [Phase 28 Plan 01]: golang.org/x/sync v0.19.0 added via go.mod edit + go mod download (not go get + go mod tidy; tidy removes unused deps before Plan 02 imports errgroup)
 
 ### Pending Todos
 
@@ -64,11 +66,10 @@ None.
 
 ### Blockers/Concerns
 
-- [Phase 28 entry]: Validate MetalLB/EnvoyGateway runtime dependency empirically before parallelizing
-- [Phase 28 entry]: Confirm cli.Status goroutine safety by reading pkg/internal/cli/status.go before Phase 28
+None.
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 27 Plan 03 complete; localregistry_test.go done; Phase 27 complete; ready for Phase 28
+Stopped at: Phase 28 Plan 01 complete; sync.OnceValues + x/sync dep done; ready for Plan 02 (errgroup wave execution)
 Resume file: None

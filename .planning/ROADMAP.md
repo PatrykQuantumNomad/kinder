@@ -113,7 +113,7 @@ Plans:
   4. The post-creation summary prints each addon's install duration (e.g., "MetalLB: 12.3s, EnvoyGateway: 8.1s")
 **Plans:** 2 plans
 Plans:
-- [ ] 28-01-PLAN.md — sync.OnceValues Nodes() cache fix + golang.org/x/sync dependency + race test
+- [x] 28-01-PLAN.md — sync.OnceValues Nodes() cache fix + golang.org/x/sync dependency + race test
 - [ ] 28-02-PLAN.md — Wave-based parallel addon execution with errgroup, DAG docs, timing summary, Makefile test-race
 
 ### Phase 29: CLI Features
@@ -141,5 +141,5 @@ Plans:
 | 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
 | 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
 | 27. Unit Tests | v1.4 | 3/3 | Complete | 2026-03-03 |
-| 28. Parallel Execution | v1.4 | 0/2 | Not started | - |
+| 28. Parallel Execution | v1.4 | 1/2 | In progress | - |
 | 29. CLI Features | v1.4 | 0/? | Not started | - |

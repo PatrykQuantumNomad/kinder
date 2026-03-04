@@ -39,7 +39,7 @@ Requirements for v1.4 Code Quality & Features milestone. Each maps to roadmap ph
 ### Parallel
 
 - [ ] **PARA-01**: Addon dependency DAG documented
-- [ ] **PARA-02**: sync.Once fix for ActionContext.Nodes() cache TOCTOU race
+- [x] **PARA-02**: sync.Once fix for ActionContext.Nodes() cache TOCTOU race
 - [ ] **PARA-03**: Wave-based parallel addon execution via errgroup with SetLimit(3)
 - [ ] **PARA-04**: Per-addon install duration printed in summary
 
@@ -106,7 +106,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-05 | Phase 27 | Pending |
 | TEST-06 | Phase 27 | Pending |
 | PARA-01 | Phase 28 | Pending |
-| PARA-02 | Phase 28 | Pending |
+| PARA-02 | Phase 28 | Complete (28-01) |
 | PARA-03 | Phase 28 | Pending |
 | PARA-04 | Phase 28 | Pending |
 | CLI-01 | Phase 29 | Pending |
@@ -122,4 +122,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-04 after plan 26-01 (ARCH-01, ARCH-03 complete)*
+*Last updated: 2026-03-03 after plan 28-01 (PARA-02 complete)*
