@@ -93,6 +93,102 @@ addons:
   envoyGateway: false
 ```
 
+## Practical examples
+
+### Path-based routing
+
+Route `/api` requests to one service and `/web` requests to another using a single HTTPRoute:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: path-route
+spec:
+  parentRefs:
+    - name: my-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: api-service
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /web
+      backendRefs:
+        - name: web-service
+          port: 80
+```
+
+:::note
+`PathPrefix` matches any path that starts with the given value — `/api` matches `/api/users` and `/api/v2/items`. Use `Exact` if you want to match only the literal path `/api` with nothing following it.
+:::
+
+### Header-based routing
+
+Route requests to a canary deployment based on a request header:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: header-routing
+spec:
+  parentRefs:
+    - name: my-gateway
+  rules:
+    - matches:
+        - headers:
+            - name: X-Environment
+              value: canary
+      backendRefs:
+        - name: canary-service
+          port: 80
+    - backendRefs:
+        - name: stable-service
+          port: 80
+```
+
+Test canary routing with curl:
+
+```sh
+# Route to canary
+curl -H "X-Environment: canary" http://<gateway-ip>/
+
+# Route to stable (no header)
+curl http://<gateway-ip>/
+```
+
+## Troubleshooting
+
+### Gateway stuck in Pending
+
+**Symptom:** `kubectl get gateway` shows the gateway status is not `Programmed` — it remains `Pending` or shows no `PROGRAMMED` column value.
+
+**Cause:** Either the Envoy Gateway controller is not running, or MetalLB is unavailable to assign an external IP to the gateway's backing service.
+
+**Fix:**
+
+Check that the Envoy Gateway controller pod is running:
+
+```sh
+kubectl get pods -n envoy-gateway-system
+```
+
+If the pod is not `Running`, describe it for error details.
+
+Verify that MetalLB is enabled and its pods are healthy:
+
+```sh
+kubectl get pods -n metallb-system
+```
+
+If MetalLB is disabled or unhealthy, the gateway's LoadBalancer service will stay in `<pending>` and the gateway will not become `Programmed`.
+
 ## Technical note
 
 :::note[Server-side apply]
