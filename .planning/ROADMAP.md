@@ -51,7 +51,7 @@ Phases 19-24: Bug Fixes, Provider Code Deduplication, Config Type Additions, Loc
 - [x] **Phase 25: Foundation** - go.mod bump, dependency updates, golangci-lint v2, layer violation fix, code quality cleanup
 - [x] **Phase 26: Architecture** - context.Context propagation, centralized addon registry, context-aware readiness waiting
 - [x] **Phase 27: Unit Tests** - fakeNode/fakeCmd test infrastructure, unit tests for all addon action packages
-- [x] **Phase 28: Parallel Execution** - dependency DAG documentation, sync.Once fix, wave-based parallel addon install, timing summary
+- [x] **Phase 28: Parallel Execution** - dependency DAG documentation, sync.OnceValues fix, wave-based parallel addon install, timing summary
 - [ ] **Phase 29: CLI Features** - JSON output for all commands, cluster presets via --profile flag
 
 ## Phase Details
@@ -114,7 +114,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 28-01-PLAN.md — sync.OnceValues Nodes() cache fix + golang.org/x/sync dependency + race test
-- [ ] 28-02-PLAN.md — Wave-based parallel addon execution with errgroup, DAG docs, timing summary, Makefile test-race
+- [x] 28-02-PLAN.md — Wave-based parallel addon execution with errgroup, DAG docs, timing summary, Makefile test-race
 
 ### Phase 29: CLI Features
 **Goal**: Every kinder read command accepts `--output json` and produces clean, jq-parseable JSON on stdout; `kinder create cluster --profile <name>` selects a named addon preset without requiring a YAML config file
@@ -141,5 +141,5 @@ Plans:
 | 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
 | 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
 | 27. Unit Tests | v1.4 | 3/3 | Complete | 2026-03-03 |
-| 28. Parallel Execution | v1.4 | 1/2 | In progress | - |
+| 28. Parallel Execution | v1.4 | 2/2 | Complete | 2026-03-03 |
 | 29. CLI Features | v1.4 | 0/? | Not started | - |
