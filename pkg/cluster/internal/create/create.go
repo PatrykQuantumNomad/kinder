@@ -81,6 +81,14 @@ type addonResult struct {
 	err     error
 }
 
+// AddonEntry pairs an addon's display name, enabled flag, and action for
+// the registry-driven installation loop.
+type AddonEntry struct {
+	Name    string
+	Enabled bool
+	Action  actions.Action
+}
+
 // Cluster creates a cluster
 func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) error {
 	// validate provider first
@@ -211,14 +219,19 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 		logger.Warn("MetalLB is disabled but Envoy Gateway is enabled. Envoy Gateway proxy services will not receive LoadBalancer IPs.")
 	}
 
-	// Run addon actions in dependency order
-	runAddon("Local Registry", opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction())
-	runAddon("MetalLB", opts.Config.Addons.MetalLB, installmetallb.NewAction())
-	runAddon("Metrics Server", opts.Config.Addons.MetricsServer, installmetricsserver.NewAction())
-	runAddon("CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction())
-	runAddon("Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction())
-	runAddon("Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction())
-	runAddon("Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction())
+	// Run addon actions in dependency order via registry.
+	addonRegistry := []AddonEntry{
+		{"Local Registry", opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction()},
+		{"MetalLB", opts.Config.Addons.MetalLB, installmetallb.NewAction()},
+		{"Metrics Server", opts.Config.Addons.MetricsServer, installmetricsserver.NewAction()},
+		{"CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction()},
+		{"Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction()},
+		{"Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction()},
+		{"Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction()},
+	}
+	for _, addon := range addonRegistry {
+		runAddon(addon.Name, addon.Enabled, addon.Action)
+	}
 
 	// Platform warning for MetalLB (FOUND-05)
 	if opts.Config.Addons.MetalLB {
