@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: write   # Required for GitHub Release creation and asset upload
 
 jobs:
   release:
@@ -14,22 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # REQUIRED: full history needed for GoReleaser changelog generation. DO NOT change to fetch-depth: 1.
           fetch-depth: 0
-
-      - name: Read Go version
-        id: go-version
-        run: echo "version=$(cat .go-version)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ steps.go-version.outputs.version }}
+          go-version-file: .go-version   # Reads the pinned Go version from .go-version
 
-      - name: Build cross-platform binaries
-        run: hack/release/build/cross.sh
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: goreleaser/goreleaser-action@v7
         with:
-          generate_release_notes: true
-          files: |
-            bin/kinder-*
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
