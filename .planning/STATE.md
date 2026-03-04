@@ -14,7 +14,7 @@ Plan: 3 of 3 in current phase — COMPLETE
 Status: Phase 27 complete; all 3 plans done (testutil/metricsserver/envoygw, certmanager/dashboard, localregistry)
 Last activity: 2026-03-03 — Plan 27-03 complete (localregistry_test.go with Docker-skip guards)
 
-Progress: [██████████░░░░░░░░░░] 50% (v1.0-v1.3 complete; v1.4 phases 25-26 done)
+Progress: [████████████░░░░░░░░] 60% (v1.0-v1.3 complete; v1.4 phases 25-27 done)
 
 ## Performance Metrics
 
