@@ -1,6 +1,6 @@
 ---
 title: kinder
-description: kind with MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, and Headlamp pre-installed.
+description: kind with MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, Local Registry, and cert-manager pre-installed.
 template: splash
 hero:
   tagline: kind, but with everything you actually need.
@@ -30,18 +30,15 @@ import Comparison from '../../components/Comparison.astro';
 
 <Comparison />
 
-## Addons
+## Core Addons
+
+Always-on essentials for every kinder cluster.
 
 <CardGrid>
   <Card title="MetalLB" icon="seti:db">
     LoadBalancer services with real external IPs from your Docker or Podman subnet.
 
     [View docs](/addons/metallb/)
-  </Card>
-  <Card title="Envoy Gateway" icon="random">
-    Gateway API routing with the `eg` GatewayClass pre-configured.
-
-    [View docs](/addons/envoy-gateway/)
   </Card>
   <Card title="Metrics Server" icon="bars">
     Enables `kubectl top` and Horizontal Pod Autoscaler support.
@@ -52,6 +49,18 @@ import Comparison from '../../components/Comparison.astro';
     Autopath short names, verified pod records, and doubled cache TTL.
 
     [View docs](/addons/coredns/)
+  </Card>
+</CardGrid>
+
+## Optional Addons
+
+Powerful extras enabled by default — disable with `--profile minimal` for lightweight clusters.
+
+<CardGrid>
+  <Card title="Envoy Gateway" icon="random">
+    Gateway API routing with the `eg` GatewayClass pre-configured.
+
+    [View docs](/addons/envoy-gateway/)
   </Card>
   <Card title="Headlamp Dashboard" icon="laptop">
     Web-based cluster UI. Access via port-forward, token printed at cluster creation.

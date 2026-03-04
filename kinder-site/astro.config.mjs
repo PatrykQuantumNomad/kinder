@@ -57,6 +57,7 @@ export default defineConfig({
         { slug: 'configuration' },
         {
           label: 'Addons',
+          collapsed: true,
           items: [
             { slug: 'addons/metallb' },
             { slug: 'addons/envoy-gateway' },
@@ -65,6 +66,24 @@ export default defineConfig({
             { slug: 'addons/headlamp' },
             { slug: 'addons/local-registry' },
             { slug: 'addons/cert-manager' },
+          ],
+        },
+        {
+          label: 'Guides',
+          collapsed: true,
+          items: [
+            { slug: 'guides/tls-web-app' },
+            { slug: 'guides/hpa-auto-scaling' },
+            { slug: 'guides/local-dev-workflow' },
+          ],
+        },
+        {
+          label: 'CLI Reference',
+          collapsed: true,
+          items: [
+            { slug: 'cli-reference/profile-comparison' },
+            { slug: 'cli-reference/json-output' },
+            { slug: 'cli-reference/troubleshooting' },
           ],
         },
         { slug: 'changelog' },
