@@ -88,15 +88,15 @@ Plans:
 **Goal**: macOS users can install kinder with a single `brew install` command from a maintained custom tap, without needing a Go toolchain
 **Depends on**: Phase 35 (GoReleaser must produce at least one tagged release before tap formula can reference archive hashes)
 **Requirements**: BREW-01, BREW-02, BREW-03, SITE-01
+**Plans:** 2 plans
 **Success Criteria** (what must be TRUE):
   1. `brew install patrykquantumnomad/kinder/kinder` succeeds on macOS and produces a working kinder binary
   2. After a new tagged release, the `Casks/kinder.rb` file in the homebrew-kinder tap repo is updated automatically — verifiable via `gh api repos/PatrykQuantumNomad/homebrew-kinder/commits`
   3. The kinder installation page at kinder.patrykgolabek.dev shows Homebrew install instructions alongside make install
-**Plans**: TBD
 
 Plans:
-- [ ] 36-01: Homebrew tap repo setup and GoReleaser cask config
-- [ ] 36-02: Tagged release, tap verification, and website install docs update
+- [ ] 36-01-PLAN.md — Tap repo creation, GoReleaser cask config, and PAT secret setup
+- [ ] 36-02-PLAN.md — Installation page update with Homebrew instructions and corrected download URLs
 
 ### Phase 37: NVIDIA GPU Addon
 **Goal**: Users on Linux with NVIDIA GPUs can create a kind cluster that exposes GPU resources to pods via a single config field, with actionable pre-flight error messages if prerequisites are missing
