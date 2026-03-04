@@ -126,7 +126,10 @@ Plans:
   3. `kinder get clusters --output json | jq empty` and `kinder get nodes --output json | jq empty` each exit 0
   4. `kinder create cluster --profile minimal` creates a cluster with only core kind functionality (no kinder addons); `--profile full` enables all addons; `--profile gateway` enables MetalLB + EnvoyGateway; `--profile ci` enables a CI-optimized subset
   5. `kinder create cluster` without `--profile` behaves identically to current default (all addons on)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 29-01-PLAN.md — --output json on env, doctor, and get clusters commands
+- [ ] 29-02-PLAN.md — --output json on get nodes + --profile flag on create cluster
 
 ## Progress
 
@@ -142,4 +145,4 @@ Plans:
 | 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
 | 27. Unit Tests | v1.4 | 3/3 | Complete | 2026-03-03 |
 | 28. Parallel Execution | v1.4 | 2/2 | Complete | 2026-03-03 |
-| 29. CLI Features | v1.4 | 0/? | Not started | - |
+| 29. CLI Features | v1.4 | 0/2 | Not started | - |
