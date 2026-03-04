@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Website Use Cases & Documentation
-status: completed
-stopped_at: Completed 31-02-PLAN.md
-last_updated: "2026-03-04T15:02:57.639Z"
-last_activity: 2026-03-04 — Phase 30 plan 01 complete (all 7 addons documented)
+status: executing
+stopped_at: Completed phase 31 execution
+last_updated: "2026-03-04T15:06:29.425Z"
+last_activity: 2026-03-04 — Phase 31 complete (all 7 addon pages enriched with examples + troubleshooting)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 3
+  total_plans: 7
   completed_plans: 3
-  percent: 100
+  percent: 43
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.5 — Phase 30: Foundation Fixes
+**Current focus:** v1.5 — Phase 32: CLI Reference
 
 ## Current Position
 
-Phase: 30 of 34 (Foundation Fixes)
-Plan: 1 of 1 in current phase
-Status: Phase complete — ready for Phase 31
-Last activity: 2026-03-04 — Phase 30 plan 01 complete (all 7 addons documented)
+Phase: 31 of 34 (Addon Page Depth)
+Plan: 2 of 2 in current phase
+Status: Phase complete — ready for Phase 32
+Last activity: 2026-03-04 — Phase 31 complete (all 7 addon pages enriched with examples + troubleshooting)
 
 Progress: [██████████] 100%
 
@@ -69,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T15:02:57.637Z
-Stopped at: Completed 31-02-PLAN.md
+Last session: 2026-03-04T15:06:29.423Z
+Stopped at: Completed phase 31 execution
 Resume file: None
