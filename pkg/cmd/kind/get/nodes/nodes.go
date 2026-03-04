@@ -18,6 +18,7 @@ limitations under the License.
 package nodes
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -34,6 +35,12 @@ import (
 type flagpole struct {
 	Name        string
 	AllClusters bool
+	Output      string
+}
+
+type nodeInfo struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
 }
 
 // NewCommand returns a new cobra.Command for getting the list of nodes for a given cluster
@@ -63,17 +70,28 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		false,
 		"If present, list all the available nodes across all cluster contexts. Current context is ignored even if specified with --name.",
 	)
+	cmd.Flags().StringVar(
+		&flags.Output,
+		"output",
+		"",
+		`output format; supported values: "", "json"`,
+	)
 	return cmd
 }
 
 func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
+	// Validate output format
+	if flags.Output != "" && flags.Output != "json" {
+		return fmt.Errorf("unsupported output format %q: supported values are \"\", \"json\"", flags.Output)
+	}
+
 	// List nodes by cluster context name
 	provider := cluster.NewProvider(
 		cluster.ProviderWithLogger(logger),
 		runtime.GetDefault(logger),
 	)
 
-	var nodes []nodes.Node
+	var allNodes []nodes.Node
 	var err error
 	if flags.AllClusters {
 		clusters, err := provider.List()
@@ -85,24 +103,42 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 			if err != nil {
 				return err
 			}
-			nodes = append(nodes, clusterNodes...)
+			allNodes = append(allNodes, clusterNodes...)
 		}
-		if len(nodes) == 0 {
+	} else {
+		allNodes, err = provider.ListNodes(flags.Name)
+		if err != nil {
+			return err
+		}
+	}
+
+	// JSON output branch — before human-readable empty-node checks
+	if flags.Output == "json" {
+		infos := make([]nodeInfo, 0, len(allNodes))
+		for _, n := range allNodes {
+			role, err := n.Role()
+			if err != nil {
+				role = "unknown"
+			}
+			infos = append(infos, nodeInfo{Name: n.String(), Role: role})
+		}
+		return json.NewEncoder(streams.Out).Encode(infos)
+	}
+
+	// Human-readable output with empty-node messages
+	if flags.AllClusters {
+		if len(allNodes) == 0 {
 			logger.V(0).Infof("No kind nodes for any cluster.")
 			return nil
 		}
 	} else {
-		nodes, err = provider.ListNodes(flags.Name)
-		if err != nil {
-			return err
-		}
-		if len(nodes) == 0 {
+		if len(allNodes) == 0 {
 			logger.V(0).Infof("No kind nodes found for cluster %q.", flags.Name)
 			return nil
 		}
 	}
 
-	for _, node := range nodes {
+	for _, node := range allNodes {
 		fmt.Fprintln(streams.Out, node.String()) //nolint:errcheck
 	}
 	return nil
