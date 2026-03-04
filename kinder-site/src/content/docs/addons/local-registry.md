@@ -102,6 +102,105 @@ addons:
 
 The `local-registry-hosting` ConfigMap in `kube-public` follows [KEP-1755](https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/1755-communicating-a-local-registry), which allows tools like Tilt and Skaffold to auto-discover the registry endpoint. No additional configuration is needed in these tools.
 
+## Multi-image workflow
+
+Build and push multiple images, then verify they are all available in the registry:
+
+```sh
+docker build -t localhost:5001/frontend:v1 ./frontend
+docker push localhost:5001/frontend:v1
+
+docker build -t localhost:5001/backend:v1 ./backend
+docker push localhost:5001/backend:v1
+```
+
+Verify both images are registered:
+
+```sh
+curl http://localhost:5001/v2/_catalog
+```
+
+Expected output:
+
+```json
+{"repositories":["backend","frontend"]}
+```
+
+Reference both images in a Deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: frontend
+          image: localhost:5001/frontend:v1
+        - name: backend
+          image: localhost:5001/backend:v1
+```
+
+## Cleaning up images
+
+The simplest cleanup approach is to re-push with the same tag to overwrite an existing image:
+
+```sh
+docker build -t localhost:5001/myapp:latest .
+docker push localhost:5001/myapp:latest  # overwrites the previous image
+```
+
+To list all tags for a specific image:
+
+```sh
+curl http://localhost:5001/v2/myapp/tags/list
+```
+
+Note that `registry:2` does not garbage-collect by default — disk space is reclaimed only when the registry container is recreated. For a fresh start:
+
+```sh
+docker rm -f kind-registry
+```
+
+The registry will be recreated on the next `kinder create cluster`.
+
+## Troubleshooting
+
+### ImagePullBackOff from localhost:5001
+
+**Symptom:** `kubectl describe pod` shows `Failed to pull image "localhost:5001/myapp:latest"` with `ImagePullBackOff`.
+
+**Cause:** The `kind-registry` container is not running — it may have been stopped or removed.
+
+**Fix:** Check whether the registry is running:
+
+```sh
+docker ps --filter name=kind-registry
+```
+
+If the container exists but is stopped, start it:
+
+```sh
+docker start kind-registry
+```
+
+If it was removed, the simplest fix is to recreate the cluster:
+
+```sh
+kinder create cluster
+```
+
+This recreates the registry container automatically.
+
 ## Platform notes
 
 :::caution[Rootless Podman limitation]

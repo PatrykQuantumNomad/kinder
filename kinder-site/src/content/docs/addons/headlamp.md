@@ -83,3 +83,30 @@ kind: Cluster
 addons:
   dashboard: false
 ```
+
+## What you can do
+
+Once logged in, Headlamp provides a full cluster overview. Here are the main areas you will use:
+
+- **Workloads** — View Deployments, Pods, ReplicaSets, DaemonSets, Jobs. Click any pod to see its status, containers, and resource usage.
+- **Logs** — Click a pod, then select a container to stream its logs in real time. Use the search bar to filter log lines.
+- **Events** — The cluster Events view shows recent scheduling decisions, image pulls, and errors across all namespaces. Useful for debugging pod startup failures.
+- **Config** — Browse ConfigMaps and Secrets. kinder's `kinder-dashboard-token` secret appears here under `kube-system`.
+- **Nodes** — View node status, capacity, and allocated resources. In a single-node kinder cluster, this shows the control-plane node.
+
+## Troubleshooting
+
+### Invalid token error
+
+**Symptom:** Headlamp shows "Invalid token" or "Unauthorized" after pasting the token.
+
+**Cause:** The raw base64-encoded value was pasted instead of the decoded token. The `kubectl get secret` command returns base64-encoded data; the `| base64 --decode` step is required.
+
+**Fix:** Re-run the token retrieval command ensuring the `| base64 --decode` pipe is included:
+
+```sh
+kubectl get secret kinder-dashboard-token -n kube-system \
+  -o jsonpath='{.data.token}' | base64 --decode
+```
+
+Copy the decoded output (a long JWT string) and paste it into the token field.
