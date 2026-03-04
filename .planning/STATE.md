@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.5 — Phase 32: CLI Reference
+**Current focus:** v1.5 — Phase 33: Tutorials
 
 ## Current Position
 
 Phase: 32 of 34 (CLI Reference)
 Plan: 1 of 1 in current phase
-Status: Phase 32 plan 01 complete — CLI reference pages written
-Last activity: 2026-03-04 — Phase 32 plan 01 complete (profile comparison, JSON output, troubleshooting pages)
+Status: Phase complete — ready for Phase 33
+Last activity: 2026-03-04 — Phase 32 complete (profile comparison, JSON output, troubleshooting pages)
 
 Progress: [████████░░] 80%
 
