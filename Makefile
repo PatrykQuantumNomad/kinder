@@ -84,6 +84,9 @@ integration:
 # all tests
 test:
 	hack/make-rules/test.sh
+# race detector tests (requires CGO)
+test-race:
+	CGO_ENABLED=1 go test -race ./pkg/cluster/internal/create/... -count=1
 ################################################################################
 # ================================= Cleanup ====================================
 # standard cleanup target
@@ -112,4 +115,4 @@ lint:
 shellcheck:
 	hack/make-rules/verify/shellcheck.sh
 #################################################################################
-.PHONY: all kind build install unit clean update generate gofmt verify lint shellcheck
+.PHONY: all kind build install unit integration test test-race clean update generate gofmt verify lint shellcheck

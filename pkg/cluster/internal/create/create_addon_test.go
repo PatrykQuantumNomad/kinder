@@ -17,11 +17,16 @@ limitations under the License.
 package create
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
+	"sigs.k8s.io/kind/pkg/internal/apis/config"
+	"sigs.k8s.io/kind/pkg/internal/cli"
 	"sigs.k8s.io/kind/pkg/log"
 )
 
@@ -76,9 +81,9 @@ func TestLogAddonSummary(t *testing.T) {
 		{
 			name: "single enabled addon shows installed",
 			results: []addonResult{
-				{name: "MetalLB", enabled: true},
+				{name: "MetalLB", enabled: true, duration: 3 * time.Second},
 			},
-			contains: []string{"MetalLB", "installed"},
+			contains: []string{"MetalLB", "installed", "3.0s"},
 		},
 		{
 			name: "single disabled addon shows skipped",
@@ -90,9 +95,9 @@ func TestLogAddonSummary(t *testing.T) {
 		{
 			name: "single failed addon shows FAILED",
 			results: []addonResult{
-				{name: "MetalLB", enabled: true, err: fmt.Errorf("timeout")},
+				{name: "MetalLB", enabled: true, err: fmt.Errorf("timeout"), duration: 2 * time.Second},
 			},
-			contains: []string{"MetalLB", "FAILED", "timeout"},
+			contains: []string{"MetalLB", "FAILED", "timeout", "2.0s"},
 		},
 		{
 			name: "multiple addons each appear",
@@ -108,6 +113,27 @@ func TestLogAddonSummary(t *testing.T) {
 			results:  []addonResult{},
 			contains: []string{"Addons:"},
 		},
+		{
+			name: "installed addon shows duration",
+			results: []addonResult{
+				{name: "MetalLB", enabled: true, duration: 12300 * time.Millisecond},
+			},
+			contains: []string{"MetalLB", "installed", "12.3s"},
+		},
+		{
+			name: "failed addon shows duration",
+			results: []addonResult{
+				{name: "MetalLB", enabled: true, err: fmt.Errorf("timeout"), duration: 5700 * time.Millisecond},
+			},
+			contains: []string{"MetalLB", "FAILED", "timeout", "5.7s"},
+		},
+		{
+			name: "disabled addon shows no duration",
+			results: []addonResult{
+				{name: "MetalLB", enabled: false},
+			},
+			contains: []string{"MetalLB", "skipped"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,6 +146,23 @@ func TestLogAddonSummary(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRunAddonTimed_DisabledSkips(t *testing.T) {
+	logger := &testLogger{}
+	status := cli.StatusForLogger(logger)
+	ctx := actions.NewActionContext(context.Background(), logger, status, nil, &config.Cluster{Name: "test"})
+
+	res := runAddonTimed(ctx, "TestAddon", false, nil)
+	if res.enabled {
+		t.Error("expected disabled result")
+	}
+	if res.duration != 0 {
+		t.Errorf("expected zero duration for disabled addon, got %v", res.duration)
+	}
+	if !strings.Contains(logger.output(), "Skipping TestAddon") {
+		t.Errorf("expected skip message, got: %s", logger.output())
 	}
 }
 
