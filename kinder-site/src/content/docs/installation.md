@@ -12,45 +12,33 @@ kinder is a fork of [kind](https://kind.sigs.k8s.io/) with opinionated addons pr
 - **Docker, Podman, or nerdctl** — kinder uses a container runtime to create cluster nodes
 - **kubectl** — [Install kubectl](https://kubernetes.io/docs/tasks/tools/)
 
+## Homebrew (macOS)
+
+```sh
+brew install patrykquantumnomad/kinder/kinder
+```
+
+This installs a pre-built binary for your architecture (Apple Silicon or Intel). No Go toolchain required.
+
 ## Download Pre-built Binary
 
-Pre-built binaries are available for macOS, Linux, and Windows from [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases).
+Pre-built binaries for macOS, Linux, and Windows are available from
+[GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases/latest).
 
-### macOS (Apple Silicon)
+Download the archive for your platform, extract, and move to your PATH:
+
+### macOS / Linux
 
 ```sh
-curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-darwin-arm64
+# Replace the URL with the archive for your platform from the latest release
+tar xzf kinder_*_darwin_arm64.tar.gz
 chmod +x kinder
 sudo mv kinder /usr/local/bin/
 ```
 
-### macOS (Intel)
+### Windows
 
-```sh
-curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-darwin-amd64
-chmod +x kinder
-sudo mv kinder /usr/local/bin/
-```
-
-### Linux (amd64)
-
-```sh
-curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-linux-amd64
-chmod +x kinder
-sudo mv kinder /usr/local/bin/
-```
-
-### Linux (arm64)
-
-```sh
-curl -Lo kinder https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-linux-arm64
-chmod +x kinder
-sudo mv kinder /usr/local/bin/
-```
-
-### Windows (amd64)
-
-Download [kinder-windows-amd64](https://github.com/PatrykQuantumNomad/kinder/releases/latest/download/kinder-windows-amd64) and add it to your `PATH`.
+Download the `.zip` archive from [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases/latest) and extract `kinder.exe` to a directory in your `PATH`.
 
 ## Build from Source
 
