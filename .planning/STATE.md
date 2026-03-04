@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Website Use Cases & Documentation
 status: executing
-stopped_at: Completed phase 31 execution
-last_updated: "2026-03-04T15:06:29.425Z"
-last_activity: 2026-03-04 — Phase 31 complete (all 7 addon pages enriched with examples + troubleshooting)
+stopped_at: Completed 32-01 (CLI Reference plan 01)
+last_updated: "2026-03-04T15:36:00Z"
+last_activity: 2026-03-04 — Phase 32 plan 01 complete (profile comparison, JSON output, troubleshooting pages)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 31 of 34 (Addon Page Depth)
-Plan: 2 of 2 in current phase
-Status: Phase complete — ready for Phase 32
-Last activity: 2026-03-04 — Phase 31 complete (all 7 addon pages enriched with examples + troubleshooting)
+Phase: 32 of 34 (CLI Reference)
+Plan: 1 of 1 in current phase
+Status: Phase 32 plan 01 complete — CLI reference pages written
+Last activity: 2026-03-04 — Phase 32 plan 01 complete (profile comparison, JSON output, troubleshooting pages)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -58,6 +58,9 @@ Progress: [██████████] 100%
 - [Phase 31-addon-page-depth]: Practical examples + Troubleshooting pattern established for addon docs: show working YAML with expected output, follow symptom/cause/fix format
 - [Phase 31-addon-page-depth]: Troubleshooting sections use Symptom/Cause/Fix structure for scannable problem resolution
 - [Phase 31-addon-page-depth]: cert-manager ClusterIssuer distinction emphasized via :::note callout as single most common error
+- [Phase 32-cli-reference]: kinder env outputs a single JSON object (not array) — documented with :::note to prevent .[] misuse
+- [Phase 32-cli-reference]: container-runtime check name (fallback) vs actual runtime name (docker/podman/nerdctl) distinction documented with detection order
+- [Phase 32-cli-reference]: Commands without JSON support listed explicitly (get kubeconfig, create cluster, delete cluster)
 
 ### Pending Todos
 
@@ -69,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T15:06:29.423Z
-Stopped at: Completed phase 31 execution
+Last session: 2026-03-04T15:36:00Z
+Stopped at: Completed 32-01 (CLI Reference plan 01)
 Resume file: None

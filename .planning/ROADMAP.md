@@ -144,6 +144,6 @@ Plans:
 | 25-29. v1.4 phases | v1.4 | 13/13 | Complete | 2026-03-04 |
 | 30. Foundation Fixes | v1.5 | 1/1 | Complete | 2026-03-04 |
 | 31. Addon Page Depth | 2/2 | Complete   | 2026-03-04 | - |
-| 32. CLI Reference | v1.5 | 0/1 | Not started | - |
+| 32. CLI Reference | 1/1 | Complete   | 2026-03-04 | - |
 | 33. Tutorials | v1.5 | 0/2 | Not started | - |
 | 34. Verification & Polish | v1.5 | 0/1 | Not started | - |

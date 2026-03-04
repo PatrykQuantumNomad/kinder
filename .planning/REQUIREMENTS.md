@@ -15,9 +15,9 @@ Requirements for the website use cases & documentation milestone. Each maps to r
 
 ### CLI Reference
 
-- [ ] **CLI-01**: User can read a profile comparison guide showing what each --profile preset enables and when to use it
-- [ ] **CLI-02**: User can read a JSON output reference with --output json examples and jq filters for all 4 read commands
-- [ ] **CLI-03**: User can read a troubleshooting guide for kinder env and kinder doctor with exit codes and solutions
+- [x] **CLI-01**: User can read a profile comparison guide showing what each --profile preset enables and when to use it
+- [x] **CLI-02**: User can read a JSON output reference with --output json examples and jq filters for all 4 read commands
+- [x] **CLI-03**: User can read a troubleshooting guide for kinder env and kinder doctor with exit codes and solutions
 
 ### Addon Enhancements
 
@@ -75,9 +75,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ADDON-05 | Phase 31 | Complete |
 | ADDON-06 | Phase 31 | Complete |
 | ADDON-07 | Phase 31 | Complete |
-| CLI-01 | Phase 32 | Pending |
-| CLI-02 | Phase 32 | Pending |
-| CLI-03 | Phase 32 | Pending |
+| CLI-01 | Phase 32 | Complete |
+| CLI-02 | Phase 32 | Complete |
+| CLI-03 | Phase 32 | Complete |
 | GUIDE-01 | Phase 33 | Pending |
 | GUIDE-02 | Phase 33 | Pending |
 | GUIDE-03 | Phase 33 | Pending |
