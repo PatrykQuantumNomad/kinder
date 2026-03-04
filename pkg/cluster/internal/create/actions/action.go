@@ -38,12 +38,12 @@ type Action interface {
 // ActionContext is data supplied to all actions
 type ActionContext struct {
 	// Context carries cancellation and deadline for node commands. Never nil.
-	Context  context.Context
-	Logger   log.Logger
-	Status   *cli.Status
-	Config   *config.Cluster
-	Provider providers.Provider
-	cache    *cachedData
+	Context    context.Context
+	Logger     log.Logger
+	Status     *cli.Status
+	Config     *config.Cluster
+	Provider   providers.Provider
+	nodesOnce  func() ([]nodes.Node, error) // sync.OnceValues: race-free cached ListNodes
 }
 
 // NewActionContext returns a new ActionContext
@@ -60,37 +60,14 @@ func NewActionContext(
 		Status:   status,
 		Provider: provider,
 		Config:   cfg,
-		cache:    &cachedData{},
+		nodesOnce: sync.OnceValues(func() ([]nodes.Node, error) {
+			return provider.ListNodes(cfg.Name)
+		}),
 	}
 }
 
-type cachedData struct {
-	mu    sync.RWMutex
-	nodes []nodes.Node
-}
-
-func (cd *cachedData) getNodes() []nodes.Node {
-	cd.mu.RLock()
-	defer cd.mu.RUnlock()
-	return cd.nodes
-}
-
-func (cd *cachedData) setNodes(n []nodes.Node) {
-	cd.mu.Lock()
-	defer cd.mu.Unlock()
-	cd.nodes = n
-}
-
-// Nodes returns the list of cluster nodes, this is a cached call
+// Nodes returns the list of cluster nodes, cached after the first call.
+// Concurrent calls are safe: sync.OnceValues guarantees exactly-once execution.
 func (ac *ActionContext) Nodes() ([]nodes.Node, error) {
-	cachedNodes := ac.cache.getNodes()
-	if cachedNodes != nil {
-		return cachedNodes, nil
-	}
-	n, err := ac.Provider.ListNodes(ac.Config.Name)
-	if err != nil {
-		return nil, err
-	}
-	ac.cache.setNodes(n)
-	return n, nil
+	return ac.nodesOnce()
 }
