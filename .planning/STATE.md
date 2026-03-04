@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 28 of 29 (Parallel Addon Execution)
-Plan: 1 of 2 complete — Plan 02 next
-Status: Phase 28 Plan 01 complete; sync.OnceValues cache + golang.org/x/sync dep added; ready for Plan 02
-Last activity: 2026-03-03 — Plan 28-01 complete (race-free Nodes() cache with sync.OnceValues)
+Phase: 28 of 29 (Parallel Addon Execution) — COMPLETE
+Plan: 2 of 2 complete — Phase 28 done
+Status: Phase 28 complete; wave-based parallel addon execution implemented; ready for Phase 29
+Last activity: 2026-03-03 — Plan 28-02 complete (errgroup wave execution, per-addon timing, cli.Status race fix)
 
-Progress: [█████████████░░░░░░░] 65% (v1.0-v1.3 complete; v1.4 phases 25-28 in progress)
+Progress: [██████████████░░░░░░] 70% (v1.0-v1.3 complete; v1.4 phases 25-28 complete; phase 29 remaining)
 
 ## Performance Metrics
 
@@ -59,6 +59,9 @@ Progress: [█████████████░░░░░░░] 65% (v1
 - [Phase 27 Plan 03]: FakeProvider does not implement fmt.Stringer so binaryName defaults to "docker"; aligns with Docker skip guard
 - [Phase 28 Plan 01]: sync.OnceValues used over RWMutex-based cachedData: eliminates TOCTOU race, single-call guarantee
 - [Phase 28 Plan 01]: golang.org/x/sync v0.19.0 added via go.mod edit + go mod download (not go get + go mod tidy; tidy removes unused deps before Plan 02 imports errgroup)
+- [Phase 28 Plan 02]: errgroup.WithContext + SetLimit(3) for Wave 1 parallel addon dispatch; Wave 2 (EnvoyGateway) sequential after g.Wait()
+- [Phase 28 Plan 02]: parallelActionContext() creates per-goroutine ActionContext with no-op Status to avoid cli.Status.status write race
+- [Phase 28 Plan 02]: wave1Results pre-allocated by index (not append) for deterministic summary ordering from concurrent goroutines
 
 ### Pending Todos
 
@@ -71,5 +74,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 28 Plan 01 complete; sync.OnceValues + x/sync dep done; ready for Plan 02 (errgroup wave execution)
+Stopped at: Phase 28 Plan 02 complete; wave-based parallel addon execution done; Phase 28 fully complete
 Resume file: None
