@@ -17,10 +17,12 @@ limitations under the License.
 package cluster
 
 import (
+	"fmt"
 	"time"
 
 	"sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 	internalcreate "sigs.k8s.io/kind/pkg/cluster/internal/create"
+	internalconfig "sigs.k8s.io/kind/pkg/internal/apis/config"
 	internalencoding "sigs.k8s.io/kind/pkg/internal/apis/config/encoding"
 )
 
@@ -121,6 +123,40 @@ func CreateWithDisplayUsage(displayUsage bool) CreateOption {
 func CreateWithDisplaySalutation(displaySalutation bool) CreateOption {
 	return createOptionAdapter(func(o *internalcreate.ClusterOptions) error {
 		o.DisplaySalutation = displaySalutation
+		return nil
+	})
+}
+
+// CreateWithAddonProfile applies a named addon preset to the cluster configuration.
+// An empty profile is a no-op; existing configuration is unchanged.
+// Valid profiles: minimal, full, gateway, ci.
+func CreateWithAddonProfile(profile string) CreateOption {
+	return createOptionAdapter(func(o *internalcreate.ClusterOptions) error {
+		if profile == "" {
+			return nil
+		}
+		if o.Config == nil {
+			cfg, err := internalencoding.Load("")
+			if err != nil {
+				return err
+			}
+			o.Config = cfg
+		}
+		switch profile {
+		case "minimal":
+			o.Config.Addons = internalconfig.Addons{} // zero value = all false
+		case "full":
+			o.Config.Addons = internalconfig.Addons{
+				MetalLB: true, EnvoyGateway: true, MetricsServer: true,
+				CoreDNSTuning: true, Dashboard: true, LocalRegistry: true, CertManager: true,
+			}
+		case "gateway":
+			o.Config.Addons = internalconfig.Addons{MetalLB: true, EnvoyGateway: true}
+		case "ci":
+			o.Config.Addons = internalconfig.Addons{MetricsServer: true, CertManager: true}
+		default:
+			return fmt.Errorf("unknown profile %q: valid values are minimal, full, gateway, ci", profile)
+		}
 		return nil
 	})
 }

@@ -39,6 +39,7 @@ type flagpole struct {
 	Retain     bool
 	Wait       time.Duration
 	Kubeconfig string
+	Profile    string
 }
 
 // NewCommand returns a new cobra.Command for cluster creation
@@ -91,6 +92,12 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		"",
 		"sets kubeconfig path instead of $KUBECONFIG or $HOME/.kube/config",
 	)
+	cmd.Flags().StringVar(
+		&flags.Profile,
+		"profile",
+		"",
+		"addon preset: minimal, full, gateway, ci",
+	)
 	return cmd
 }
 
@@ -110,6 +117,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	if err = provider.Create(
 		flags.Name,
 		withConfig,
+		cluster.CreateWithAddonProfile(flags.Profile), // profile overrides config addons
 		cluster.CreateWithNodeImage(flags.ImageName),
 		cluster.CreateWithRetain(flags.Retain),
 		cluster.CreateWithWaitForReady(flags.Wait),
