@@ -54,7 +54,15 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(None — planning next milestone)
+#### Current Milestone: v1.5 Website Use Cases & Documentation
+
+**Goal:** Update the kinder website with detailed use cases, tutorials, and CLI reference pages so users can see how to actually use every feature.
+
+**Target features:**
+- Hands-on tutorials (TLS web app, HPA auto-scaling, local dev workflow)
+- Practical examples on each addon page (common scenarios, troubleshooting)
+- CLI reference pages (kinder env, kinder doctor, --output json, --profile)
+- Update existing pages (landing page, quick-start, configuration) to cover v1.3-v1.4 features
 
 ### Out of Scope
 
@@ -136,4 +144,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
 ---
-*Last updated: 2026-03-04 after v1.4 milestone*
+*Last updated: 2026-03-04 after v1.5 milestone started*
