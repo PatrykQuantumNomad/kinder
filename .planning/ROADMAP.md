@@ -82,7 +82,10 @@ Plans:
   2. create.go drives addon installation through a registry loop over []AddonEntry rather than 7 individual runAddon() call sites
   3. waitforready.tryUntil returns immediately when the context is cancelled rather than spinning until timeout
   4. `go build ./...` and `go vet ./...` pass with no import cycles introduced
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 26-01-PLAN.md — Context field in ActionContext + AddonEntry registry loop
+- [ ] 26-02-PLAN.md — CommandContext propagation in all addons + context-aware waitforready
 
 ### Phase 27: Unit Tests
 **Goal**: Every addon action package has unit tests that run without a real cluster and pass under `go test ./pkg/cluster/internal/create/actions/...`
@@ -129,7 +132,7 @@ Plans:
 | 15-18. v1.2 phases | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
 | 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
-| 26. Architecture | v1.4 | 0/? | Not started | - |
+| 26. Architecture | v1.4 | 0/2 | Not started | - |
 | 27. Unit Tests | v1.4 | 0/? | Not started | - |
 | 28. Parallel Execution | v1.4 | 0/? | Not started | - |
 | 29. CLI Features | v1.4 | 0/? | Not started | - |
