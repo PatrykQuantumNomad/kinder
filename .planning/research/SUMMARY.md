@@ -1,17 +1,17 @@
 # Project Research Summary
 
-**Project:** kinder — Milestone 3 (code quality, testing, parallel addons, JSON output, addon registry)
-**Domain:** Go CLI tool — Kubernetes local development environment (kind fork)
-**Researched:** 2026-03-03
-**Confidence:** HIGH
+**Project:** kinder — v2.0 milestone (Distribution pipeline + NVIDIA GPU addon)
+**Domain:** Go CLI tool distribution (GoReleaser + GitHub Releases + Homebrew tap) + NVIDIA GPU Kubernetes addon
+**Researched:** 2026-03-04
+**Confidence:** HIGH for distribution pipeline; MEDIUM for NVIDIA GPU addon in kind context
 
 ## Executive Summary
 
-kinder is a fork of `sigs.k8s.io/kind` that extends the base kind CLI with 7 additional addons (MetalLB, Envoy Gateway, cert-manager, local registry, metrics server, dashboard, CoreDNS tuning) and enhanced cluster management. Milestone 3 is a code quality and capability milestone rather than a net-new product build. Experts build this type of incremental improvement by working inside-out: shore up test coverage and fix architectural violations before adding new user-facing features, because the safest order for this specific codebase is unit tests first, then JSON output, then cluster presets, then parallel addon installation, and finally the addon registry pattern (if pursued at all).
+Kinder v2.0 adds two orthogonal capabilities to an existing, working Go CLI tool: a professional distribution pipeline and an NVIDIA GPU addon. The distribution pipeline replaces a hand-rolled `cross.sh` + `softprops/action-gh-release` workflow with GoReleaser (v2.14.1), which handles cross-platform binary builds, SHA-256 checksums, automated changelogs, GitHub Release creation, and Homebrew Cask publishing to a custom tap — all from a single `.goreleaser.yaml`. The recommended approach is well-documented and carries HIGH confidence: GoReleaser is the de facto standard for Go CLI distribution, the configuration maps directly from the existing Makefile, and all versions are live-verified. The one structural complexity is kinder's fork status: `go.mod` declares `module sigs.k8s.io/kind` (upstream path), not the GitHub repository URL, which requires explicit `gomod.proxy: false` and `project_name: kinder` in the GoReleaser config to prevent silent wrong-binary builds.
 
-The recommended approach has minimal new dependencies. A single new external package (`golang.org/x/sync v0.19.0` for `errgroup`) and a Go minimum version bump from 1.21 to 1.23 are the only go.mod changes needed. All other improvements — context propagation, JSON output, addon registry, unit tests — use the standard library plus existing in-repo interfaces. The architecture has one hard layer violation (`pkg/cluster/provider.go` importing from the CLI layer `pkg/cmd/kind/version`) which must be fixed by moving version constants to a new `pkg/internal/kindversion/` package before any other refactoring touches `provider.go`.
+The NVIDIA GPU addon adds an 8th addon (`installnvidiagpu`) following the identical `go:embed` + `kubectl apply` pattern as the existing 7 addons. The critical distinction from all other addons is that GPU support is Linux-only, opt-in by default (not on by default like the others), and depends on host-level prerequisites (NVIDIA drivers + nvidia-container-toolkit) that kinder cannot install. The recommended approach is to use the standalone NVIDIA k8s-device-plugin DaemonSet (NOT the full GPU Operator), because kind is not on NVIDIA's official GPU Operator supported platforms list. The addon must include a pre-flight check for host toolkit configuration — this is the most important part of the implementation and the most common failure mode.
 
-The key risks are: (1) context propagation done wrong by embedding `context.Context` in `ActionContext` instead of passing it as a function parameter — the official Go guidance prohibits struct embedding; (2) naive full parallelism of addons creating timing-dependent race conditions between MetalLB and Envoy Gateway; (3) JSON output contaminated by logger output on stdout. Each risk has a clear prevention strategy. None requires a heroic recovery path — they are avoidable with upfront design choices and the right implementation order.
+The primary risk across both workstreams is silent failure: GoReleaser can build the wrong binary (upstream kind instead of kinder) if `gomod.proxy` is not explicitly disabled; the Homebrew tap can silently stop updating if the wrong token is used; the GPU addon can install successfully while exposing 0 GPU resources if host prerequisites are missing. The mitigation pattern is consistent across all three risks: verify outputs explicitly (run `kinder version` after GoReleaser builds, check tap repo commits via `gh api`, test GPU allocation with a real workload) rather than trusting that workflow exit 0 means success.
 
 ---
 
@@ -19,134 +19,116 @@ The key risks are: (1) context propagation done wrong by embedding `context.Cont
 
 ### Recommended Stack
 
-The go.mod needs two targeted changes: bump the `go` directive from `1.21.0` to `1.23.0` (aligning with `hack/tools/go.mod` which already requires 1.23, and unlocking `slices`/`maps` stdlib helpers), and add `golang.org/x/sync v0.19.0` as the sole new direct dependency. The existing `golang.org/x/sys v0.6.0` (indirect) should be updated to `v0.41.0` for security hygiene — 35 point releases accumulated over 3 years. The `golangci-lint` in `hack/tools/go.mod` should be updated from `v1.62.2` to `v2.10.1` which requires running `golangci-lint migrate` to convert the config format and removing the retired `exportloopref` linter.
+The distribution pipeline requires no Go code changes — it is purely tooling. GoReleaser OSS v2.14.1 (released 2026-02-25) replaces `hack/release/build/cross.sh` for CI release builds while the existing Makefile `build`/`install` targets remain unchanged for local development. The `goreleaser-action@v7` GitHub Action replaces `softprops/action-gh-release@v2` in the release workflow. A new `homebrew-kinder` repository under `PatrykQuantumNomad` must be created before any tagged release, and a GitHub PAT (not the default `GITHUB_TOKEN`) with `contents: write` scope on that repo must be added as a secret before the release workflow is updated.
+
+The NVIDIA GPU addon embeds pre-rendered manifests via `go:embed`, identical to all other addons. The NVIDIA k8s-device-plugin v0.18.2 (a DaemonSet) is the correct component — not the GPU Operator — because kind is not an officially supported GPU Operator platform. Helm is used only during development to pre-render manifests offline; kinder itself has no Helm runtime dependency.
 
 **Core technologies:**
-- `go 1.23.0` minimum — aligns with `hack/tools`, unlocks `slices.Contains`/`maps.Keys`, enables rand cleanup; do NOT go to 1.24 or 1.25 (no features required)
-- `golang.org/x/sync/errgroup v0.19.0` — only new external dependency; provides bounded parallel goroutines with error collection; `errgroup.SetLimit(3)` prevents flooding the API server
-- `encoding/json` (stdlib) — all JSON output; no third-party output library needed
-- `context` (stdlib) — context propagation through existing `CommandContext` infrastructure already present in `exec/local.go` and `common/node.go`
-- `testing` (stdlib) — unit tests; no `testify` to preserve the zero-external-test-dep posture already established in the codebase
-- `golangci-lint v2.10.1` — dev tooling only; requires config migration; not a runtime dependency
-
-**Explicit exclusions (do not add):**
-- `github.com/stretchr/testify` in main module — existing tests use zero external test deps; table-driven stdlib `testing` is sufficient
-- `gomock`/`mockery` — the pure function extraction pattern makes mocking unnecessary at unit test level
-- `go-pretty`/`tablewriter` for JSON — `encoding/json` with `SetIndent` is the entire solution
-- Go `plugin.Open` plugin system — requires CGO, incompatible with static builds
-- `sync.WaitGroup` alone for parallel addons — no built-in error propagation; use `errgroup` instead
+- GoReleaser OSS v2.14.1: cross-platform builds, GitHub Release, Homebrew Cask — industry standard; single config replaces `cross.sh` + `softprops`
+- goreleaser-action v7.0.0: GitHub Actions integration for GoReleaser — official action, defaults to GoReleaser v2
+- `homebrew-kinder` tap repo: separate GitHub repository holding GoReleaser-generated Cask file — required for `brew install`
+- NVIDIA k8s-device-plugin v0.18.2: Kubernetes DaemonSet that exposes GPU resources to the scheduler — the only approach confirmed to work with kind
+- GitHub PAT (HOMEBREW_TAP_TOKEN): separate from GITHUB_TOKEN — mandatory for cross-repo tap pushes; GITHUB_TOKEN is scoped to the triggering repo only
 
 ### Expected Features
 
-**Must have (table stakes):**
-- JSON output for `kinder env` and `kinder doctor` — CI scripts pipe to `jq`; this is the kubectl convention; lowest complexity, highest CI value
-- Unit tests for addon `Execute()` paths — prerequisite for the parallel refactor; without these, any concurrent change is unverifiable
-- Cluster presets via `--profile` flag (minimal, full, gateway, ci) — removes the requirement to write a full YAML config for the 90% use case; ~50 lines of code, zero architecture change
+**Must have (table stakes for v2.0):**
+- Pre-built binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 — users should not need to install Go toolchain to try kinder
+- SHA-256 checksums for all binaries — GoReleaser generates `checksums.txt` automatically
+- `brew install patrykquantumnomad/kinder/kinder` installation path — the biggest single adoption barrier to remove
+- Automated changelog generation — GoReleaser generates from git commits with configurable prefix filtering
+- NVIDIA GPU addon (`addons.nvidiaGPU: true`) — enables `nvidia.com/gpu` resource in kind clusters on Linux; Linux-only, opt-in
+- `kinder doctor` GPU pre-flight checks — validates NVIDIA driver, container toolkit, and runtime configuration before cluster creation
 
-**Should have (competitive):**
-- Wave-based parallel addon installation — cuts cluster creation time by 40-50 seconds by running independent addons concurrently; no existing kind-based tool does this; requires unit tests in place first
-- JSON output for `kinder get clusters` and `kinder get nodes` — lower priority than env/doctor but completes the machine-readable surface; uses identical pattern
-- Addon registry pattern (centralized `[]AddonEntry` slice in `create.go`) — reduces a new-addon addition from 4-place edit to 2-place; not full self-registration (which requires a config API breaking change)
+**Should have (competitive, add in v2.x):**
+- GPU time-slicing ConfigMap — multiple pods sharing one GPU via `sharing.timeSlicing.resources`; defer until basic GPU flow is validated
+- Shell completions in Homebrew Cask — bash/zsh/fish completions via GoReleaser `homebrew_casks.completions` config; nice-to-have
+- Cosign binary signing — supply chain security; emerging best practice, add when users request it
 
-**Defer (v2+):**
-- Full addon self-registration via `init()` — requires changing the config API `Addons` struct from named bool fields to `map[string]bool` which is a breaking YAML format change; only valuable when addon count exceeds ~10
-- `--addons` CLI flag (comma-separated override) — complement to presets; depends on registry pattern being settled first
-- Plugin system for external addons — requires CGO, ABI stability, versioning; fundamentally incompatible with static builds
-- YAML output (`--output=yaml`) — adds gopkg.in/yaml.v2 dependency for minimal benefit; `jq` + `yq` covers the use case
-- Async (non-blocking) addon install — MetalLB must be ready before Envoy Gateway needs LoadBalancer IPs; async install violates dependencies silently
+**Defer (v3+):**
+- Chocolatey/Winget for Windows — limited kind Windows support; defer until adoption data justifies maintenance
+- Homebrew core submission — requires project maturity, build-from-source, 30-day review; fork status and non-standard module path complicate this indefinitely
+- AMD GPU addon (ROCm) — much smaller user base than NVIDIA; defer
 
 ### Architecture Approach
 
-The codebase has one clear structural violation and six well-scoped improvements. The violation is `pkg/cluster/provider.go` importing from `pkg/cmd/kind/version/` — the library layer must not depend on the CLI layer. The fix is a new `pkg/internal/kindversion/` package that receives the version functions, with the CLI version package becoming a thin re-export wrapper. The six improvements are: version package move (fix), context propagation (ActionContext gets `context.Context`), addon registry (centralized slice), parallel execution (`errgroup`-based wave execution), JSON output (post-execution summary struct), and unit tests (pure function extraction + `fakeNode{}` pattern). Each step is independently buildable and verifiable.
+The distribution pipeline is a workflow-level change with no Go source modifications: `.goreleaser.yaml` replaces `cross.sh` as the CI release artifact producer; `release.yml` replaces `softprops/action-gh-release@v2` with `goreleaser-action@v7`. The NVIDIA GPU addon is a minimal Go source addition: a new package `pkg/cluster/internal/create/actions/installnvidiagpu/` with one Go file and two embedded YAML manifests, plus config API field additions to four existing files (`v1alpha4/types.go`, `v1alpha4/default.go`, `internal/config/types.go`, `convert_v1alpha4.go`) and a one-line registration entry in `create.go`. The addon belongs in Wave 1 (parallel execution alongside other addons) and defaults to `false` — unlike all other addons which default to `true`.
 
 **Major components:**
-1. `pkg/internal/kindversion/` (NEW) — version string logic moved from CLI layer; resolves the layer violation; must be the first change committed
-2. `pkg/cluster/internal/create/actions/addon_registry.go` (NEW) — `AddonEntry` type + `Registry()` function; replaces 7 hard-coded `runAddon()` calls; lives in the `actions/` package to own addon imports without creating a cycle
-3. `pkg/cluster/internal/create/create.go` (MODIFIED) — accepts `context.Context`, uses registry loop, goroutine fan-out for parallel phase, JSON output branch at end
-4. `pkg/cluster/internal/create/actions/action.go` (MODIFIED) — adds `Context context.Context` field to `ActionContext` struct (pragmatic minimal-churn approach; see gap note on context design decision)
-5. All addon `Execute()` methods (MODIFIED) — replace `node.Command(...)` with `node.CommandContext(ctx.Context, ...)` using existing `CommandContext` infrastructure already in `exec/local.go`
-6. New `_test.go` files for `installenvoygw`, `installlocalregistry`, `installcertmanager`, `installmetricsserver`, `installdashboard` — pure function extraction pattern matching existing `corefile_test.go` and `subnet_test.go`
-
-**Patterns to follow:**
-- Extract-and-test: split `Execute()` into (a) pure logic with no I/O and (b) kubectl orchestration; test (a) directly; `Execute()` itself is an integration concern
-- `AddonEntry` registry: a `[]AddonEntry` slice in `create.go` (or `addon_registry.go` in same package) replaces hard-coded `runAddon` calls; adding an addon = add one entry
-- `CommandContext` over `Command`: all blocking kubectl calls in addon `Execute()` must use `node.CommandContext(ctx.Context, ...)`, not `node.Command(...)`
-
-**Anti-patterns to avoid:**
-- Testing `Execute()` directly without a real cluster — results in nil pointer panics or tests leaking into real clusters
-- Sharing `cli.Status` across goroutines — not concurrency-safe; use `ctx.Logger` in parallel addon code
-- Removing dependency order comments when adding the registry — ordering represents implicit runtime dependencies that future maintainers must understand
-- Exposing `context.Context` in the public API prematurely (`provider.go:Create()` should pass `context.Background()` internally; a future `CreateWithContext` is the additive path)
+1. `.goreleaser.yaml` (NEW) — defines all build targets, archive formats, checksums, GitHub Release, and Homebrew Cask publishing; must replicate Makefile ldflags exactly using GoReleaser template variables; `project_name: kinder` must be explicit to avoid inference from module path
+2. `installnvidiagpu/` package (NEW) — `Execute(*ActionContext)` applies two embedded manifests (RuntimeClass "nvidia" + device plugin DaemonSet) via `kubectl apply`; pre-flight check validates host toolkit before proceeding; defaults to `false` unlike other addons
+3. Config API changes (MODIFIED, 4 files) — adds `NvidiaGPU *bool` (public v1alpha4) / `NvidiaGPU bool` (internal) with `false` default; follows identical `*bool` conversion pattern as all other addons
+4. `homebrew-kinder` repository (NEW repo) — separate GitHub repo; GoReleaser pushes updated `Casks/kinder.rb` on every tagged release via HOMEBREW_TAP_TOKEN
 
 ### Critical Pitfalls
 
-1. **Context in struct vs. function parameter** — architecture recommends adding `Context context.Context` to `ActionContext` struct for minimal call-site churn; official Go guidance ("Do not store Contexts inside a struct type") recommends against it. Decision required before Phase 2 begins. The struct-embedding approach is acceptable if documented as a deliberate trade-off. Never use `context.Background()` or `context.TODO()` as placeholders inside `Execute()` methods after the migration.
+1. **GoReleaser `gomod.proxy` builds upstream kind instead of kinder** — the fork's `go.mod` declares `module sigs.k8s.io/kind`; if `gomod.proxy: true` is set, GoReleaser fetches upstream kind source from the Go module proxy and produces the wrong binary. Prevention: set `gomod.proxy: false` explicitly and `project_name: kinder` explicitly in `.goreleaser.yaml`; verify by running `kinder version` on the built binary; verify with `goreleaser build --snapshot --clean` before enabling release mode.
 
-2. **Naive full addon parallelism breaks MetalLB/EnvoyGateway ordering** — EnvoyGateway depends on MetalLB's `IPAddressPool` at runtime; `ActionContext.Nodes()` has a TOCTOU race (check-then-set, not atomic — fix with `sync.Once`); `cli.Status` spinner is not goroutine-safe. Prevention: document the dependency DAG before writing any goroutine, implement wave-based groups (not full parallelism), run `go test -race ./...` in CI.
+2. **GITHUB_TOKEN cannot push to the Homebrew tap repo** — the default Actions token is scoped to the triggering repository only; GoReleaser logs a warning but does not fail the pipeline, so the tap stops updating without any visible CI failure. Prevention: create a PAT with `contents: write` on `homebrew-kinder`, store as `HOMEBREW_TAP_TOKEN`, verify after every release with `gh api repos/PatrykQuantumNomad/homebrew-kinder/commits`.
 
-3. **JSON stdout contamination** — when `--output json` is active, logger output must route to `os.Stderr` not `os.Stdout`; encoding items in a loop produces JSON Lines, not a JSON array (encode the full slice once); spinner carriage returns corrupt JSON. Prevention: enforce logger-to-stderr at the command entry point, write a golden-file test piping through `jq empty`, define JSON struct with tags before implementation.
+3. **ldflags version metadata not replicated in GoReleaser** — the Makefile injects `gitCommit` and `gitCommitCount` via `-X` flags; GoReleaser's default ldflags omit these, resulting in empty version strings in release binaries. Prevention: explicitly replicate all `-X` flags in `.goreleaser.yaml` using `{{ .FullCommit }}`; verify with `kinder version` after snapshot build; simplest approach is to drop `gitCommitCount` from release builds (it is not user-visible in tagged releases).
 
-4. **Import cycle in registry refactoring** — if `addon_registry.go` is placed in a new sub-package of `actions/`, it imports each addon package, which each import the `actions/` package for `ActionContext`, creating a cycle. Prevention: keep the registry in `pkg/cluster/internal/create/actions/addon_registry.go` (same package as `action.go`).
+4. **GPU addon installs successfully but reports 0 GPUs** — if `nvidia-container-toolkit` is installed but not configured as the Docker runtime, kind nodes start without GPU access; the device plugin DaemonSet runs and reports 0 GPUs with no obvious cluster-level error. Prevention: implement pre-flight check in `Execute()` that verifies `docker info --format {{json .Runtimes}}` contains the `nvidia` key before proceeding; return an actionable error message with the exact command needed to fix it.
 
-5. **go.mod bump leaving comment-gated dead code** — `create.go` has a comment noting that `rand.New(rand.NewSource(...))` can be simplified once the minimum version reaches 1.20+. After the 1.23 bump this code must be cleaned up in the same commit. Run `grep -rn "rand.NewSource\|1.17\|1.20" pkg/` after the bump.
+5. **`brews:` (deprecated) instead of `homebrew_casks:`** — deprecated since GoReleaser v2.10, removed in v3; produces a Homebrew Formula (wrong format for binary-only distribution) instead of a Cask. Prevention: use `homebrew_casks:` from day one; run `goreleaser check` to verify no deprecation warnings; never copy from tutorials predating GoReleaser v2.10.
 
 ---
 
 ## Implications for Roadmap
 
-The implementation order is dictated by compile-time dependencies and safety constraints between improvements. Each phase is independently verifiable with `go build ./... && go test ./...`.
+Both workstreams can proceed largely in parallel. The dependency chain is: GoReleaser must be configured and validated before the Homebrew tap can be tested end-to-end (the tap formula references GitHub Release archive URLs). The GPU addon has no dependency on the distribution pipeline and can be developed entirely in parallel with Phases 1 and 2.
 
-### Phase 1: Foundation — go.mod, Dependencies, Layer Violation Fix
-**Rationale:** The layer violation in `provider.go` and the dependency updates are non-behavioral changes that must precede any architectural work. Doing them first creates a clean baseline. Combining a package move with a behavioral change in one commit is a bisect nightmare — never do it.
-**Delivers:** Clean dependency baseline; `pkg/internal/kindversion/` package; `provider.go` no longer imports CLI layer; `rand.Intn()` cleanup after 1.23 bump; updated `golang.org/x/sys v0.41.0`; `golangci-lint v2.10.1` with migrated config
-**Addresses:** go.mod minimum version alignment; security hygiene for indirect deps; layer violation fix
-**Avoids:** Pitfall 1 (go.mod bump with leftover comment-gated code), Pitfall 2 (dependency cascade — update one dep at a time, not `go get -u ./...`), Pitfall 8 (package move breaks upstream sync — update `-X` linker flags for `pkg/internal/kindversion.*` vars immediately)
+### Phase 1: GoReleaser Foundation
 
-### Phase 2: Architecture — context.Context + Addon Registry
-**Rationale:** Context propagation and the addon registry are structural changes to `ActionContext` and `create.go` that all subsequent phases depend on. Context must exist before parallel execution. The registry must exist before the parallel loop can be written. These two are independent of each other but both must precede Phases 3 and 4.
-**Delivers:** `ActionContext` with `Context context.Context` field; `go get golang.org/x/sync@v0.19.0`; `addon_registry.go` with `AddonEntry` type and `Registry()` function; `create.go` using registry loop; all addon `Execute()` methods using `node.CommandContext(ctx.Context, ...)`; `waitforready.go` with context-aware `tryUntil` loop
-**Uses:** `golang.org/x/sync/errgroup` (added to go.mod); standard library `context`
-**Implements:** Addon registry component; context propagation data flow
-**Avoids:** Pitfall 3 (context design decision must be made at Phase 2 entry, not discovered mid-phase), Pitfall 5 (import cycle — keep registry in `actions/` package, not a sub-package)
+**Rationale:** The distribution pipeline is a prerequisite for Homebrew tap publishing. GoReleaser must be configured, validated locally with `--snapshot`, and the release workflow must be updated before any tagged release is pushed. This phase has the highest risk from the fork-specific `gomod.proxy` pitfall and the ldflags replication requirement — both must be caught before any public release. The existing `cross.sh` + `softprops` workflow must be retired in the same commit that enables GoReleaser to prevent duplicate asset uploads (422 errors from GitHub API).
 
-### Phase 3: Unit Tests for Addon Actions
-**Rationale:** Unit tests must be in place before parallel execution is introduced. Tests are the only verification that the sequential-to-concurrent refactor introduces no regression. The `fakeNode{}` + `fakeCmd{}` infrastructure should be built once in a `testutil` package and reused across all addon test files.
-**Delivers:** `testutil` package with `FakeNode`, `FakeCmd`; test files for `installenvoygw`, `installlocalregistry`, `installcertmanager`, `installmetricsserver`, `installdashboard`; pure function extraction from addon `Execute()` methods where logic is non-trivial; `go test ./pkg/cluster/internal/create/actions/...` passes without `$KUBECONFIG` set
-**Addresses:** Unit test coverage for addon Execute paths (P1 feature)
-**Avoids:** Pitfall 4 (fakeNode not catching real bugs — `FakeCmd` must verify `SetStdin` was called for `kubectl apply` commands; tests must not leak into real clusters)
+**Delivers:** `.goreleaser.yaml` with cross-platform builds, SHA-256 checksums, automated changelog; updated `release.yml` replacing `cross.sh` + `softprops`; two new Makefile targets (`goreleaser-check`, `goreleaser-snapshot`); validated binary with correct `kinder version` output showing real git commit.
 
-### Phase 4: Parallel Addon Installation
-**Rationale:** Depends on Phase 2 (registry + context) and Phase 3 (unit tests). The dependency DAG must be documented before any goroutine is written. The `sync.Once` fix for `ActionContext.Nodes()` cache TOCTOU race must be applied before goroutines are introduced.
-**Delivers:** Wave-based parallel addon execution in `create.go` using `errgroup`; `sync.Once` nodes cache fix; `go test -race ./...` clean; 40-50 second reduction in full cluster creation time; `errgroup.SetLimit(3)` bounding concurrency; `Status.Start/End` removed from addon Execute methods in favor of `ctx.Logger`
-**Uses:** `golang.org/x/sync/errgroup` with `SetLimit`
-**Avoids:** Pitfall 6 (race conditions — document dependency DAG first, implement wave groups, then run `-race`; never run `go test -race` only after the feature is "done")
+**Addresses:** Pre-built binaries (table stakes), SHA-256 checksums (table stakes), reproducible builds with version metadata.
 
-### Phase 5: User-Facing Features — JSON Output + Cluster Presets
-**Rationale:** JSON output and cluster presets are independent of the architectural work (Phases 1-4) and could technically be done earlier, but shipping them after the architecture is solid reduces rework risk. JSON output for `kinder create cluster` depends on `addonResults` being available from Phase 4.
-**Delivers:** `--output json` flag on `kinder get clusters`, `kinder get nodes`, `kinder env`, `kinder doctor`; `--output json` on `kinder create cluster` with per-addon result JSON; `--profile` flag with `minimal`, `full`, `gateway`, `ci` presets defined in `pkg/cluster/presets.go`; golden-file tests verifying `--output json | jq empty` exits 0; logger routing to `os.Stderr` enforced in JSON mode
-**Addresses:** JSON output for env/doctor (P1 feature), cluster presets (P1 feature), JSON for get commands (P2 feature)
-**Avoids:** Pitfall 7 (stdout contamination — stream routing rule enforced at command entry point; encode full array once, not per-item in loop)
+**Avoids:** Pitfall 1 (gomod.proxy wrong binary — explicit `false`), Pitfall 3 (ldflags version vars — replicate all `-X` flags), Pitfall 5 (GitHub Release 422 on re-run — `release.mode: replace`), fetch-depth: 0 comment to prevent future breakage.
+
+**Research flag:** Standard patterns — GoReleaser is well-documented; no additional research needed. Fork-specific `gomod.proxy` issue is fully understood from PITFALLS.md research.
+
+### Phase 2: Homebrew Tap
+
+**Rationale:** Depends on Phase 1 (Homebrew Cask formula references GitHub Release archive URLs by hash; GoReleaser must produce at least one tagged release before the tap formula can be generated and tested). The tap repository must exist and HOMEBREW_TAP_TOKEN must be configured before any release tag is pushed — GoReleaser silently fails to push the cask if the tap repo does not exist.
+
+**Delivers:** `homebrew-kinder` repository created with `Casks/` directory; `homebrew_casks:` section added to `.goreleaser.yaml` (using correct non-deprecated key); HOMEBREW_TAP_TOKEN secret configured; `brew install patrykquantumnomad/kinder/kinder` working on macOS after first real tagged release.
+
+**Addresses:** `brew install` table-stakes feature; removes the biggest single adoption barrier; macOS Gatekeeper quarantine documented via `caveats` message.
+
+**Avoids:** Pitfall 2 (GITHUB_TOKEN PAT scope — dedicated HOMEBREW_TAP_TOKEN PAT), Pitfall 4 (brews vs homebrew_casks — use only `homebrew_casks:`), Pitfall 10 (binary name inference — explicit `project_name: kinder`).
+
+**Research flag:** Standard patterns — Homebrew tap structure and GoReleaser `homebrew_casks` are well-documented in official sources.
+
+### Phase 3: NVIDIA GPU Addon
+
+**Rationale:** Fully independent of the distribution pipeline; can be developed in parallel with Phases 1 and 2 or sequentially afterward. It is the highest-complexity addition in this milestone: config API changes in 4 files, a new addon package with two embedded manifests, and a pre-flight check implementation. The GPU-on-kind approach is community-documented but not officially supported by NVIDIA, so certain implementation details (ContainerdConfigPatches vs extraMounts, GPU Operator vs device plugin) require resolution via nvkind source examination before writing the addon.
+
+**Delivers:** `installnvidiagpu/` package with embedded RuntimeClass and device plugin DaemonSet manifests; `NvidiaGPU *bool` config API field (opt-in, defaults `false`); Wave 1 registration in `create.go`; `kinder doctor` GPU pre-flight checks with actionable error messages; clear documentation of Linux-only constraint and host prerequisites.
+
+**Addresses:** NVIDIA GPU addon (unique capability, no equivalent in kind-based tools), `kinder doctor` GPU checks (UX prerequisite for GPU users).
+
+**Avoids:** Pitfall 7 (host toolkit pre-flight check before cluster creation), Pitfall 8 (driver.enabled=false hardcoded — GPU Operator path if chosen), Pitfall 9 (cgroup v2 + accept-nvidia-visible-devices-as-volume-mounts config requirement).
+
+**Research flag:** Needs deeper research during phase planning. Specific areas requiring resolution before implementation: (a) GPU Operator vs standalone device plugin — STACK.md and FEATURES.md disagree on the correct approach; nvkind source code is the tiebreaker; (b) whether `ContainerdConfigPatches` is needed in the kind cluster config for GPU — FEATURES.md says yes, ARCHITECTURE.md says no; (c) end-to-end validation requires a Linux host with a real NVIDIA GPU.
 
 ### Phase Ordering Rationale
 
-- Phase 1 before everything else: the layer violation and dependency updates create a clean merge point; combining behavioral changes with package moves is a bisect nightmare
-- Phase 2 (architecture) before Phase 3 (tests): the `CommandContext` call signature change touches every addon file; tests written against the old signature would need immediate rewriting
-- Phase 3 (tests) before Phase 4 (parallel): parallel execution without test coverage is unverifiable for regression; the `sync.Once` nodes cache fix is easiest to validate with test infrastructure in place
-- Phase 5 (features) last: JSON output for `kinder create cluster` needs `addonResults` from Phase 4; presets are independent but ship cleanly alongside JSON as a DX-focused release increment
+- **GoReleaser before Homebrew:** The Homebrew Cask formula references GitHub Release archive URLs by hash. GoReleaser must produce at least one tagged release before the tap formula can be generated, tested, and verified end-to-end.
+- **GPU addon is parallel:** No dependency on distribution pipeline phases. Can be code-reviewed and merged at any point. It does not affect or conflict with the release pipeline.
+- **Pre-flight checks in Phase 3, not a separate phase:** GPU `kinder doctor` checks are tightly coupled to the addon — they share precondition knowledge and must be implemented together to avoid shipping an addon without actionable error messages.
+- **Retire cross.sh in Phase 1:** Running GoReleaser and `cross.sh` in parallel would produce duplicate release assets causing 422 errors from the GitHub API. The retirement must happen in the same PR that enables GoReleaser release mode.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-
-- **Phase 2 (context design):** The struct-embedding vs. function-parameter choice is explicitly in tension between the architecture doc (recommends struct for minimal churn) and pitfalls doc (warns against it per official Go guidance). This is a team decision that must be made before Phase 2 planning begins to avoid mid-phase rework.
-- **Phase 4 (MetalLB/EnvoyGateway runtime dependency):** The research documents that EnvoyGateway depends on MetalLB at runtime (not install time), but this was not empirically verified. Before parallelizing, validate: create a cluster with MetalLB disabled and EnvoyGateway enabled and confirm whether the Gateway resource gets a LoadBalancer IP.
-- **Phase 4 (`cli.Status` goroutine safety):** PITFALLS.md identifies `Status.Start/End` as not goroutine-safe based on code analysis. Verify directly by reading `pkg/internal/cli/status.go` before Phase 4 begins.
+Phases needing deeper research during planning:
+- **Phase 3 (GPU addon):** The GPU Operator vs device-plugin decision must be resolved by examining nvkind source code. The `ContainerdConfigPatches` TOML content discrepancy between FEATURES.md and ARCHITECTURE.md must be resolved before implementation begins. End-to-end GPU validation requires dedicated Linux hardware with an NVIDIA GPU.
 
 Phases with standard patterns (skip research-phase):
-
-- **Phase 1:** All changes are mechanical — version bumps, one package move, grep for dead code. Well-documented in Go toolchain docs.
-- **Phase 3:** fakeNode pattern is standard Go; existing `corefile_test.go` and `subnet_test.go` are the direct templates.
-- **Phase 5:** JSON output (~50 lines per command) and presets (~50 lines total) are proven patterns from kubectl and GitHub CLI. No architectural unknowns.
+- **Phase 1 (GoReleaser):** Fully documented in official GoReleaser docs; all fork-specific pitfalls identified and addressed; all versions live-verified via GitHub API.
+- **Phase 2 (Homebrew tap):** Standard GoReleaser `homebrew_casks` pattern; well-documented in official GoReleaser and Homebrew docs.
 
 ---
 
@@ -154,52 +136,51 @@ Phases with standard patterns (skip research-phase):
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All versions verified against official package registries; go.mod and hack/tools/go.mod read directly from codebase; errgroup API confirmed at pkg.go.dev; x/sys compatibility with go 1.23 confirmed |
-| Features | HIGH | Codebase analyzed directly; competitor tools (minikube, k3d, skaffold, helmfile) checked; feature prioritization from first-party code analysis; safest order validated against compile-time dependency graph |
-| Architecture | HIGH | Every integration point identified from direct file reads; existing `CommandContext` infrastructure confirmed present in `exec/local.go` and `common/node.go`; import cycle risk assessed; 7-step build order specified with verification gates |
-| Pitfalls | HIGH | Critical pitfalls sourced from official Go docs (context-and-structs blog), Go toolchain directive docs, cert-manager webhook docs; TOCTOU race in `ActionContext.Nodes()` identified from direct code read of `action.go` |
+| Stack | HIGH | All versions live-verified via GitHub API; GoReleaser v2.14.1, goreleaser-action v7.0.0, k8s-device-plugin v0.18.2 confirmed; go.mod analyzed directly from codebase |
+| Features | HIGH for distribution; MEDIUM for GPU | GoReleaser/Homebrew features fully confirmed from official docs; GPU addon approach (device plugin vs GPU Operator) confirmed from NVIDIA's platform support page — kind is explicitly absent; specific GPU Operator vs device plugin recommendation differs between STACK.md and FEATURES.md |
+| Architecture | HIGH for distribution; MEDIUM for GPU | Distribution architecture reads directly from existing kinder codebase; GPU addon architecture synthesized from community guides — the `ContainerdConfigPatches` approach is unverified end-to-end on a real kind+GPU setup; nvkind source not examined |
+| Pitfalls | HIGH | GoReleaser pitfalls sourced from official docs and verified issue tracker; GPU pitfalls from NVIDIA security bulletins, official container toolkit docs, and Kubernetes GPU scheduling docs |
 
-**Overall confidence:** HIGH
+**Overall confidence:** HIGH for the distribution pipeline milestone; MEDIUM for GPU addon implementation specifics.
 
 ### Gaps to Address
 
-- **Context in struct decision:** The architecture research (pragmatic: struct embedding) and pitfalls research (principled: no context in structs) disagree. This is a team decision, not a research gap — but it must be resolved before Phase 2 planning begins.
-- **EnvoyGateway/MetalLB runtime dependency:** Documented as a dependency assumption from code reading; not empirically verified. Validate manually before Phase 4 parallelizes these two addons.
-- **`cli.Status` goroutine safety:** Identified as not goroutine-safe from behavioral analysis. Confirm by reading `pkg/internal/cli/status.go` directly before Phase 4.
-- **golangci-lint v2 config migration:** STACK.md rates this MEDIUM confidence because the config migration requires validation after running `golangci-lint migrate`. Budget time for this in Phase 1 rather than discovering issues mid-phase.
-- **Build system `-X` linker flags:** Moving version vars to `pkg/internal/kindversion/` requires updating `-X` linker flags in `Makefile`/`hack/build.sh`. Inventory all `-X` flags before the move to avoid producing a binary where `kinder version` shows empty version strings.
+- **GPU Operator vs standalone device plugin (direct contradiction between research files):** STACK.md recommends GPU Operator v25.10.1 with `driver.enabled=false`. FEATURES.md explicitly recommends the standalone k8s-device-plugin DaemonSet and states the GPU Operator is NOT supported on kind. FEATURES.md reasoning is stronger (cites NVIDIA's official platform support list). Resolve in Phase 3 planning by examining nvkind (NVIDIA's own kind+GPU tool) source code to determine which approach NVIDIA itself uses.
+
+- **ContainerdConfigPatches vs no-op for GPU addon (direct contradiction between research files):** FEATURES.md says the GPU addon must apply a `containerdConfigPatches` TOML patch to inject the NVIDIA runtime into the kind node's containerd config (required before `Provision()`). ARCHITECTURE.md says the addon is purely post-provision with no config patches needed (the host nvidia-container-toolkit handles this). This is a critical implementation detail that determines the two-phase vs one-phase addon structure. Resolve before Phase 3 begins.
+
+- **COMMIT_COUNT in GoReleaser:** The existing Makefile derives `COMMIT_COUNT` via `git describe --tags`; GoReleaser has no built-in template for this. Both STACK.md and FEATURES.md recommend dropping `gitCommitCount` from release binary ldflags (it only appears in pre-release version strings, not tagged releases). Validate this decision is acceptable before Phase 1 implementation.
+
+- **GPU end-to-end validation gap:** No research source provides a tested, working kind+NVIDIA configuration from 2025 or later. The nvkind tool (NVIDIA's own implementation at `github.com/NVIDIA/nvkind`) is the authoritative reference and must be examined before writing the addon.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Kinder codebase direct analysis — `create.go`, `action.go`, `exec/types.go`, `exec/local.go`, `common/node.go`, `provider.go`, `go.mod`, `hack/tools/go.mod`, all addon `*_test.go` files
-- Go 1.23 release notes: https://go.dev/doc/go1.23
-- Go 1.24 release notes (T.Context, rand cleanup): https://go.dev/doc/go1.24
-- Go 1.25 release notes: https://go.dev/doc/go1.25
-- golang.org/x/sys v0.41.0: https://pkg.go.dev/golang.org/x/sys?tab=versions
-- golang.org/x/sync v0.19.0 + errgroup API: https://pkg.go.dev/golang.org/x/sync/errgroup
-- Go toolchains reference: https://go.dev/doc/toolchain
-- Contexts and structs — official Go blog: https://go.dev/blog/context-and-structs
-- Go data race detector: https://go.dev/doc/articles/race_detector
-- golangci-lint v2.10.1 releases: https://github.com/golangci/golangci-lint/releases
-- golangci-lint v2 migration guide: https://golangci-lint.run/docs/product/migration-guide/
-- cert-manager webhook readiness: https://cert-manager.io/docs/concepts/webhook/
-- k8s.io/utils/exec/testing FakeExec (pattern reference): https://pkg.go.dev/k8s.io/utils/exec/testing
-- rand auto-seed since Go 1.20: https://go.dev/blog/randv2
-- x/sys backward-incompatible change v0.23.0: https://github.com/golang/go/issues/68766
+- GoReleaser official docs (goreleaser.com/customization/, ci/actions/, deprecations/) — all GoReleaser configuration, `homebrew_casks` feature, `brews` deprecation
+- goreleaser/goreleaser GitHub API — v2.14.1 release (2026-02-25) confirmed
+- goreleaser/goreleaser-action GitHub API — v7.0.0 release (2026-02-21) confirmed
+- NVIDIA/gpu-operator GitHub API — v25.10.1 release (2025-12-04) confirmed
+- NVIDIA/k8s-device-plugin GitHub API — v0.18.2 release (2026-01-23) confirmed
+- NVIDIA GPU Operator platform support docs — confirmed kind is NOT listed as a supported platform
+- NVIDIA Container Toolkit install guide — host prerequisites, cgroup v2 requirements
+- NVIDIA security bulletin (Jan 2025) — `accept-nvidia-visible-devices-envvar-when-unprivileged` CVE-2024-0132
+- Homebrew docs (docs.brew.sh) — tap structure, Cask vs Formula distinction, Cask Cookbook
+- Kubernetes docs — scheduling GPUs guide
+- Kinder codebase (direct read) — Makefile, release.yml, cross.sh, kindversion package, all 7 addon packages, config API files (v1alpha4/types.go, internal/apis/config/types.go)
+- GoReleaser issue tracker — asset override on re-run (#557), gomod.proxy issues (#2833), Homebrew tokens discussion (#4926)
 
 ### Secondary (MEDIUM confidence)
-- minikube addon system architecture (DeepWiki) — sequential execution confirmed; no parallel addon install
-- minikube profile system (DeepWiki) — file-based profiles, not addon presets
-- k3d configuration system (DeepWiki) — no named presets confirmed
-- helmfile dependency ordering (DeepWiki) — DAG + wave pattern for parallel execution
-- Skaffold profiles documentation (official) — overlay pattern
-- Go import cycles and solutions (Jogendra blog)
-- cmd/go Issue #62409 — real-world CI breakage from toolchain directive after update
-- Go context library anti-patterns (Medium) — context retrofitting patterns
+- NVIDIA/nvkind — NVIDIA's own kind+GPU tool; confirms the approach but source not read directly
+- SeineAI/nvidia-kind-deploy — community toolkit for kind + GPU operator; undated
+- Kind + CAPI + GPU community gist (mproffitt) — `containerdConfigPatches` and `extraMounts` approach for kind+GPU
+- Jim Angel blog post — NVIDIA GPU on Kubernetes practical guide (community-verified)
+- Jacob Tomlinson blog post — Adding GPU support to kind (2022; may be outdated for modern nvidia-container-toolkit security defaults)
+
+### Tertiary (LOW confidence)
+- Stack Overflow answers on GoReleaser `brews` vs `homebrew_casks` — predated the v2.10 migration; treat as historical context only
 
 ---
-*Research completed: 2026-03-03*
+*Research completed: 2026-03-04*
 *Ready for roadmap: yes*
