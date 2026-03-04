@@ -13,7 +13,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 - [x] **REL-02**: GoReleaser generates SHA-256 checksums file for all release artifacts
 - [x] **REL-03**: GoReleaser generates automated changelog from git commit history
 - [x] **REL-04**: Release binaries show correct version metadata via `kinder version`
-- [ ] **REL-05**: GitHub Actions release workflow uses goreleaser-action replacing cross.sh + softprops
+- [x] **REL-05**: GitHub Actions release workflow uses goreleaser-action replacing cross.sh + softprops
 - [x] **REL-06**: GoReleaser explicitly sets `gomod.proxy: false` and `project_name: kinder` (fork safety)
 
 ### Homebrew
@@ -66,7 +66,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 | REL-02 | Phase 35 | Complete |
 | REL-03 | Phase 35 | Complete |
 | REL-04 | Phase 35 | Complete |
-| REL-05 | Phase 35 | Pending |
+| REL-05 | Phase 35 | Complete |
 | REL-06 | Phase 35 | Complete |
 | BREW-01 | Phase 36 | Pending |
 | BREW-02 | Phase 36 | Pending |
@@ -87,4 +87,4 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 — traceability updated after v2.0 roadmap creation*
+*Last updated: 2026-03-04 — REL-05 complete: goreleaser-action@v7 replaces cross.sh + softprops*

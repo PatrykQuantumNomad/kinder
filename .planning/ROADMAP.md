@@ -72,7 +72,7 @@ Phases 30-34: Foundation Fixes, Addon Page Depth, CLI Reference, Tutorials, Veri
 **Goal**: Users can download pre-built kinder binaries for all platforms from GitHub Releases, produced by an automated pipeline that replaces cross.sh
 **Depends on**: Phase 34 (v1.5 complete)
 **Requirements**: REL-01, REL-02, REL-03, REL-04, REL-05, REL-06
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed — COMPLETE
 **Success Criteria** (what must be TRUE):
   1. Running `goreleaser build --snapshot --clean` locally produces correct kinder binaries for linux/darwin amd64+arm64 and windows/amd64 — not upstream kind
   2. `kinder version` on a snapshot binary shows the real git commit hash, not empty or "unknown"
@@ -81,8 +81,8 @@ Phases 30-34: Foundation Fixes, Addon Page Depth, CLI Reference, Tutorials, Veri
   5. `goreleaser check` passes with zero errors and zero deprecation warnings
 
 Plans:
-- [ ] 35-01-PLAN.md — GoReleaser config and local snapshot validation
-- [ ] 35-02-PLAN.md — Release workflow migration and cross.sh retirement
+- [x] 35-01-PLAN.md — GoReleaser config and local snapshot validation
+- [x] 35-02-PLAN.md — Release workflow migration and cross.sh retirement
 
 ### Phase 36: Homebrew Tap
 **Goal**: macOS users can install kinder with a single `brew install` command from a maintained custom tap, without needing a Go toolchain
@@ -125,6 +125,6 @@ Plans:
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
 | 25-29. v1.4 phases | v1.4 | 13/13 | Complete | 2026-03-04 |
 | 30-34. v1.5 phases | v1.5 | 7/7 | Complete | 2026-03-04 |
-| 35. GoReleaser Foundation | 1/2 | In Progress|  | - |
+| 35. GoReleaser Foundation | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 36. Homebrew Tap | v2.0 | 0/2 | Not started | - |
 | 37. NVIDIA GPU Addon | v2.0 | 0/3 | Not started | - |
