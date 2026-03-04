@@ -136,6 +136,93 @@ addons:
 Disabling cert-manager skips the webhook readiness wait, which can reduce cluster creation time by 30–60 seconds.
 :::
 
+## More certificate examples
+
+### Wildcard certificate with custom duration
+
+A wildcard certificate covers all subdomains under a single domain. This is useful when you have multiple services (e.g., `api.example.local`, `app.example.local`) and want a single cert to cover them all.
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-example-local
+  namespace: default
+spec:
+  secretName: wildcard-example-local-tls
+  duration: 2160h    # 90 days
+  renewBefore: 360h  # renew 15 days before expiry
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  dnsNames:
+    - "*.example.local"
+    - "example.local"
+```
+
+:::note[Always use kind: ClusterIssuer]
+kinder creates `selfsigned-issuer` as a `ClusterIssuer`, not a namespace-scoped `Issuer`. Always set `kind: ClusterIssuer` in the `issuerRef` block — using `kind: Issuer` will cause the certificate to stay `READY: False`.
+:::
+
+Apply it and verify it reaches `READY: True`:
+
+```sh
+kubectl apply -f wildcard-cert.yaml
+kubectl get certificate wildcard-example-local
+```
+
+Expected output:
+
+```
+NAME                      READY   SECRET                        AGE
+wildcard-example-local    True    wildcard-example-local-tls    15s
+```
+
+:::tip[Wildcard vs individual certs]
+Use a wildcard cert when you have multiple subdomains under the same domain and want to manage a single secret. Use individual certs when services are in different namespaces (a secret can only be used in the namespace it is created in) or when you need per-service certificate lifetimes.
+:::
+
+## Troubleshooting
+
+### Certificate stays READY: False
+
+**Symptom:** `kubectl get certificate` shows `READY: False` and the status does not change.
+
+Two common causes:
+
+**(a) Webhook not ready yet**
+
+cert-manager's webhook takes 30–60 seconds to become ready after cluster creation. If you apply a Certificate immediately after `kinder create cluster`, it may fail validation.
+
+**Fix:** Wait 60 seconds and reapply, or check webhook readiness first:
+
+```sh
+kubectl get pods -n cert-manager
+```
+
+All three pods must be `Running` before applying certificates.
+
+**(b) Wrong issuer kind**
+
+The Certificate spec has `kind: Issuer` but `selfsigned-issuer` is a `ClusterIssuer`.
+
+**Fix:** Change `kind: Issuer` to `kind: ClusterIssuer` in the `issuerRef` block:
+
+```yaml
+issuerRef:
+  name: selfsigned-issuer
+  kind: ClusterIssuer  # not Issuer
+```
+
+**Diagnostic commands:**
+
+```sh
+kubectl describe certificate <name>
+kubectl get certificaterequest
+```
+
+`kubectl describe certificate` shows events that indicate whether the issue is with the issuer reference or a webhook timeout. `kubectl get certificaterequest` shows whether cert-manager created a request at all — if no request exists, the webhook likely rejected the Certificate resource.
+
 ## Technical notes
 
 :::note[Server-side apply]
