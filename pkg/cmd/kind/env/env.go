@@ -18,6 +18,7 @@ limitations under the License.
 package env
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,7 +32,8 @@ import (
 )
 
 type flagpole struct {
-	Name string
+	Name   string
+	Output string
 }
 
 // NewCommand returns a new cobra.Command for the env subcommand
@@ -54,6 +56,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		cluster.DefaultName,
 		"the cluster context name",
 	)
+	cmd.Flags().StringVar(&flags.Output, "output", "", "output format; supported values: \"\", \"json\"")
 	return cmd
 }
 
@@ -61,6 +64,26 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	providerName := activeProviderName(logger)
 	clusterName := flags.Name
 	kubeconfigPath := activeKubeconfigPath()
+
+	switch flags.Output {
+	case "", "json":
+		// valid
+	default:
+		return fmt.Errorf("unsupported output format %q; supported values: \"\", \"json\"", flags.Output)
+	}
+
+	if flags.Output == "json" {
+		out := struct {
+			KinderProvider string `json:"kinderProvider"`
+			ClusterName    string `json:"clusterName"`
+			Kubeconfig     string `json:"kubeconfig"`
+		}{
+			KinderProvider: providerName,
+			ClusterName:    clusterName,
+			Kubeconfig:     kubeconfigPath,
+		}
+		return json.NewEncoder(streams.Out).Encode(out)
+	}
 
 	fmt.Fprintf(streams.Out, "KINDER_PROVIDER=%s\n", providerName)  //nolint:errcheck
 	fmt.Fprintf(streams.Out, "KIND_CLUSTER_NAME=%s\n", clusterName) //nolint:errcheck
