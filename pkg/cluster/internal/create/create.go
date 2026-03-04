@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
+	"sync"
 	"time"
 
 	"al.essio.dev/pkg/shellescape"
+	"golang.org/x/sync/errgroup"
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/delete"
 	"sigs.k8s.io/kind/pkg/cluster/internal/providers"
@@ -76,9 +78,10 @@ type ClusterOptions struct {
 
 // addonResult captures the outcome of running a single addon action.
 type addonResult struct {
-	name    string
-	enabled bool
-	err     error
+	name     string
+	enabled  bool
+	err      error
+	duration time.Duration // install duration (zero for disabled addons)
 }
 
 // AddonEntry pairs an addon's display name, enabled flag, and action for
@@ -87,6 +90,36 @@ type AddonEntry struct {
 	Name    string
 	Enabled bool
 	Action  actions.Action
+}
+
+// runAddonTimed executes a single addon action and returns the result with timing.
+// Disabled addons are skipped immediately (zero duration).
+func runAddonTimed(actionsCtx *actions.ActionContext, name string, enabled bool, a actions.Action) addonResult {
+	if !enabled {
+		actionsCtx.Logger.V(0).Infof(" * Skipping %s (disabled in config)\n", name)
+		return addonResult{name: name, enabled: false}
+	}
+	start := time.Now()
+	err := a.Execute(actionsCtx)
+	dur := time.Since(start)
+	if err != nil {
+		actionsCtx.Logger.Warnf("Addon %s failed to install (cluster still usable): %v", name, err)
+	}
+	return addonResult{name: name, enabled: true, err: err, duration: dur}
+}
+
+// parallelActionContext returns a copy of ac suitable for parallel goroutine use.
+// It replaces the shared Status with a per-goroutine no-op status to avoid
+// racing on Status.status (which is not concurrent-safe). The nodesOnce
+// cache (sync.OnceValues) is shared safely across goroutines via the shared Provider.
+func parallelActionContext(ac *actions.ActionContext) *actions.ActionContext {
+	return actions.NewActionContext(
+		ac.Context,
+		ac.Logger,
+		cli.StatusForLogger(log.NoopLogger{}),
+		ac.Provider,
+		ac.Config,
+	)
 }
 
 // Cluster creates a cluster
@@ -197,40 +230,66 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	}
 
 	// --- Addon actions (warn-and-continue) ---
-	var addonResults []addonResult
-
-	// Helper: run an addon action, capturing result
-	runAddon := func(name string, enabled bool, a actions.Action) {
-		if !enabled {
-			logger.V(0).Infof(" * Skipping %s (disabled in config)\n", name)
-			addonResults = append(addonResults, addonResult{name: name, enabled: false})
-			return
-		}
-		if err := a.Execute(actionsContext); err != nil {
-			logger.Warnf("Addon %s failed to install (cluster still usable): %v", name, err)
-			addonResults = append(addonResults, addonResult{name: name, enabled: true, err: err})
-			return
-		}
-		addonResults = append(addonResults, addonResult{name: name, enabled: true})
-	}
 
 	// Dependency conflict check (per user decision: warn and continue)
 	if !opts.Config.Addons.MetalLB && opts.Config.Addons.EnvoyGateway {
 		logger.Warn("MetalLB is disabled but Envoy Gateway is enabled. Envoy Gateway proxy services will not receive LoadBalancer IPs.")
 	}
 
-	// Run addon actions in dependency order via registry.
-	addonRegistry := []AddonEntry{
+	// Addon dependency DAG:
+	// Wave 1 (parallel, SetLimit(3)): Local Registry, MetalLB, Metrics Server,
+	//   CoreDNS Tuning, Dashboard, Cert Manager
+	//   All Wave 1 addons are independent -- no inter-addon dependencies.
+	// Wave 2 (sequential, after Wave 1): Envoy Gateway
+	//   EnvoyGateway depends on MetalLB: MetalLB must assign LoadBalancer IPs
+	//   before Envoy Gateway proxy services receive external IPs.
+	// Wave boundary is explicit: errgroup.Wait() separates Wave 1 from Wave 2.
+
+	wave1 := []AddonEntry{
 		{"Local Registry", opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction()},
 		{"MetalLB", opts.Config.Addons.MetalLB, installmetallb.NewAction()},
 		{"Metrics Server", opts.Config.Addons.MetricsServer, installmetricsserver.NewAction()},
 		{"CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction()},
-		{"Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction()},
 		{"Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction()},
 		{"Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction()},
 	}
-	for _, addon := range addonRegistry {
-		runAddon(addon.Name, addon.Enabled, addon.Action)
+
+	wave2 := []AddonEntry{
+		{"Envoy Gateway", opts.Config.Addons.EnvoyGateway, installenvoygw.NewAction()},
+	}
+
+	// Pre-allocate results for deterministic summary ordering.
+	wave1Results := make([]addonResult, len(wave1))
+	addonResults := make([]addonResult, 0, len(wave1)+len(wave2))
+
+	// Wave 1: run independent addons in parallel (up to 3 concurrent).
+	g, _ := errgroup.WithContext(actionsContext.Context)
+	g.SetLimit(3)
+
+	var mu sync.Mutex
+	for i, addon := range wave1 {
+		i, addon := i, addon
+		g.Go(func() error {
+			pCtx := parallelActionContext(actionsContext)
+			res := runAddonTimed(pCtx, addon.Name, addon.Enabled, addon.Action)
+			mu.Lock()
+			wave1Results[i] = res
+			mu.Unlock()
+			return nil // warn-and-continue: never propagate addon error to errgroup
+		})
+	}
+	if err := g.Wait(); err != nil {
+		if !opts.Retain {
+			_ = delete.Cluster(logger, p, opts.Config.Name, opts.KubeconfigPath)
+		}
+		return err
+	}
+	addonResults = append(addonResults, wave1Results...)
+
+	// Wave 2: Envoy Gateway depends on MetalLB (Wave 1 must complete first).
+	for _, addon := range wave2 {
+		res := runAddonTimed(actionsContext, addon.Name, addon.Enabled, addon.Action)
+		addonResults = append(addonResults, res)
 	}
 
 	// Platform warning for MetalLB (FOUND-05)
@@ -356,9 +415,9 @@ func logAddonSummary(logger log.Logger, results []addonResult) {
 		case !r.enabled:
 			logger.V(0).Infof(" * %-20s skipped (disabled)", r.name)
 		case r.err != nil:
-			logger.V(0).Infof(" * %-20s FAILED: %v", r.name, r.err)
+			logger.V(0).Infof(" * %-20s FAILED: %v (%.1fs)", r.name, r.err, r.duration.Seconds())
 		default:
-			logger.V(0).Infof(" * %-20s installed", r.name)
+			logger.V(0).Infof(" * %-20s installed (%.1fs)", r.name, r.duration.Seconds())
 		}
 	}
 }
