@@ -18,6 +18,7 @@ limitations under the License.
 package actions
 
 import (
+	"context"
 	"sync"
 
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
@@ -36,6 +37,8 @@ type Action interface {
 
 // ActionContext is data supplied to all actions
 type ActionContext struct {
+	// Context carries cancellation and deadline for node commands. Never nil.
+	Context  context.Context
 	Logger   log.Logger
 	Status   *cli.Status
 	Config   *config.Cluster
@@ -45,12 +48,14 @@ type ActionContext struct {
 
 // NewActionContext returns a new ActionContext
 func NewActionContext(
+	ctx context.Context,
 	logger log.Logger,
 	status *cli.Status,
 	provider providers.Provider,
 	cfg *config.Cluster,
 ) *ActionContext {
 	return &ActionContext{
+		Context:  ctx,
 		Logger:   logger,
 		Status:   status,
 		Provider: provider,

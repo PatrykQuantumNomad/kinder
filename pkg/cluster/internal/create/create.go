@@ -18,6 +18,7 @@ limitations under the License.
 package create
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"runtime"
@@ -158,7 +159,7 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	}
 
 	// run all actions
-	actionsContext := actions.NewActionContext(logger, status, p, opts.Config)
+	actionsContext := actions.NewActionContext(context.Background(), logger, status, p, opts.Config)
 	for _, action := range actionsToRun {
 		if err := action.Execute(actionsContext); err != nil {
 			if !opts.Retain {
