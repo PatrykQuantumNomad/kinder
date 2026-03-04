@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 26 — Architecture (v1.4)
+**Current focus:** Phase 27 — Unit Tests (v1.4)
 
 ## Current Position
 
-Phase: 26 of 29 (Architecture)
-Plan: 2 of 2 in current phase — PHASE COMPLETE
-Status: Phase 26 complete; ready for Phase 27
-Last activity: 2026-03-04 — Plan 26-02 complete (CommandContext propagation + context-aware waitforready)
+Phase: 27 of 29 (Unit Tests)
+Plan: 1 of 7 in current phase — IN PROGRESS
+Status: Phase 27 Plan 01 complete; testutil package established; ready for Plan 02
+Last activity: 2026-03-04 — Plan 27-01 complete (testutil/fake.go + metricsserver + envoygw tests)
 
 Progress: [██████████░░░░░░░░░░] 50% (v1.0-v1.3 complete; v1.4 phases 25-26 done)
 
@@ -49,6 +49,9 @@ Progress: [██████████░░░░░░░░░░] 50% (v1
 - [Phase 26 Plan 01]: AddonEntry defined in create.go (not action.go) to avoid import cycle risk
 - [Phase 26 Plan 02]: Host-side exec.Command calls in installlocalregistry intentionally unchanged (not Node interface)
 - [Phase 26 Plan 02]: tryUntil uses select on ctx.Done() with 500ms fallback for immediate cancellation without busy-loop
+- [Phase 27 Plan 01]: FakeNode.nextCmd returns &FakeCmd{} (not nil) when queue exhausted so callers can always call .Run() safely
+- [Phase 27 Plan 01]: NewTestContext uses NoopLogger with StatusForLogger to avoid spinner setup complexity
+- [Phase 27 Plan 01]: CommandContext accepts nil context pointer since FakeNode ignores it (test-only usage)
 
 ### Pending Todos
 
@@ -62,5 +65,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Phase 26 complete (both plans done); ready for Phase 27 (Unit Tests)
+Stopped at: Phase 27 Plan 01 complete; testutil package + metricsserver/envoygw tests done; ready for Plan 02
 Resume file: None
