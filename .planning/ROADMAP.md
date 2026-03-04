@@ -6,7 +6,7 @@
 - ✅ **v1.1 Kinder Website** - Phases 9-14 (shipped 2026-03-02)
 - ✅ **v1.2 Branding & Polish** - Phases 15-18 (shipped 2026-03-02)
 - ✅ **v1.3 Harden & Extend** - Phases 19-24 (shipped 2026-03-03)
-- 🚧 **v1.4 Code Quality & Features** - Phases 25-29 (in progress)
+- ✅ **v1.4 Code Quality & Features** - Phases 25-29 (shipped 2026-03-04)
 
 ## Phases
 
@@ -52,7 +52,7 @@ Phases 19-24: Bug Fixes, Provider Code Deduplication, Config Type Additions, Loc
 - [x] **Phase 26: Architecture** - context.Context propagation, centralized addon registry, context-aware readiness waiting
 - [x] **Phase 27: Unit Tests** - fakeNode/fakeCmd test infrastructure, unit tests for all addon action packages
 - [x] **Phase 28: Parallel Execution** - dependency DAG documentation, sync.OnceValues fix, wave-based parallel addon install, timing summary
-- [ ] **Phase 29: CLI Features** - JSON output for all commands, cluster presets via --profile flag
+- [x] **Phase 29: CLI Features** - JSON output for all commands, cluster presets via --profile flag
 
 ## Phase Details
 
@@ -128,8 +128,8 @@ Plans:
   5. `kinder create cluster` without `--profile` behaves identically to current default (all addons on)
 **Plans:** 2 plans
 Plans:
-- [ ] 29-01-PLAN.md — --output json on env, doctor, and get clusters commands
-- [ ] 29-02-PLAN.md — --output json on get nodes + --profile flag on create cluster
+- [x] 29-01-PLAN.md — --output json on env, doctor, and get clusters commands
+- [x] 29-02-PLAN.md — --output json on get nodes + --profile flag on create cluster
 
 ## Progress
 
@@ -145,4 +145,4 @@ Plans:
 | 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
 | 27. Unit Tests | v1.4 | 3/3 | Complete | 2026-03-03 |
 | 28. Parallel Execution | v1.4 | 2/2 | Complete | 2026-03-03 |
-| 29. CLI Features | v1.4 | 0/2 | Not started | - |
+| 29. CLI Features | v1.4 | 2/2 | Complete | 2026-03-04 |

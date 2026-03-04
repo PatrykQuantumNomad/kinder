@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 28 — Parallel Addon Execution (v1.4)
+**Current focus:** Phase 29 — CLI Features (v1.4)
 
 ## Current Position
 
-Phase: 28 of 29 (Parallel Addon Execution) — COMPLETE
-Plan: 2 of 2 complete — Phase 28 done
-Status: Phase 28 complete; wave-based parallel addon execution implemented; ready for Phase 29
-Last activity: 2026-03-03 — Plan 28-02 complete (errgroup wave execution, per-addon timing, cli.Status race fix)
+Phase: 29 of 29 (CLI Features) — COMPLETE
+Plan: 2 of 2 complete — Phase 29 done
+Status: Phase 29 complete; JSON output for all read commands + addon profile presets implemented; v1.4 milestone complete
+Last activity: 2026-03-04 — Plan 29-02 complete (--output json for get nodes, --profile flag for create cluster, CreateWithAddonProfile)
 
-Progress: [██████████████░░░░░░] 70% (v1.0-v1.3 complete; v1.4 phases 25-28 complete; phase 29 remaining)
+Progress: [████████████████████] 100% (v1.0-v1.4 all phases complete)
 
 ## Performance Metrics
 
@@ -62,6 +62,14 @@ Progress: [██████████████░░░░░░] 70% (v1
 - [Phase 28 Plan 02]: errgroup.WithContext + SetLimit(3) for Wave 1 parallel addon dispatch; Wave 2 (EnvoyGateway) sequential after g.Wait()
 - [Phase 28 Plan 02]: parallelActionContext() creates per-goroutine ActionContext with no-op Status to avoid cli.Status.status write race
 - [Phase 28 Plan 02]: wave1Results pre-allocated by index (not append) for deterministic summary ordering from concurrent goroutines
+- [Phase 29 Plan 01]: Format validation switch before output branch: validate flags.Output early and return error for unknown formats, then branch on json vs default
+- [Phase 29 Plan 01]: doctor checkResult struct exported with JSON tags: allows clean JSON serialization separate from internal result struct
+- [Phase 29 Plan 01]: nil slice initialized to empty for clusters JSON: avoids JSON null output, emits [] for zero clusters
+- [Phase 29 Plan 01]: hasFail/hasWarn computed before output branch in doctor: exit codes apply regardless of output format
+- [Phase 29 Plan 02]: JSON branch fires before human-readable empty-node checks so --output json always returns valid JSON array (empty or populated)
+- [Phase 29 Plan 02]: CreateWithAddonProfile nil-guards o.Config by loading default config; avoids nil dereference when no --config flag given
+- [Phase 29 Plan 02]: --profile wired after withConfig in provider.Create() so profile addons override any config-file addon settings
+- [Phase 29 Plan 02]: Empty --profile is a strict no-op; default cluster creation behavior is fully preserved
 
 ### Pending Todos
 
@@ -73,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Phase 28 Plan 02 complete; wave-based parallel addon execution done; Phase 28 fully complete
+Last session: 2026-03-04
+Stopped at: Phase 29 Plan 02 complete; JSON output for get nodes + addon profile presets done; Phase 29 complete; v1.4 milestone complete
 Resume file: None
