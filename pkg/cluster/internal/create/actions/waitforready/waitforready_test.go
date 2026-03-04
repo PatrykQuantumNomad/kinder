@@ -17,6 +17,7 @@ limitations under the License.
 package waitforready
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ import (
 
 func TestTryUntil_SucceedsImmediately(t *testing.T) {
 	calls := 0
-	result := tryUntil(time.Now().Add(5*time.Second), func() bool {
+	result := tryUntil(context.Background(), time.Now().Add(5*time.Second), func() bool {
 		calls++
 		return true
 	})
@@ -38,7 +39,7 @@ func TestTryUntil_SucceedsImmediately(t *testing.T) {
 
 func TestTryUntil_SucceedsAfterRetries(t *testing.T) {
 	calls := 0
-	result := tryUntil(time.Now().Add(5*time.Second), func() bool {
+	result := tryUntil(context.Background(), time.Now().Add(5*time.Second), func() bool {
 		calls++
 		return calls >= 3
 	})
@@ -51,7 +52,7 @@ func TestTryUntil_SucceedsAfterRetries(t *testing.T) {
 }
 
 func TestTryUntil_TimesOut(t *testing.T) {
-	result := tryUntil(time.Now().Add(1*time.Second), func() bool {
+	result := tryUntil(context.Background(), time.Now().Add(1*time.Second), func() bool {
 		return false
 	})
 	if result {
@@ -61,7 +62,7 @@ func TestTryUntil_TimesOut(t *testing.T) {
 
 func TestTryUntil_DoesNotBusyLoop(t *testing.T) {
 	var calls int64
-	_ = tryUntil(time.Now().Add(2*time.Second), func() bool {
+	_ = tryUntil(context.Background(), time.Now().Add(2*time.Second), func() bool {
 		atomic.AddInt64(&calls, 1)
 		return false
 	})
@@ -75,5 +76,16 @@ func TestTryUntil_DoesNotBusyLoop(t *testing.T) {
 	}
 	if count < 2 {
 		t.Errorf("tryUntil called try() only %d times in 2s; expected at least 2", count)
+	}
+}
+
+func TestTryUntil_RespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	result := tryUntil(ctx, time.Now().Add(5*time.Second), func() bool {
+		return false
+	})
+	if result {
+		t.Error("tryUntil should return false when context is already cancelled")
 	}
 }

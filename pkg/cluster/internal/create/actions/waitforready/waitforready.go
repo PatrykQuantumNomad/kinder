@@ -18,6 +18,7 @@ limitations under the License.
 package waitforready
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -84,7 +85,7 @@ func (a *Action) Execute(ctx *actions.ActionContext) error {
 		selectorLabel = "node-role.kubernetes.io/master"
 	}
 
-	isReady := waitForReady(node, startTime.Add(a.waitTime), selectorLabel)
+	isReady := waitForReady(ctx.Context, node, startTime.Add(a.waitTime), selectorLabel)
 	if !isReady {
 		ctx.Status.End(false)
 		ctx.Logger.V(0).Info(" • WARNING: Timed out waiting for Ready ⚠️")
@@ -99,9 +100,9 @@ func (a *Action) Execute(ctx *actions.ActionContext) error {
 
 // WaitForReady uses kubectl inside the "node" container to check if the
 // control plane nodes are "Ready".
-func waitForReady(node nodes.Node, until time.Time, selectorLabel string) bool {
-	return tryUntil(until, func() bool {
-		cmd := node.Command(
+func waitForReady(ctx context.Context, node nodes.Node, until time.Time, selectorLabel string) bool {
+	return tryUntil(ctx, until, func() bool {
+		cmd := node.CommandContext(ctx,
 			"kubectl",
 			"--kubeconfig=/etc/kubernetes/admin.conf",
 			"get",
@@ -131,14 +132,19 @@ func waitForReady(node nodes.Node, until time.Time, selectorLabel string) bool {
 	})
 }
 
-// helper that calls `try()“ in a loop until the deadline `until`
-// has passed or `try()`returns true, returns whether try ever returned true
-func tryUntil(until time.Time, try func() bool) bool {
+// helper that calls `try()` in a loop until the deadline `until`
+// has passed or `try()` returns true, returns whether try ever returned true.
+// Returns false immediately if ctx is cancelled.
+func tryUntil(ctx context.Context, until time.Time, try func() bool) bool {
 	for until.After(time.Now()) {
 		if try() {
 			return true
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 	return false
 }
