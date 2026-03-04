@@ -14,7 +14,7 @@ Plan: 2 of 2 in current phase — PHASE COMPLETE
 Status: Phase 26 complete; ready for Phase 27
 Last activity: 2026-03-04 — Plan 26-02 complete (CommandContext propagation + context-aware waitforready)
 
-Progress: [█████████░░░░░░░░░░░] 45% (v1.0-v1.3 complete; v1.4 phase 25 done)
+Progress: [██████████░░░░░░░░░░] 50% (v1.0-v1.3 complete; v1.4 phases 25-26 done)
 
 ## Performance Metrics
 
@@ -56,7 +56,6 @@ None.
 
 ### Blockers/Concerns
 
-- [Phase 26 entry]: Context in struct design decision must be confirmed before Phase 26 planning begins
 - [Phase 28 entry]: Validate MetalLB/EnvoyGateway runtime dependency empirically before parallelizing
 - [Phase 28 entry]: Confirm cli.Status goroutine safety by reading pkg/internal/cli/status.go before Phase 28
 
