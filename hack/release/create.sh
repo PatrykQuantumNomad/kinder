@@ -68,7 +68,7 @@ set_version "${1}" ""
 make_commit "v${1}"
 add_tag "v${1}"
 echo "Building ..."
-make clean && ./hack/release/build/cross.sh
+make clean && goreleaser build --clean
 
 # update to the second version
 set_version "${2}" "alpha"
@@ -83,4 +83,4 @@ echo " - File a PR with these pushed commits"
 echo " - Merge the PR"
 echo " - git push ${UPSTREAM} v${1}"
 echo " - git push ${UPSTREAM} v${2}-alpha"
-echo " - Create a GitHub release from the pushed tag v${1}"
+echo " - Push the tag; the release workflow will create the GitHub Release automatically via GoReleaser"

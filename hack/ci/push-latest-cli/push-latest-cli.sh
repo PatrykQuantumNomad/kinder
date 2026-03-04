@@ -20,6 +20,12 @@ set -x;
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." &> /dev/null && pwd -P)"
 cd "${REPO_ROOT}"
 
+# NOTE: The parallel cross-compile script (hack/release/build/) has been retired in favor of GoReleaser.
+# This script uploaded to the k8s-staging-kind GCS bucket for upstream kind CI.
+# It is not used by the kinder fork. Kept for reference but disabled.
+echo "push-latest-cli.sh: disabled — GoReleaser handles releases now"
+exit 0
+
 # pass through git details from prow / image builder
 if [ -n "${PULL_BASE_SHA:-}" ]; then
   export COMMIT="${PULL_BASE_SHA:?}"
@@ -38,8 +44,7 @@ VERSIONS=(
   "${SHORT_COMMIT}"
 )
 
-# build for all platforms
-hack/release/build/cross.sh
+# build for all platforms (was: hack/release/build/cross-compile-script — retired)
 
 # upload to the bucket
 for f in bin/kind-*; do

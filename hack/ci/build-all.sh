@@ -22,5 +22,5 @@ set -o errexit -o nounset -o pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "${REPO_ROOT}"
 
-# build kind
-hack/release/build/cross.sh
+# verify kinder sources compile (old parallel cross-compile script retired; GoReleaser handles releases)
+go build -v ./...
