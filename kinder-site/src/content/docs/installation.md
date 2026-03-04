@@ -54,7 +54,7 @@ Download [kinder-windows-amd64](https://github.com/PatrykQuantumNomad/kinder/rel
 
 ## Build from Source
 
-If you prefer to build from source, you will also need **Go 1.25.7 or later** ([Install Go](https://go.dev/doc/install)).
+If you prefer to build from source, you will also need **Go 1.24 or later** ([Install Go](https://go.dev/doc/install)).
 
 ```sh
 git clone https://github.com/PatrykQuantumNomad/kinder.git

@@ -46,7 +46,7 @@ Modernized the Go toolchain, added context.Context cancellation plumbing, built 
   - `minimal` — no kinder addons (core kind only)
   - `full` — all addons enabled
   - `gateway` — MetalLB + Envoy Gateway only
-  - `ci` — MetalLB + Metrics Server (CI-optimized)
+  - `ci` — Metrics Server + cert-manager (CI-optimized)
 - Default behavior (no `--profile`) is fully preserved
 
 ### Internal
