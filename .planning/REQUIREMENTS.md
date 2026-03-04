@@ -9,9 +9,9 @@ Requirements for the website use cases & documentation milestone. Each maps to r
 
 ### Tutorials
 
-- [ ] **GUIDE-01**: User can follow a step-by-step tutorial to deploy a web app with TLS using Local Registry, Envoy Gateway, cert-manager, and MetalLB
-- [ ] **GUIDE-02**: User can follow a tutorial to set up HPA auto-scaling and watch pods scale under load using Metrics Server
-- [ ] **GUIDE-03**: User can follow a local dev workflow tutorial: code, build, push to localhost:5001, deploy, iterate
+- [x] **GUIDE-01**: User can follow a step-by-step tutorial to deploy a web app with TLS using Local Registry, Envoy Gateway, cert-manager, and MetalLB
+- [x] **GUIDE-02**: User can follow a tutorial to set up HPA auto-scaling and watch pods scale under load using Metrics Server
+- [x] **GUIDE-03**: User can follow a local dev workflow tutorial: code, build, push to localhost:5001, deploy, iterate
 
 ### CLI Reference
 
@@ -78,9 +78,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLI-01 | Phase 32 | Complete |
 | CLI-02 | Phase 32 | Complete |
 | CLI-03 | Phase 32 | Complete |
-| GUIDE-01 | Phase 33 | Pending |
-| GUIDE-02 | Phase 33 | Pending |
-| GUIDE-03 | Phase 33 | Pending |
+| GUIDE-01 | Phase 33 | Complete |
+| GUIDE-02 | Phase 33 | Complete |
+| GUIDE-03 | Phase 33 | Complete |
 
 **Coverage:**
 - v1.5 requirements: 17 total

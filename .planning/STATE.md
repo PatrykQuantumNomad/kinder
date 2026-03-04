@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Website Use Cases & Documentation
-status: executing
-stopped_at: Completed phase 33 (Tutorials)
-last_updated: "2026-03-04T18:00:00Z"
-last_activity: 2026-03-04 — Phase 33 complete (TLS tutorial, HPA tutorial, local dev workflow tutorial)
+status: completed
+stopped_at: Completed 34-verification-polish plan 01 (final plan)
+last_updated: "2026-03-04T17:34:26.933Z"
+last_activity: 2026-03-04 — Phase 34 complete (content audit, ci profile bug fixed, Go version corrected, 19-page clean build)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 86
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 33 of 34 (Tutorials)
-Plan: 2 of 2 in current phase
-Status: Phase complete — ready for Phase 34
-Last activity: 2026-03-04 — Phase 33 complete (TLS tutorial, HPA tutorial, local dev workflow tutorial)
+Phase: 34 of 34 (Verification & Polish)
+Plan: 1 of 1 in current phase
+Status: v1.5 milestone complete — all 7 plans executed
+Last activity: 2026-03-04 — Phase 34 complete (content audit, bug fixes, production build verified with 19 pages)
 
-Progress: [████████░░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -64,6 +64,8 @@ Progress: [████████░░] 86%
 - [Phase 33-tutorials]: Tutorial page structure: overview paragraph, Prerequisites, numbered Steps, Clean up; every command has Expected output block
 - [Phase 33-tutorials]: kubectl run busybox loop for load generation — zero external dependency, works inside cluster
 - [Phase 33-tutorials]: Versioned image tags (:v1, :v2) with kubectl set image for iteration — cleaner than :latest with rollout restart
+- [Phase 34-verification-polish]: Go 1.24 is minimum build requirement (go.mod floor); .go-version is CI compiler version
+- [Phase 34-verification-polish]: ci profile = MetricsServer + CertManager only (no MetalLB) per createoption.go
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T18:00:00Z
-Stopped at: Completed phase 33 (Tutorials)
+Last session: 2026-03-04T17:34:26.931Z
+Stopped at: Completed 34-verification-polish plan 01 (final plan)
 Resume file: None
