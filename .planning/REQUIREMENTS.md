@@ -23,9 +23,9 @@ Requirements for v1.4 Code Quality & Features milestone. Each maps to roadmap ph
 ### Architecture
 
 - [x] **ARCH-01**: context.Context added to ActionContext and propagated from create.go
-- [ ] **ARCH-02**: All addon Execute() methods use CommandContext instead of Command
+- [x] **ARCH-02**: All addon Execute() methods use CommandContext instead of Command
 - [x] **ARCH-03**: Centralized AddonEntry registry replaces hard-coded runAddon calls in create.go
-- [ ] **ARCH-04**: waitforready.tryUntil is context-aware and respects cancellation
+- [x] **ARCH-04**: waitforready.tryUntil is context-aware and respects cancellation
 
 ### Tests
 
@@ -96,9 +96,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-09 | Phase 25 | Complete (25-04) |
 | FOUND-10 | Phase 25 | Complete (25-04) |
 | ARCH-01 | Phase 26 | Complete (26-01) |
-| ARCH-02 | Phase 26 | Pending |
+| ARCH-02 | Phase 26 | Complete (26-02) |
 | ARCH-03 | Phase 26 | Complete (26-01) |
-| ARCH-04 | Phase 26 | Pending |
+| ARCH-04 | Phase 26 | Complete (26-02) |
 | TEST-01 | Phase 27 | Pending |
 | TEST-02 | Phase 27 | Pending |
 | TEST-03 | Phase 27 | Pending |

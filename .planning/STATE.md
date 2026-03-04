@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 26 of 29 (Architecture)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-03-04 — Plan 26-01 complete (context plumbing + AddonEntry registry)
+Plan: 2 of 2 in current phase — PHASE COMPLETE
+Status: Phase 26 complete; ready for Phase 27
+Last activity: 2026-03-04 — Plan 26-02 complete (CommandContext propagation + context-aware waitforready)
 
 Progress: [█████████░░░░░░░░░░░] 45% (v1.0-v1.3 complete; v1.4 phase 25 done)
 
@@ -47,6 +47,8 @@ Progress: [█████████░░░░░░░░░░░] 45% (v1
 - [Phase 25 Plan 04]: Dashboard token at V(1); other dashboard output (header, URL, instructions) remains at V(0) for user visibility
 - [Phase 26 Plan 01]: context.Background() at create.go call site — signal-wired context deferred to future phase
 - [Phase 26 Plan 01]: AddonEntry defined in create.go (not action.go) to avoid import cycle risk
+- [Phase 26 Plan 02]: Host-side exec.Command calls in installlocalregistry intentionally unchanged (not Node interface)
+- [Phase 26 Plan 02]: tryUntil uses select on ctx.Done() with 500ms fallback for immediate cancellation without busy-loop
 
 ### Pending Todos
 
@@ -61,5 +63,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Phase 26 Plan 01 complete; ready to execute Plan 26-02
+Stopped at: Phase 26 complete (both plans done); ready for Phase 27 (Unit Tests)
 Resume file: None

@@ -49,7 +49,7 @@ Phases 19-24: Bug Fixes, Provider Code Deduplication, Config Type Additions, Loc
 ## Phase Summary
 
 - [x] **Phase 25: Foundation** - go.mod bump, dependency updates, golangci-lint v2, layer violation fix, code quality cleanup
-- [ ] **Phase 26: Architecture** - context.Context propagation, centralized addon registry, context-aware readiness waiting
+- [x] **Phase 26: Architecture** - context.Context propagation, centralized addon registry, context-aware readiness waiting
 - [ ] **Phase 27: Unit Tests** - fakeNode/fakeCmd test infrastructure, unit tests for all addon action packages
 - [ ] **Phase 28: Parallel Execution** - dependency DAG documentation, sync.Once fix, wave-based parallel addon install, timing summary
 - [ ] **Phase 29: CLI Features** - JSON output for all commands, cluster presets via --profile flag
@@ -85,7 +85,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 26-01-PLAN.md — Context field in ActionContext + AddonEntry registry loop
-- [ ] 26-02-PLAN.md — CommandContext propagation in all addons + context-aware waitforready
+- [x] 26-02-PLAN.md — CommandContext propagation in all addons + context-aware waitforready
 
 ### Phase 27: Unit Tests
 **Goal**: Every addon action package has unit tests that run without a real cluster and pass under `go test ./pkg/cluster/internal/create/actions/...`
@@ -132,7 +132,7 @@ Plans:
 | 15-18. v1.2 phases | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
 | 25. Foundation | v1.4 | 4/4 | Complete | 2026-03-03 |
-| 26. Architecture | v1.4 | 0/2 | Not started | - |
+| 26. Architecture | v1.4 | 2/2 | Complete | 2026-03-04 |
 | 27. Unit Tests | v1.4 | 0/? | Not started | - |
 | 28. Parallel Execution | v1.4 | 0/? | Not started | - |
 | 29. CLI Features | v1.4 | 0/? | Not started | - |
