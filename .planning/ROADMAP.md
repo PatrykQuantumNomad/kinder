@@ -115,8 +115,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 33-01: Write TLS web app tutorial (Local Registry + Envoy Gateway + cert-manager + MetalLB)
-- [ ] 33-02: Write HPA auto-scaling tutorial and local dev workflow tutorial
+- [x] 33-01: Write TLS web app tutorial (Local Registry + Envoy Gateway + cert-manager + MetalLB)
+- [x] 33-02: Write HPA auto-scaling tutorial and local dev workflow tutorial
 
 #### Phase 34: Verification & Polish
 
@@ -145,5 +145,5 @@ Plans:
 | 30. Foundation Fixes | v1.5 | 1/1 | Complete | 2026-03-04 |
 | 31. Addon Page Depth | v1.5 | 2/2 | Complete | 2026-03-04 |
 | 32. CLI Reference | v1.5 | 1/1 | Complete | 2026-03-04 |
-| 33. Tutorials | v1.5 | 0/2 | Not started | - |
+| 33. Tutorials | v1.5 | 2/2 | Complete | 2026-03-04 |
 | 34. Verification & Polish | v1.5 | 0/1 | Not started | - |

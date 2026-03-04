@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Website Use Cases & Documentation
 status: executing
-stopped_at: Completed 32-01 (CLI Reference plan 01)
-last_updated: "2026-03-04T15:36:00Z"
-last_activity: 2026-03-04 — Phase 32 plan 01 complete (profile comparison, JSON output, troubleshooting pages)
+stopped_at: Completed phase 33 (Tutorials)
+last_updated: "2026-03-04T18:00:00Z"
+last_activity: 2026-03-04 — Phase 33 complete (TLS tutorial, HPA tutorial, local dev workflow tutorial)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v1.5 — Phase 33: Tutorials
+**Current focus:** v1.5 — Phase 34: Verification & Polish
 
 ## Current Position
 
-Phase: 32 of 34 (CLI Reference)
-Plan: 1 of 1 in current phase
-Status: Phase complete — ready for Phase 33
-Last activity: 2026-03-04 — Phase 32 complete (profile comparison, JSON output, troubleshooting pages)
+Phase: 33 of 34 (Tutorials)
+Plan: 2 of 2 in current phase
+Status: Phase complete — ready for Phase 34
+Last activity: 2026-03-04 — Phase 33 complete (TLS tutorial, HPA tutorial, local dev workflow tutorial)
 
-Progress: [████████░░] 80%
+Progress: [████████░░] 86%
 
 ## Performance Metrics
 
@@ -61,6 +61,9 @@ Progress: [████████░░] 80%
 - [Phase 32-cli-reference]: kinder env outputs a single JSON object (not array) — documented with :::note to prevent .[] misuse
 - [Phase 32-cli-reference]: container-runtime check name (fallback) vs actual runtime name (docker/podman/nerdctl) distinction documented with detection order
 - [Phase 32-cli-reference]: Commands without JSON support listed explicitly (get kubeconfig, create cluster, delete cluster)
+- [Phase 33-tutorials]: Tutorial page structure: overview paragraph, Prerequisites, numbered Steps, Clean up; every command has Expected output block
+- [Phase 33-tutorials]: kubectl run busybox loop for load generation — zero external dependency, works inside cluster
+- [Phase 33-tutorials]: Versioned image tags (:v1, :v2) with kubectl set image for iteration — cleaner than :latest with rollout restart
 
 ### Pending Todos
 
@@ -72,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T15:36:00Z
-Stopped at: Completed 32-01 (CLI Reference plan 01)
+Last session: 2026-03-04T18:00:00Z
+Stopped at: Completed phase 33 (Tutorials)
 Resume file: None
