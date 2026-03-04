@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 27 of 29 (Unit Tests)
-Plan: 1 of 7 in current phase — IN PROGRESS
-Status: Phase 27 Plan 01 complete; testutil package established; ready for Plan 02
-Last activity: 2026-03-04 — Plan 27-01 complete (testutil/fake.go + metricsserver + envoygw tests)
+Plan: 2 of 7 in current phase — IN PROGRESS
+Status: Phase 27 Plan 02 complete; certmanager + dashboard tests added; ready for Plan 03
+Last activity: 2026-03-03 — Plan 27-02 complete (certmanager_test.go + dashboard_test.go)
 
 Progress: [██████████░░░░░░░░░░] 50% (v1.0-v1.3 complete; v1.4 phases 25-26 done)
 
@@ -52,6 +52,8 @@ Progress: [██████████░░░░░░░░░░] 50% (v1
 - [Phase 27 Plan 01]: FakeNode.nextCmd returns &FakeCmd{} (not nil) when queue exhausted so callers can always call .Run() safely
 - [Phase 27 Plan 01]: NewTestContext uses NoopLogger with StatusForLogger to avoid spinner setup complexity
 - [Phase 27 Plan 01]: CommandContext accepts nil context pointer since FakeNode ignores it (test-only usage)
+- [Phase 27 Plan 02]: errContains for certmanager wait-loop failures uses deployment name substring (e.g. cert-manager-cainjector); name is in the error via Wrapf
+- [Phase 27 Plan 02]: dashboard success test feeds base64.StdEncoding.EncodeToString([]byte("test-token")) as FakeCmd.Output to exercise SetStdout/decode path
 
 ### Pending Todos
 
@@ -64,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04
-Stopped at: Phase 27 Plan 01 complete; testutil package + metricsserver/envoygw tests done; ready for Plan 02
+Last session: 2026-03-03
+Stopped at: Phase 27 Plan 02 complete; certmanager_test.go (6 cases) + dashboard_test.go (5 cases) done; ready for Plan 03
 Resume file: None
