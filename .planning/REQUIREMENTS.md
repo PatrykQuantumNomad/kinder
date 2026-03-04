@@ -21,20 +21,20 @@ Requirements for the website use cases & documentation milestone. Each maps to r
 
 ### Addon Enhancements
 
-- [ ] **ADDON-01**: MetalLB page has practical examples (custom services, LB vs NodePort guidance) and troubleshooting
-- [ ] **ADDON-02**: Envoy Gateway page has routing examples (path, header) and troubleshooting
-- [ ] **ADDON-03**: Metrics Server page has kubectl top examples, basic HPA reference, and troubleshooting
-- [ ] **ADDON-04**: CoreDNS page has DNS verification examples and troubleshooting
+- [x] **ADDON-01**: MetalLB page has practical examples (custom services, LB vs NodePort guidance) and troubleshooting
+- [x] **ADDON-02**: Envoy Gateway page has routing examples (path, header) and troubleshooting
+- [x] **ADDON-03**: Metrics Server page has kubectl top examples, basic HPA reference, and troubleshooting
+- [x] **ADDON-04**: CoreDNS page has DNS verification examples and troubleshooting
 - [ ] **ADDON-05**: Headlamp page has dashboard navigation guide and troubleshooting
 - [ ] **ADDON-06**: Local Registry page has multi-image workflow, cleanup, and troubleshooting
 - [ ] **ADDON-07**: cert-manager page has additional certificate examples and troubleshooting
 
 ### Foundation Updates
 
-- [ ] **FOUND-01**: Landing page Comparison component lists all 7 addons; description meta updated
-- [ ] **FOUND-02**: Quick-start page verifies all 7 addons and mentions --profile flag
-- [ ] **FOUND-03**: Configuration page documents all 7 addon fields including localRegistry and certManager
-- [ ] **FOUND-04**: Sidebar has Guides and CLI Reference sections with all new pages
+- [x] **FOUND-01**: Landing page Comparison component lists all 7 addons; description meta updated
+- [x] **FOUND-02**: Quick-start page verifies all 7 addons and mentions --profile flag
+- [x] **FOUND-03**: Configuration page documents all 7 addon fields including localRegistry and certManager
+- [x] **FOUND-04**: Sidebar has Guides and CLI Reference sections with all new pages
 
 ## Future Requirements
 
@@ -64,14 +64,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 30 | Pending |
-| FOUND-02 | Phase 30 | Pending |
-| FOUND-03 | Phase 30 | Pending |
-| FOUND-04 | Phase 30 | Pending |
-| ADDON-01 | Phase 31 | Pending |
-| ADDON-02 | Phase 31 | Pending |
-| ADDON-03 | Phase 31 | Pending |
-| ADDON-04 | Phase 31 | Pending |
+| FOUND-01 | Phase 30 | Complete |
+| FOUND-02 | Phase 30 | Complete |
+| FOUND-03 | Phase 30 | Complete |
+| FOUND-04 | Phase 30 | Complete |
+| ADDON-01 | Phase 31 | Complete |
+| ADDON-02 | Phase 31 | Complete |
+| ADDON-03 | Phase 31 | Complete |
+| ADDON-04 | Phase 31 | Complete |
 | ADDON-05 | Phase 31 | Pending |
 | ADDON-06 | Phase 31 | Pending |
 | ADDON-07 | Phase 31 | Pending |
