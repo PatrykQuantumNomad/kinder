@@ -25,9 +25,9 @@ Requirements for the website use cases & documentation milestone. Each maps to r
 - [x] **ADDON-02**: Envoy Gateway page has routing examples (path, header) and troubleshooting
 - [x] **ADDON-03**: Metrics Server page has kubectl top examples, basic HPA reference, and troubleshooting
 - [x] **ADDON-04**: CoreDNS page has DNS verification examples and troubleshooting
-- [ ] **ADDON-05**: Headlamp page has dashboard navigation guide and troubleshooting
-- [ ] **ADDON-06**: Local Registry page has multi-image workflow, cleanup, and troubleshooting
-- [ ] **ADDON-07**: cert-manager page has additional certificate examples and troubleshooting
+- [x] **ADDON-05**: Headlamp page has dashboard navigation guide and troubleshooting
+- [x] **ADDON-06**: Local Registry page has multi-image workflow, cleanup, and troubleshooting
+- [x] **ADDON-07**: cert-manager page has additional certificate examples and troubleshooting
 
 ### Foundation Updates
 
@@ -72,9 +72,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ADDON-02 | Phase 31 | Complete |
 | ADDON-03 | Phase 31 | Complete |
 | ADDON-04 | Phase 31 | Complete |
-| ADDON-05 | Phase 31 | Pending |
-| ADDON-06 | Phase 31 | Pending |
-| ADDON-07 | Phase 31 | Pending |
+| ADDON-05 | Phase 31 | Complete |
+| ADDON-06 | Phase 31 | Complete |
+| ADDON-07 | Phase 31 | Complete |
 | CLI-01 | Phase 32 | Pending |
 | CLI-02 | Phase 32 | Pending |
 | CLI-03 | Phase 32 | Pending |

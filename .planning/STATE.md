@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Website Use Cases & Documentation
 status: completed
-stopped_at: Completed 31-01-PLAN.md
-last_updated: "2026-03-04T15:02:16.291Z"
+stopped_at: Completed 31-02-PLAN.md
+last_updated: "2026-03-04T15:02:57.639Z"
 last_activity: 2026-03-04 — Phase 30 plan 01 complete (all 7 addons documented)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 100
 ---
 
@@ -56,6 +56,8 @@ Progress: [██████████] 100%
 - [Phase 30-foundation-fixes]: Sidebar groups Addons, Guides, CLI Reference are all collapsed by default
 - [Phase 30-foundation-fixes]: Placeholder pages use Starlight Coming soon callout — minimal content, no stub sections
 - [Phase 31-addon-page-depth]: Practical examples + Troubleshooting pattern established for addon docs: show working YAML with expected output, follow symptom/cause/fix format
+- [Phase 31-addon-page-depth]: Troubleshooting sections use Symptom/Cause/Fix structure for scannable problem resolution
+- [Phase 31-addon-page-depth]: cert-manager ClusterIssuer distinction emphasized via :::note callout as single most common error
 
 ### Pending Todos
 
@@ -67,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T15:02:16.289Z
-Stopped at: Completed 31-01-PLAN.md
+Last session: 2026-03-04T15:02:57.637Z
+Stopped at: Completed 31-02-PLAN.md
 Resume file: None
