@@ -114,5 +114,14 @@ lint:
 # shell linter
 shellcheck:
 	hack/make-rules/verify/shellcheck.sh
+################################################################################
+# =============================== GoReleaser ==================================
+# validate goreleaser config — run before any PR touching .goreleaser.yaml
+goreleaser-check:
+	goreleaser check
+
+# local dry-run — builds all platform binaries, does not publish
+goreleaser-snapshot:
+	goreleaser build --snapshot --clean
 #################################################################################
-.PHONY: all kind build install unit integration test test-race clean update generate gofmt verify lint shellcheck
+.PHONY: all kind build install unit integration test test-race clean update generate gofmt verify lint shellcheck goreleaser-check goreleaser-snapshot

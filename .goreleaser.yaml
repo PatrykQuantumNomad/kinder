@@ -33,8 +33,9 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64  # Windows ARM64 not in scope (matches existing cross.sh matrix)
-    ldflags:
+    flags:
       - -trimpath
+    ldflags:
       - -buildid=
       - -w
       - -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit={{ .FullCommit }}
