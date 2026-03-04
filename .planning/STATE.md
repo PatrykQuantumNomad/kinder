@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Distribution & GPU Support
 status: in_progress
-stopped_at: "Completed 35-02-PLAN.md"
-last_updated: "2026-03-04T21:10:00Z"
-last_activity: 2026-03-04 — Phase 35 Plan 02 complete: goreleaser-action@v7, cross.sh retired, release pipeline complete
+stopped_at: "Completed 36-02-PLAN.md"
+last_updated: "2026-03-04T23:15:00Z"
+last_activity: 2026-03-04 — Completed 36-02: Homebrew install instructions and updated download URLs on installation page
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 36 of 37 (Homebrew Tap) — Phase 35 complete
-Plan: 0 of 2 in current phase (Phase 35 complete, starting Phase 36)
+Plan: 2 of 2 in current phase complete (36-01 pending PAT creation checkpoint, 36-02 complete)
 Status: In progress
-Last activity: 2026-03-04 — Phase 35 complete: GoReleaser pipeline fully operational, cross.sh retired, release workflow migrated to goreleaser-action@v7
+Last activity: 2026-03-04 — Completed 36-02: Homebrew install instructions and updated download URLs on installation page
 
-Progress: [███░░░░░░░] 29%
+Progress: [█████░░░░░] 57%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [███░░░░░░░] 29%
 - v2.0 roadmap: SITE-01 merged into Phase 36 (Homebrew), SITE-02 merged into Phase 37 (GPU addon) — no standalone website phase needed; GPU addon independent of distribution pipeline
 - Phase 35-01: -trimpath is a go build compiler flag (use flags:), not a linker flag (not ldflags:); gitCommitCount safely omitted from GoReleaser ldflags
 - Phase 35-02: goreleaser-action@v7 replaces cross.sh + softprops atomically; go-version-file: .go-version simplifies version read; push-latest-cli.sh disabled (upstream kind GCS script not used by fork)
+- Phase 36-02: Direct users to GitHub Releases page for downloads (no hardcoded versioned URLs that go stale); Homebrew section placed before binary download section as preferred macOS method
 
 ### Pending Todos
 
@@ -69,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T21:08:29Z
-Stopped at: Completed 35-02-PLAN.md
+Last session: 2026-03-04T23:15:00Z
+Stopped at: Completed 36-02-PLAN.md
 Resume file: None

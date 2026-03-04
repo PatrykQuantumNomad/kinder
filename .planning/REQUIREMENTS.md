@@ -33,7 +33,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 ### Website
 
-- [ ] **SITE-01**: Installation page updated with Homebrew install instructions alongside make install
+- [x] **SITE-01**: Installation page updated with Homebrew install instructions alongside make install
 - [ ] **SITE-02**: GPU addon documentation page with prerequisites, configuration, usage, and troubleshooting
 
 ## Future Requirements
@@ -71,7 +71,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 | BREW-01 | Phase 36 | Pending |
 | BREW-02 | Phase 36 | Pending |
 | BREW-03 | Phase 36 | Pending |
-| SITE-01 | Phase 36 | Pending |
+| SITE-01 | Phase 36 | Complete |
 | GPU-01 | Phase 37 | Pending |
 | GPU-02 | Phase 37 | Pending |
 | GPU-03 | Phase 37 | Pending |
@@ -87,4 +87,4 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 — REL-05 complete: goreleaser-action@v7 replaces cross.sh + softprops*
+*Last updated: 2026-03-04 — SITE-01 complete: installation page updated with Homebrew instructions and GitHub Releases download links*
