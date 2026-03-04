@@ -18,6 +18,7 @@ limitations under the License.
 package doctor
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -36,20 +37,41 @@ type result struct {
 	message string
 }
 
+// checkResult is the JSON-serializable form of a single doctor check.
+type checkResult struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}
+
+type flagpole struct {
+	Output string
+}
+
 // NewCommand returns a new cobra.Command for the doctor subcommand
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
-	return &cobra.Command{
+	flags := &flagpole{}
+	c := &cobra.Command{
 		Args:  cobra.NoArgs,
 		Use:   "doctor",
 		Short: "Checks prerequisite binaries and reports actionable fix messages",
 		Long:  "Checks for required binaries (container runtime, kubectl) and exits 0 if all ok, 1 on failure, 2 on warnings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runE(streams)
+			return runE(streams, flags)
 		},
 	}
+	c.Flags().StringVar(&flags.Output, "output", "", "output format; supported values: \"\", \"json\"")
+	return c
 }
 
-func runE(streams cmd.IOStreams) error {
+func runE(streams cmd.IOStreams, flags *flagpole) error {
+	switch flags.Output {
+	case "", "json":
+		// valid
+	default:
+		return fmt.Errorf("unsupported output format %q; supported values: \"\", \"json\"", flags.Output)
+	}
+
 	var results []result
 
 	// Container runtime check: try docker, podman, nerdctl in order.
@@ -104,19 +126,49 @@ func runE(streams cmd.IOStreams) error {
 		})
 	}
 
-	// Print all results to stderr.
+	// Compute exit codes from results (must happen before branching on output format).
 	hasFail := false
 	hasWarn := false
+	for _, r := range results {
+		switch r.status {
+		case "fail":
+			hasFail = true
+		case "warn":
+			hasWarn = true
+		}
+	}
+
+	if flags.Output == "json" {
+		var out []checkResult
+		for _, r := range results {
+			out = append(out, checkResult{
+				Name:    r.name,
+				Status:  r.status,
+				Message: r.message,
+			})
+		}
+		if err := json.NewEncoder(streams.Out).Encode(out); err != nil {
+			return err
+		}
+		// Exit with structured codes after JSON output.
+		if hasFail {
+			os.Exit(1)
+		}
+		if hasWarn {
+			os.Exit(2)
+		}
+		return nil
+	}
+
+	// Human-readable output to stderr.
 	for _, r := range results {
 		switch r.status {
 		case "ok":
 			fmt.Fprintf(streams.ErrOut, "[ OK ] %s\n", r.name) //nolint:errcheck
 		case "warn":
 			fmt.Fprintf(streams.ErrOut, "[WARN] %s: %s\n", r.name, r.message) //nolint:errcheck
-			hasWarn = true
 		case "fail":
 			fmt.Fprintf(streams.ErrOut, "[FAIL] %s: %s\n", r.name, r.message) //nolint:errcheck
-			hasFail = true
 		}
 	}
 
