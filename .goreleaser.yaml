@@ -99,3 +99,19 @@ release:
     **Windows:** Download `kinder_{{ .Version }}_windows_amd64.zip` from the assets above and extract to a directory in your `PATH`.
 
     Verify the download: `sha256sum -c checksums.txt`
+
+homebrew_casks:
+  - name: kinder
+    directory: Casks
+    homepage: "https://kinder.patrykgolabek.dev"
+    description: "kind, but with everything you actually need."
+    skip_upload: auto
+    repository:
+      owner: PatrykQuantumNomad
+      name: homebrew-kinder
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
