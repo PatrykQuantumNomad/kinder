@@ -1,0 +1,100 @@
+# Source: https://goreleaser.com/customization/build/ and https://goreleaser.com/customization/archive/
+# Validated against GoReleaser v2.14.1
+#
+# FORK SAFETY: This config sets project_name and gomod.proxy explicitly.
+# Without these, GoReleaser infers project name from go.mod module path
+# (sigs.k8s.io/kind) and may resolve upstream kind from the Go module proxy.
+
+version: 2
+
+project_name: kinder  # Required: prevents inference of "kind" from module path sigs.k8s.io/kind
+
+before:
+  hooks:
+    - go mod tidy
+
+gomod:
+  proxy: false  # Required fork safety: prevents GoReleaser from fetching sigs.k8s.io/kind
+                # from proxy.golang.org (which would download upstream kind, not this fork)
+
+builds:
+  - id: kinder
+    main: .
+    binary: kinder
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64  # Windows ARM64 not in scope (matches existing cross.sh matrix)
+    ldflags:
+      - -trimpath
+      - -buildid=
+      - -w
+      - -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit={{ .FullCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: kinder
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - none*  # Binary-only archive: no LICENSE, README, or extras bundled
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: git
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Other Changes
+      order: 999
+  filters:
+    exclude:
+      - '^chore:'
+      - '^test:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: PatrykQuantumNomad
+    name: kinder
+  draft: false
+  mode: replace  # Allow re-running on same tag if workflow fails mid-flight (avoids 422 errors)
+  footer: |
+    ## Install
+
+    **Linux / macOS:**
+    ```bash
+    # Replace OS and ARCH with your platform (linux/darwin, amd64/arm64)
+    curl -sSL https://github.com/PatrykQuantumNomad/kinder/releases/download/{{ .Tag }}/kinder_{{ .Version }}_linux_amd64.tar.gz | tar xz
+    chmod +x kinder && sudo mv kinder /usr/local/bin/
+    ```
+
+    **Windows:** Download `kinder_{{ .Version }}_windows_amd64.zip` from the assets above and extract to a directory in your `PATH`.
+
+    Verify the download: `sha256sum -c checksums.txt`
