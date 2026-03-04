@@ -7,7 +7,7 @@
 - ✅ **v1.2 Branding & Polish** - Phases 15-18 (shipped 2026-03-02)
 - ✅ **v1.3 Harden & Extend** - Phases 19-24 (shipped 2026-03-03)
 - ✅ **v1.4 Code Quality & Features** - Phases 25-29 (shipped 2026-03-04)
-- 🚧 **v1.5 Website Use Cases & Documentation** - Phases 30-34 (in progress)
+- ✅ **v1.5 Website Use Cases & Documentation** - Phases 30-34 (shipped 2026-03-04)
 
 ## Phases
 
@@ -131,7 +131,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 34-01: Full site audit, link check, and production build verification
+- [x] 34-01: Full site audit, link check, and production build verification
 
 ## Progress
 
@@ -146,4 +146,4 @@ Plans:
 | 31. Addon Page Depth | v1.5 | 2/2 | Complete | 2026-03-04 |
 | 32. CLI Reference | v1.5 | 1/1 | Complete | 2026-03-04 |
 | 33. Tutorials | v1.5 | 2/2 | Complete | 2026-03-04 |
-| 34. Verification & Polish | 1/1 | Complete   | 2026-03-04 | - |
+| 34. Verification & Polish | v1.5 | 1/1 | Complete | 2026-03-04 |
