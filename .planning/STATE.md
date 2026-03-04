@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.5
+milestone_name: Website Use Cases & Documentation
+status: planning
+stopped_at: Completed 30-01-PLAN.md
+last_updated: "2026-03-04T14:39:21.785Z"
+last_activity: 2026-03-04 — v1.5 roadmap created, Phase 30 ready to plan
+progress:
+  total_phases: 5
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 100
+---
+
 # Project State
 
 ## Project Reference
@@ -10,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 30 of 34 (Foundation Fixes)
-Plan: 0 of 1 in current phase
-Status: Ready to plan
-Last activity: 2026-03-04 — v1.5 roadmap created, Phase 30 ready to plan
+Plan: 1 of 1 in current phase
+Status: Phase complete — ready for Phase 31
+Last activity: 2026-03-04 — Phase 30 plan 01 complete (all 7 addons documented)
 
-Progress: [░░░░░░░░░░] 0% (0/7 plans complete)
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -36,6 +52,9 @@ Progress: [░░░░░░░░░░] 0% (0/7 plans complete)
 - v1.2: Kinder logo from modified kind robot, favicon.ico over SVG, llms.txt for GEO
 - v1.3: common/ provider dedup, local registry addon, cert-manager addon, CLI diagnostic tools
 - v1.4: Context in struct (not param), wave-based parallel (not DAG), sync.OnceValues for Nodes(), errgroup.SetLimit(3), flagpole/switch/json.NewEncoder pattern, CreateWithAddonProfile with 4 presets
+- [Phase 30-foundation-fixes]: Group addons as core (MetalLB, Metrics Server, CoreDNS) vs optional (Envoy Gateway, Headlamp, Local Registry, cert-manager) consistently across all three pages
+- [Phase 30-foundation-fixes]: Sidebar groups Addons, Guides, CLI Reference are all collapsed by default
+- [Phase 30-foundation-fixes]: Placeholder pages use Starlight Coming soon callout — minimal content, no stub sections
 
 ### Pending Todos
 
@@ -47,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04
-Stopped at: v1.5 roadmap created — Phase 30 ready to plan
+Last session: 2026-03-04T14:39:16.428Z
+Stopped at: Completed 30-01-PLAN.md
 Resume file: None

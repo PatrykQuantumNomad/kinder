@@ -69,7 +69,7 @@ Phases 25-29: Foundation (Go 1.24, golangci-lint v2, layer fix), Architecture (c
 **Plans**: 1 plan
 
 Plans:
-- [ ] 30-01: Update landing page, quick-start, configuration, and sidebar for v1.3-v1.4 features
+- [x] 30-01: Update landing page, quick-start, configuration, and sidebar for v1.3-v1.4 features
 
 #### Phase 31: Addon Page Depth
 
@@ -142,7 +142,7 @@ Plans:
 | 15-18. v1.2 phases | v1.2 | 4/4 | Complete | 2026-03-02 |
 | 19-24. v1.3 phases | v1.3 | 8/8 | Complete | 2026-03-03 |
 | 25-29. v1.4 phases | v1.4 | 13/13 | Complete | 2026-03-04 |
-| 30. Foundation Fixes | v1.5 | 0/1 | Not started | - |
+| 30. Foundation Fixes | 1/1 | Complete   | 2026-03-04 | - |
 | 31. Addon Page Depth | v1.5 | 0/2 | Not started | - |
 | 32. CLI Reference | v1.5 | 0/1 | Not started | - |
 | 33. Tutorials | v1.5 | 0/2 | Not started | - |
