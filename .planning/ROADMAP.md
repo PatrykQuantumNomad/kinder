@@ -102,7 +102,7 @@ Plans:
 **Goal**: Users on Linux with NVIDIA GPUs can create a kind cluster that exposes GPU resources to pods via a single config field, with actionable pre-flight error messages if prerequisites are missing
 **Depends on**: Phase 34 (v1.5 complete — independent of distribution pipeline, can proceed in parallel with 35-36)
 **Requirements**: GPU-01, GPU-02, GPU-03, GPU-04, GPU-05, GPU-06, SITE-02
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 **Success Criteria** (what must be TRUE):
   1. A pod requesting `nvidia.com/gpu: 1` is scheduled and runs successfully on a kinder cluster created with `addons.nvidiaGPU: true` on a Linux host with NVIDIA drivers installed
   2. `kinder create cluster --config gpu-cluster.yaml` on macOS or Windows prints a clear informational message that the GPU addon is Linux-only and skips without failing cluster creation
@@ -127,4 +127,4 @@ Plans:
 | 30-34. v1.5 phases | v1.5 | 7/7 | Complete | 2026-03-04 |
 | 35. GoReleaser Foundation | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 36. Homebrew Tap | v2.0 | 2/2 | Complete | 2026-03-04 |
-| 37. NVIDIA GPU Addon | v2.0 | 0/3 | Not started | - |
+| 37. NVIDIA GPU Addon | 1/3 | In Progress|  | - |

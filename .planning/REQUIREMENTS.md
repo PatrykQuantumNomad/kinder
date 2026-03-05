@@ -28,7 +28,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 - [ ] **GPU-02**: NVIDIA RuntimeClass "nvidia" created so pods can target GPU nodes
 - [ ] **GPU-03**: v1alpha4 config API has `NvidiaGPU *bool` field defaulting to false (opt-in)
 - [ ] **GPU-04**: GPU addon skips with informational message on non-Linux platforms
-- [ ] **GPU-05**: `kinder doctor` checks for NVIDIA driver, container toolkit, and nvidia runtime in Docker
+- [x] **GPU-05**: `kinder doctor` checks for NVIDIA driver, container toolkit, and nvidia runtime in Docker
 - [ ] **GPU-06**: GPU addon pre-flight check in `Execute()` validates host toolkit before applying manifests
 
 ### Website
@@ -76,7 +76,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 | GPU-02 | Phase 37 | Pending |
 | GPU-03 | Phase 37 | Pending |
 | GPU-04 | Phase 37 | Pending |
-| GPU-05 | Phase 37 | Pending |
+| GPU-05 | Phase 37 | Complete |
 | GPU-06 | Phase 37 | Pending |
 | SITE-02 | Phase 37 | Pending |
 

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Distribution & GPU Support
-status: in_progress
-stopped_at: "Phase 36 complete"
-last_updated: "2026-03-04T23:30:00Z"
-last_activity: 2026-03-04 — Phase 36 complete: homebrew tap infrastructure, installation page updated
+status: executing
+stopped_at: Completed 37-02-PLAN.md
+last_updated: "2026-03-05T00:24:29.600Z"
+last_activity: "2026-03-04 — Phase 36 complete: homebrew tap infrastructure, installation page updated"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 36 — Homebrew Tap
+**Current focus:** Phase 37 — NVIDIA GPU Addon
 
 ## Current Position
 
-Phase: 36 of 37 (Homebrew Tap) — COMPLETE, ready for Phase 37
-Plan: 2 of 2 in Phase 36 complete
+Phase: 37 of 37 (NVIDIA GPU Addon) — In progress, Plan 2 of 3 complete
+Plan: 2 of 3 in Phase 37 complete
 Status: In progress
-Last activity: 2026-03-04 — Phase 36 complete: homebrew tap infrastructure, installation page updated
+Last activity: 2026-03-04 — Phase 37 Plan 02 complete: NVIDIA doctor checks (nvidia-driver, nvidia-container-toolkit, nvidia-docker-runtime) gated on Linux
 
-Progress: [███████░░░] 71%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ Progress: [███████░░░] 71%
 - Phase 35-02: goreleaser-action@v7 replaces cross.sh + softprops atomically; go-version-file: .go-version simplifies version read; push-latest-cli.sh disabled (upstream kind GCS script not used by fork)
 - Phase 36-02: Direct users to GitHub Releases page for downloads (no hardcoded versioned URLs that go stale); Homebrew section placed before binary download section as preferred macOS method
 - Phase 36-01: homebrew_casks (not deprecated brews:), skip_upload:auto for pre-release safety, Casks/ directory (not Formula/), HOMEBREW_TAP_TOKEN fine-grained PAT scoped to homebrew-kinder for cross-repo push
+- [Phase 37-02]: Use 'warn' (not 'fail') for all missing NVIDIA components — GPU is optional so doctor must not exit 1 on non-GPU Linux machines
+- [Phase 37-02]: Ok-case formatter prints message only when non-empty — driver version shows for nvidia-driver ok, no trailing colon for docker/kubectl
 
 ### Pending Todos
 
@@ -71,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T23:30:00Z
-Stopped at: Phase 36 complete
+Last session: 2026-03-05T00:24:23.045Z
+Stopped at: Completed 37-02-PLAN.md
 Resume file: None
