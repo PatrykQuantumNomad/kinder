@@ -102,18 +102,18 @@ Plans:
 **Goal**: Users on Linux with NVIDIA GPUs can create a kind cluster that exposes GPU resources to pods via a single config field, with actionable pre-flight error messages if prerequisites are missing
 **Depends on**: Phase 34 (v1.5 complete — independent of distribution pipeline, can proceed in parallel with 35-36)
 **Requirements**: GPU-01, GPU-02, GPU-03, GPU-04, GPU-05, GPU-06, SITE-02
+**Plans:** 3 plans
 **Success Criteria** (what must be TRUE):
   1. A pod requesting `nvidia.com/gpu: 1` is scheduled and runs successfully on a kinder cluster created with `addons.nvidiaGPU: true` on a Linux host with NVIDIA drivers installed
   2. `kinder create cluster --config gpu-cluster.yaml` on macOS or Windows prints a clear informational message that the GPU addon is Linux-only and skips without failing cluster creation
   3. `kinder doctor` reports the NVIDIA driver version, container toolkit presence, and whether the nvidia runtime is configured in Docker — with actionable fix commands for any missing prerequisite
   4. Running `kinder create cluster` with `addons.nvidiaGPU: true` but missing nvidia-container-toolkit configured as the Docker runtime fails fast with an error message telling the user exactly which command to run to fix it — not after 10 minutes of cluster creation
   5. The GPU addon documentation page at kinder.patrykgolabek.dev covers prerequisites, config field, usage example, and a troubleshooting section for the 0-GPUs-allocated failure mode
-**Plans**: TBD
 
 Plans:
-- [ ] 37-01: Config API extension and installnvidiagpu package skeleton
-- [ ] 37-02: Embedded manifests, pre-flight checks, and kinder doctor integration
-- [ ] 37-03: GPU documentation page and end-to-end validation
+- [ ] 37-01-PLAN.md — Config API extension, installnvidiagpu package with manifests, and create.go wiring
+- [ ] 37-02-PLAN.md — NVIDIA GPU doctor checks (Linux-gated)
+- [ ] 37-03-PLAN.md — Unit tests and GPU addon documentation page
 
 ## Progress
 
