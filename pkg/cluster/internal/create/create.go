@@ -40,6 +40,7 @@ import (
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcni"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installnvidiagpu"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
@@ -252,6 +253,7 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 		{"CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction()},
 		{"Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction()},
 		{"Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction()},
+		{"NVIDIA GPU", opts.Config.Addons.NvidiaGPU, installnvidiagpu.NewAction()},
 	}
 
 	wave2 := []AddonEntry{
