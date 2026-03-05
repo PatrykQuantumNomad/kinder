@@ -34,7 +34,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 ### Website
 
 - [x] **SITE-01**: Installation page updated with Homebrew install instructions alongside make install
-- [ ] **SITE-02**: GPU addon documentation page with prerequisites, configuration, usage, and troubleshooting
+- [x] **SITE-02**: GPU addon documentation page with prerequisites, configuration, usage, and troubleshooting
 
 ## Future Requirements
 
@@ -78,7 +78,7 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 | GPU-04 | Phase 37 | Complete |
 | GPU-05 | Phase 37 | Complete |
 | GPU-06 | Phase 37 | Complete |
-| SITE-02 | Phase 37 | Pending |
+| SITE-02 | Phase 37 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 17 total
