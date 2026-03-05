@@ -24,12 +24,12 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 
 ### GPU Addon
 
-- [ ] **GPU-01**: NVIDIA device plugin DaemonSet installs via go:embed + kubectl apply when addon enabled
-- [ ] **GPU-02**: NVIDIA RuntimeClass "nvidia" created so pods can target GPU nodes
-- [ ] **GPU-03**: v1alpha4 config API has `NvidiaGPU *bool` field defaulting to false (opt-in)
-- [ ] **GPU-04**: GPU addon skips with informational message on non-Linux platforms
+- [x] **GPU-01**: NVIDIA device plugin DaemonSet installs via go:embed + kubectl apply when addon enabled
+- [x] **GPU-02**: NVIDIA RuntimeClass "nvidia" created so pods can target GPU nodes
+- [x] **GPU-03**: v1alpha4 config API has `NvidiaGPU *bool` field defaulting to false (opt-in)
+- [x] **GPU-04**: GPU addon skips with informational message on non-Linux platforms
 - [x] **GPU-05**: `kinder doctor` checks for NVIDIA driver, container toolkit, and nvidia runtime in Docker
-- [ ] **GPU-06**: GPU addon pre-flight check in `Execute()` validates host toolkit before applying manifests
+- [x] **GPU-06**: GPU addon pre-flight check in `Execute()` validates host toolkit before applying manifests
 
 ### Website
 
@@ -72,12 +72,12 @@ Requirements for v2.0 release. Each maps to roadmap phases.
 | BREW-02 | Phase 36 | Pending |
 | BREW-03 | Phase 36 | Pending |
 | SITE-01 | Phase 36 | Complete |
-| GPU-01 | Phase 37 | Pending |
-| GPU-02 | Phase 37 | Pending |
-| GPU-03 | Phase 37 | Pending |
-| GPU-04 | Phase 37 | Pending |
+| GPU-01 | Phase 37 | Complete |
+| GPU-02 | Phase 37 | Complete |
+| GPU-03 | Phase 37 | Complete |
+| GPU-04 | Phase 37 | Complete |
 | GPU-05 | Phase 37 | Complete |
-| GPU-06 | Phase 37 | Pending |
+| GPU-06 | Phase 37 | Complete |
 | SITE-02 | Phase 37 | Pending |
 
 **Coverage:**

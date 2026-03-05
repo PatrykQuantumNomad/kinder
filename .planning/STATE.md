@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Distribution & GPU Support
 status: executing
-stopped_at: Completed 37-02-PLAN.md
-last_updated: "2026-03-05T00:24:29.600Z"
-last_activity: "2026-03-04 — Phase 36 complete: homebrew tap infrastructure, installation page updated"
+stopped_at: Completed 37-01-PLAN.md
+last_updated: "2026-03-05T00:26:46.845Z"
+last_activity: "2026-03-04 — Phase 37 Plan 02 complete: NVIDIA doctor checks (nvidia-driver, nvidia-container-toolkit, nvidia-docker-runtime) gated on Linux"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 96
 ---
 
 # Project State
@@ -59,6 +59,8 @@ Progress: [██████████] 96%
 - Phase 36-01: homebrew_casks (not deprecated brews:), skip_upload:auto for pre-release safety, Casks/ directory (not Formula/), HOMEBREW_TAP_TOKEN fine-grained PAT scoped to homebrew-kinder for cross-repo push
 - [Phase 37-02]: Use 'warn' (not 'fail') for all missing NVIDIA components — GPU is optional so doctor must not exit 1 on non-GPU Linux machines
 - [Phase 37-02]: Ok-case formatter prints message only when non-empty — driver version shows for nvidia-driver ok, no trailing colon for docker/kubectl
+- [Phase 37]: NvidiaGPU uses boolValOptIn (nil=false) unlike all other addons which use boolVal (nil=true) — GPU is opt-in
+- [Phase 37]: currentOS and checkPrerequisites are package-level vars for test injection without build tags in installnvidiagpu
 
 ### Pending Todos
 
@@ -73,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T00:24:23.045Z
-Stopped at: Completed 37-02-PLAN.md
+Last session: 2026-03-05T00:26:46.843Z
+Stopped at: Completed 37-01-PLAN.md
 Resume file: None
