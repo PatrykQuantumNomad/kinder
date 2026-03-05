@@ -113,6 +113,9 @@ type Addons struct {
 	// CertManager enables cert-manager with a self-signed ClusterIssuer.
 	// +optional (default: true)
 	CertManager *bool `yaml:"certManager,omitempty" json:"certManager,omitempty"`
+	// NvidiaGPU enables the NVIDIA GPU device plugin and RuntimeClass.
+	// +optional (default: false — opt-in, Linux only)
+	NvidiaGPU *bool `yaml:"nvidiaGPU,omitempty" json:"nvidiaGPU,omitempty"`
 }
 
 // TypeMeta partially copies apimachinery/pkg/apis/meta/v1.TypeMeta

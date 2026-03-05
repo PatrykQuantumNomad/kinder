@@ -47,6 +47,13 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 		return *b
 	}
 
+	boolValOptIn := func(b *bool) bool {
+		if b == nil {
+			return false
+		}
+		return *b
+	}
+
 	out.Addons = Addons{
 		MetalLB:       boolVal(in.Addons.MetalLB),
 		EnvoyGateway:  boolVal(in.Addons.EnvoyGateway),
@@ -55,6 +62,7 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 		Dashboard:     boolVal(in.Addons.Dashboard),
 		LocalRegistry: boolVal(in.Addons.LocalRegistry),
 		CertManager:   boolVal(in.Addons.CertManager),
+		NvidiaGPU:     boolValOptIn(in.Addons.NvidiaGPU),
 	}
 
 	for i := range in.KubeadmConfigPatchesJSON6902 {

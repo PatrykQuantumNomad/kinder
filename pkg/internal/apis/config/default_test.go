@@ -30,14 +30,21 @@ func TestSetDefaultsCluster_AddonFields(t *testing.T) {
 			input: Addons{
 				MetalLB: false, EnvoyGateway: false,
 				MetricsServer: false, CoreDNSTuning: false, Dashboard: false,
+				NvidiaGPU: false,
 			},
 			wantAddons: Addons{
 				MetalLB: false, EnvoyGateway: false,
 				MetricsServer: false, CoreDNSTuning: false, Dashboard: false,
+				NvidiaGPU: false,
 			},
 		},
 		{
 			name:       "zero-value addons remain zero-value",
+			input:      Addons{},
+			wantAddons: Addons{},
+		},
+		{
+			name:       "NvidiaGPU defaults to false (opt-in)",
 			input:      Addons{},
 			wantAddons: Addons{},
 		},

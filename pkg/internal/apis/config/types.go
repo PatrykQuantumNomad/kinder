@@ -83,6 +83,7 @@ type Addons struct {
 	Dashboard     bool
 	LocalRegistry bool
 	CertManager   bool
+	NvidiaGPU     bool
 }
 
 // Node contains settings for a node in the `kind` Cluster.
