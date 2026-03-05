@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -126,6 +128,13 @@ func runE(streams cmd.IOStreams, flags *flagpole) error {
 		})
 	}
 
+	// NVIDIA GPU checks (Linux only — GPU addon is Linux-only).
+	if runtime.GOOS == "linux" {
+		results = append(results, checkNvidiaDriver()...)
+		results = append(results, checkNvidiaContainerToolkit())
+		results = append(results, checkNvidiaDockerRuntime())
+	}
+
 	// Compute exit codes from results (must happen before branching on output format).
 	hasFail := false
 	hasWarn := false
@@ -164,7 +173,11 @@ func runE(streams cmd.IOStreams, flags *flagpole) error {
 	for _, r := range results {
 		switch r.status {
 		case "ok":
-			fmt.Fprintf(streams.ErrOut, "[ OK ] %s\n", r.name) //nolint:errcheck
+			if r.message != "" {
+				fmt.Fprintf(streams.ErrOut, "[ OK ] %s: %s\n", r.name, r.message) //nolint:errcheck
+			} else {
+				fmt.Fprintf(streams.ErrOut, "[ OK ] %s\n", r.name) //nolint:errcheck
+			}
 		case "warn":
 			fmt.Fprintf(streams.ErrOut, "[WARN] %s: %s\n", r.name, r.message) //nolint:errcheck
 		case "fail":
@@ -214,4 +227,71 @@ func checkKubectl() (found bool, working bool) {
 		return true, true
 	}
 	return true, false
+}
+
+// checkNvidiaDriver checks for the NVIDIA driver via nvidia-smi.
+// Returns the driver version on success.
+func checkNvidiaDriver() []result {
+	if _, err := osexec.LookPath("nvidia-smi"); err != nil {
+		return []result{{
+			name:    "nvidia-driver",
+			status:  "warn",
+			message: "nvidia-smi not found — NVIDIA GPU addon will not work. Install drivers: https://www.nvidia.com/drivers",
+		}}
+	}
+	// nvidia-smi is present; try to get version.
+	lines, err := exec.OutputLines(exec.Command("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"))
+	if err != nil || len(lines) == 0 {
+		return []result{{
+			name:    "nvidia-driver",
+			status:  "warn",
+			message: "nvidia-smi found but could not query driver version — is the GPU accessible?",
+		}}
+	}
+	return []result{{
+		name:    "nvidia-driver",
+		status:  "ok",
+		message: "driver version " + strings.TrimSpace(lines[0]),
+	}}
+}
+
+// checkNvidiaContainerToolkit checks for nvidia-container-toolkit (nvidia-ctk binary).
+func checkNvidiaContainerToolkit() result {
+	if _, err := osexec.LookPath("nvidia-ctk"); err != nil {
+		return result{
+			name:    "nvidia-container-toolkit",
+			status:  "warn",
+			message: "nvidia-ctk not found — install with: sudo apt-get install -y nvidia-container-toolkit",
+		}
+	}
+	return result{
+		name:   "nvidia-container-toolkit",
+		status: "ok",
+	}
+}
+
+// checkNvidiaDockerRuntime checks whether the nvidia runtime is configured in Docker.
+func checkNvidiaDockerRuntime() result {
+	lines, err := exec.OutputLines(exec.Command("docker", "info", "--format", "{{.Runtimes}}"))
+	if err != nil || len(lines) == 0 {
+		return result{
+			name:    "nvidia-docker-runtime",
+			status:  "warn",
+			message: "could not query Docker runtimes — is Docker running?",
+		}
+	}
+	// Docker info --format {{.Runtimes}} outputs something like "io.containerd.runc.v2 nvidia runc"
+	// or a map-like string containing "nvidia" as a key.
+	output := strings.Join(lines, " ")
+	if !strings.Contains(output, "nvidia") {
+		return result{
+			name:    "nvidia-docker-runtime",
+			status:  "warn",
+			message: "nvidia runtime not configured in Docker — run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker",
+		}
+	}
+	return result{
+		name:   "nvidia-docker-runtime",
+		status: "ok",
+	}
 }
