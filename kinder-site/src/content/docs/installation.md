@@ -42,7 +42,7 @@ Download the `.zip` archive from [GitHub Releases](https://github.com/PatrykQuan
 
 ## Build from Source
 
-If you prefer to build from source, you will also need **Go 1.24 or later** ([Install Go](https://go.dev/doc/install)).
+If you prefer to build from source, you will also need **Go 1.24+** ([Install Go](https://go.dev/doc/install)).
 
 ```sh
 git clone https://github.com/PatrykQuantumNomad/kinder.git
@@ -67,5 +67,5 @@ kinder version
 You should see output like:
 
 ```
-kinder v0.1.0-alpha go1.25.7 darwin/arm64
+kind v1.2.0 go1.25.7 darwin/arm64
 ```

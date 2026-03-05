@@ -5,6 +5,70 @@ description: All releases and changes since kinder was forked from kind.
 
 All notable changes to kinder since forking from [kind](https://kind.sigs.k8s.io/) at commit `89ff06bd`.
 
+:::note[Version scheme change]
+Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`, ...) independent of upstream kind's `v0.x` series. Earlier releases used `v0.x.y-alpha` tags inherited from the fork. The Go binary reports the tag version via `kinder version`.
+:::
+
+---
+
+## v1.2 — Distribution & GPU Support
+
+**Released:** March 5, 2026
+
+First stable release with automated binary distribution via GoReleaser, Homebrew tap, and NVIDIA GPU addon.
+
+### Distribution
+
+- **GoReleaser pipeline** — automated cross-platform binary builds for linux/darwin (amd64 + arm64) and windows (amd64) with SHA-256 checksums and categorized changelog
+- **GitHub Releases** — tagged releases automatically publish platform archives to [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases)
+- **Homebrew tap** — `brew install patrykquantumnomad/kinder/kinder` installs a pre-built binary on macOS. Cask auto-published on each stable release via GoReleaser
+- **goreleaser-action** — replaces legacy `cross.sh` + `softprops` release workflow; `cross.sh` retired
+
+### NVIDIA GPU Addon
+
+- **NVIDIA device plugin** (v0.17.0) — DaemonSet installed via go:embed + kubectl apply when `addons.nvidiaGPU: true`. RuntimeClass `nvidia` created for GPU pod scheduling
+- **Opt-in config** — `NvidiaGPU *bool` field in v1alpha4 config API, defaults to `false` (unlike other addons which default to `true`)
+- **Platform guard** — GPU addon skips with informational message on non-Linux platforms without failing cluster creation
+- **Pre-flight validation** — checks for `nvidia-smi`, `nvidia-ctk`, and nvidia runtime in Docker config before applying manifests. Fails fast with actionable error messages
+- **Doctor checks** — `kinder doctor` reports NVIDIA driver version, container toolkit presence, and Docker runtime configuration (Linux only, warn-not-fail)
+- **Documentation** — GPU addon page at [kinder.patrykgolabek.dev/addons/nvidia-gpu](https://kinder.patrykgolabek.dev/addons/nvidia-gpu/) with prerequisites, configuration, usage, and troubleshooting
+
+### Website
+
+- Installation page updated with Homebrew install instructions and GitHub Releases download links
+
+### Internal
+
+- `project_name: kinder` and `gomod.proxy: false` in GoReleaser config for fork safety
+- `skip_upload: auto` on Homebrew cask to prevent publishing pre-release builds
+- `HOMEBREW_TAP_TOKEN` fine-grained PAT scoped to `homebrew-kinder` repo for cross-repo cask push
+
+---
+
+## v0.4.1-alpha — Website Use Cases & Documentation
+
+**Released:** March 4, 2026
+
+Expanded the documentation site with 3 tutorials, 3 CLI reference pages, and enriched all 7 addon pages with examples, troubleshooting, and configuration details.
+
+### Tutorials
+
+- **[TLS Web App](https://kinder.patrykgolabek.dev/guides/tls-web-app/)** — deploy a web app with TLS termination using cert-manager + Envoy Gateway
+- **[HPA Auto-Scaling](https://kinder.patrykgolabek.dev/guides/hpa-auto-scaling/)** — set up Horizontal Pod Autoscaler with Metrics Server and load-test it
+- **[Local Dev Workflow](https://kinder.patrykgolabek.dev/guides/local-dev-workflow/)** — build, push to local registry, and deploy with hot-reload iteration
+
+### CLI Reference
+
+- **[Profile Comparison](https://kinder.patrykgolabek.dev/reference/profile-comparison/)** — side-by-side table of all 4 addon profiles (minimal, full, gateway, ci)
+- **[JSON Output](https://kinder.patrykgolabek.dev/reference/json-output/)** — schema reference for `--output json` on env, doctor, get clusters, get nodes
+- **[Troubleshooting](https://kinder.patrykgolabek.dev/reference/troubleshooting/)** — common issues with `kinder env` and `kinder doctor`, exit codes
+
+### Addon Page Enrichment
+
+- All 7 addon pages updated with: configuration examples, version pinning details, symptom/cause/fix troubleshooting tables, and verification commands
+- Core vs optional addon grouping on landing page and configuration reference
+- Quick-start guide updated with all 7 addon verifications and `--profile` tip
+
 ---
 
 ## v0.4.0-alpha — Code Quality & Features

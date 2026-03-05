@@ -3,7 +3,7 @@
 # kinder — kind, but with everything you actually need.
 
 [![Documentation](https://img.shields.io/badge/docs-kinder.patrykgolabek.dev-00B8D4)](https://kinder.patrykgolabek.dev)
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 kinder is a batteries-included tool for running local Kubernetes clusters using Docker container "nodes". Built on top of [kind], it pre-installs production-ready addons so you can go from zero to a fully functional cluster in one command.
@@ -17,14 +17,27 @@ kinder is a batteries-included tool for running local Kubernetes clusters using 
 | [Metrics Server](https://kinder.patrykgolabek.dev/addons/metrics-server/) | Enables `kubectl top` and Horizontal Pod Autoscaler support |
 | [CoreDNS Tuning](https://kinder.patrykgolabek.dev/addons/coredns/) | Autopath, verified pod records, and doubled cache TTL |
 | [Headlamp](https://kinder.patrykgolabek.dev/addons/headlamp/) | Web-based cluster dashboard accessible via port-forward |
+| [Local Registry](https://kinder.patrykgolabek.dev/addons/local-registry/) | Pre-configured `localhost:5001` registry for local image development |
+| [cert-manager](https://kinder.patrykgolabek.dev/addons/cert-manager/) | TLS certificate management with a self-signed ClusterIssuer ready to use |
+| [NVIDIA GPU](https://kinder.patrykgolabek.dev/addons/nvidia-gpu/) | GPU passthrough for AI/ML workloads on Linux hosts with NVIDIA drivers (opt-in) |
 
 ## Quick start
 
 ### Prerequisites
 
-- [Go] 1.25.7+ &nbsp;|&nbsp; [Docker], [Podman], or [nerdctl] &nbsp;|&nbsp; [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [Go] 1.24+ &nbsp;|&nbsp; [Docker], [Podman], or [nerdctl] &nbsp;|&nbsp; [kubectl](https://kubernetes.io/docs/tasks/tools/)
 
 ### Install
+
+**Homebrew (macOS):**
+
+```sh
+brew install patrykquantumnomad/kinder/kinder
+```
+
+**Pre-built binary:** Download from [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases/latest) for macOS, Linux, or Windows.
+
+**Build from source:**
 
 ```sh
 git clone https://github.com/PatrykQuantumNomad/kinder.git
@@ -47,6 +60,22 @@ kubectl get nodes                          # node is Ready
 kubectl get pods -n metallb-system         # MetalLB running
 kubectl get pods -n envoy-gateway-system   # Envoy Gateway running
 kubectl top nodes                          # Metrics Server working
+```
+
+### Use addon profiles
+
+```sh
+kinder create cluster --profile minimal   # no addons (core kind only)
+kinder create cluster --profile gateway   # MetalLB + Envoy Gateway only
+kinder create cluster --profile ci        # Metrics Server + cert-manager
+```
+
+### Diagnostic tools
+
+```sh
+kinder doctor                             # check prerequisites
+kinder env                                # cluster environment info
+kinder get clusters --output json         # JSON output for scripting
 ```
 
 ### Open the dashboard
@@ -82,9 +111,12 @@ See the full [Configuration Reference](https://kinder.patrykgolabek.dev/configur
 ## Why kinder over plain kind?
 
 - **One command** — no post-install scripts to wire up MetalLB, ingress, metrics, or a dashboard
+- **8 addons** — MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, local registry, cert-manager, and NVIDIA GPU support
 - **LoadBalancer support** — `type: LoadBalancer` works out of the box
 - **Gateway API** — Envoy Gateway ready without manual CRD installation
 - **Observability** — `kubectl top` and a web dashboard from the start
+- **Addon profiles** — `--profile minimal|full|gateway|ci` for targeted presets
+- **JSON output** — `--output json` on all read commands for scripting
 - **100% compatible** — any kind config or workflow still works
 
 ## Documentation
@@ -95,7 +127,7 @@ Full docs at **[kinder.patrykgolabek.dev](https://kinder.patrykgolabek.dev)**
 
 ### Prerequisites
 
-- [Go] 1.25.7+ (see `.go-version` for the exact compiler version used in CI)
+- [Go] 1.24+ (see `.go-version` for the exact compiler version used in CI)
 - [Docker], [Podman], or [nerdctl] (for integration tests and running clusters)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) (for verifying clusters)
 
