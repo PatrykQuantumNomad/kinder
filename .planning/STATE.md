@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Distribution & GPU Support
-status: executing
-stopped_at: Completed 37-01-PLAN.md
-last_updated: "2026-03-05T00:26:46.845Z"
-last_activity: "2026-03-04 — Phase 37 Plan 02 complete: NVIDIA doctor checks (nvidia-driver, nvidia-container-toolkit, nvidia-docker-runtime) gated on Linux"
+status: complete
+stopped_at: Completed 37-03-PLAN.md
+last_updated: "2026-03-05T00:31:10.933Z"
+last_activity: "2026-03-05 — Phase 37 Plan 03 complete: unit tests for installnvidiagpu (5 cases) and NVIDIA GPU addon documentation page"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
-  percent: 96
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 37 of 37 (NVIDIA GPU Addon) — In progress, Plan 2 of 3 complete
-Plan: 2 of 3 in Phase 37 complete
-Status: In progress
-Last activity: 2026-03-04 — Phase 37 Plan 02 complete: NVIDIA doctor checks (nvidia-driver, nvidia-container-toolkit, nvidia-docker-runtime) gated on Linux
+Phase: 37 of 37 (NVIDIA GPU Addon) — COMPLETE (all 3 plans done)
+Plan: 3 of 3 in Phase 37 complete
+Status: Complete — milestone v2.0 Distribution & GPU Support achieved
+Last activity: 2026-03-05 — Phase 37 Plan 03 complete: unit tests for installnvidiagpu (5 cases) and NVIDIA GPU addon documentation page
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -61,6 +61,8 @@ Progress: [██████████] 96%
 - [Phase 37-02]: Ok-case formatter prints message only when non-empty — driver version shows for nvidia-driver ok, no trailing colon for docker/kubectl
 - [Phase 37]: NvidiaGPU uses boolValOptIn (nil=false) unlike all other addons which use boolVal (nil=true) — GPU is opt-in
 - [Phase 37]: currentOS and checkPrerequisites are package-level vars for test injection without build tags in installnvidiagpu
+- [Phase 37]: Non-parallel test isolation for package-global vars: tests modifying currentOS or checkPrerequisites are NOT t.Parallel() to prevent data races
+- [Phase 37]: Volume-mounts fix is primary troubleshooting step for 0-GPUs scenario (kind-specific root cause, RESEARCH.md Pitfall 6)
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T00:26:46.843Z
-Stopped at: Completed 37-01-PLAN.md
+Last session: 2026-03-05T00:31:10.931Z
+Stopped at: Completed 37-03-PLAN.md
 Resume file: None
