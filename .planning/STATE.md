@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Known Issues & Proactive Diagnostics
-status: active
-stopped_at: null
-last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Roadmap created for v2.1 (Phases 38-41)"
+status: executing
+stopped_at: Completed 38-01-PLAN.md
+last_updated: "2026-03-06T14:25:22.112Z"
+last_activity: 2026-03-06 — Completed Plan 01 (Check interface, formatters, mitigations skeleton)
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 38 (1 of 4) — Check Infrastructure and Interface
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-06 — Roadmap created for v2.1
+Plan: 01 of 2 complete
+Status: Executing
+Last activity: 2026-03-06 — Completed Plan 01 (Check interface, formatters, mitigations skeleton)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -50,6 +50,9 @@ Progress: [░░░░░░░░░░] 0%
 - v1.0-v2.0: See PROJECT.md Key Decisions table
 - v2.1: INFRA-05 (create flow integration) moved to Phase 41 so all checks exist before wiring mitigations into create flow
 - v2.1: Research confirms zero new go.mod dependencies; golang.org/x/sys/unix promoted from indirect to direct
+- v2.1 P38-01: allChecks initialized as []Check{} (not nil) for non-nil guarantee
+- v2.1 P38-01: FormatJSON returns map[string]interface{} for flexible JSON serialization
+- v2.1 P38-01: ApplySafeMitigations early-returns on non-Linux platforms
 
 ### Pending Todos
 
@@ -61,6 +64,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06
-Stopped at: Roadmap created, ready to plan Phase 38
+Last session: 2026-03-06T14:25:22.110Z
+Stopped at: Completed 38-01-PLAN.md
 Resume file: None

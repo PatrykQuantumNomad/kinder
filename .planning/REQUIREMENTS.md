@@ -9,10 +9,10 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Check interface with Name(), Category(), Platforms(), Run() methods in pkg/internal/doctor/
-- [ ] **INFRA-02**: Result type with ok/warn/fail/skip statuses and category-grouped output
-- [ ] **INFRA-03**: AllChecks() registry with centralized platform filtering
-- [ ] **INFRA-04**: Mitigation tier system (auto-apply, suggest-only, document-only) with SafeMitigation struct
+- [x] **INFRA-01**: Check interface with Name(), Category(), Platforms(), Run() methods in pkg/internal/doctor/
+- [x] **INFRA-02**: Result type with ok/warn/fail/skip statuses and category-grouped output
+- [x] **INFRA-03**: AllChecks() registry with centralized platform filtering
+- [x] **INFRA-04**: Mitigation tier system (auto-apply, suggest-only, document-only) with SafeMitigation struct
 - [ ] **INFRA-05**: ApplySafeMitigations() integrated into create flow before p.Provision()
 - [ ] **INFRA-06**: Existing checks (container-runtime, kubectl, NVIDIA GPU) migrated to Check interface
 
@@ -123,10 +123,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 38 | Pending |
-| INFRA-02 | Phase 38 | Pending |
-| INFRA-03 | Phase 38 | Pending |
-| INFRA-04 | Phase 38 | Pending |
+| INFRA-01 | Phase 38 | Complete |
+| INFRA-02 | Phase 38 | Complete |
+| INFRA-03 | Phase 38 | Complete |
+| INFRA-04 | Phase 38 | Complete |
 | INFRA-05 | Phase 41 | Pending |
 | INFRA-06 | Phase 38 | Pending |
 | DOCK-01 | Phase 39 | Pending |
