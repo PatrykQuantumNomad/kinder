@@ -86,6 +86,7 @@ export default defineConfig({
             { slug: 'cli-reference/troubleshooting' },
           ],
         },
+        { slug: 'known-issues' },
         { slug: 'changelog' },
       ],
       social: [

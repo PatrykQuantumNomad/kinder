@@ -45,6 +45,10 @@ eval $(kinder env --name my-cluster)
 
 ## kinder doctor
 
+:::tip
+For a complete reference of every diagnostic check, what it detects, and how to fix it, see the [Known Issues](/known-issues/) page.
+:::
+
 ### Exit codes
 
 | Exit code | Meaning |
