@@ -11,6 +11,63 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 ---
 
+## v1.3 — Known Issues & Proactive Diagnostics
+
+**Released:** March 6, 2026
+
+Expanded `kinder doctor` from 3 to 18 diagnostic checks across 8 categories, wired automatic mitigations into `kinder create cluster`, and added a comprehensive Known Issues documentation page.
+
+### Doctor Infrastructure
+
+- **Check interface** — unified `Check` contract with `Name()`, `Category()`, `Platforms()`, `Run()` methods. All checks return structured `Result` values with ok/warn/fail/skip status
+- **Category-grouped output** — `kinder doctor` groups checks by category (Runtime, Docker, Tools, GPU, Kernel, Security, Platform, Network) with Unicode status icons
+- **JSON output** — `kinder doctor --output json` produces an envelope with checks array and summary object (total/ok/warn/fail/skip counts)
+- **Platform filtering** — checks declare target platforms; non-matching platforms get `skip` status instead of crashing
+- **SafeMitigation system** — tier-based mitigation infrastructure wired into `kinder create cluster` before provisioning. Errors logged as warnings, never fatal
+
+### Docker & Tool Checks
+
+- **Disk space** — warns at <5GB, fails at <2GB using Docker's data root path. Build-tagged `statfs` for Linux/macOS
+- **daemon.json init flag** — detects `"init": true` across 6 candidate paths (native Linux, Docker Desktop macOS, rootless, Snap, Rancher Desktop, Windows)
+- **Docker snap** — detects Docker installed via snap through symlink resolution. Warns about `TMPDIR` issues
+- **kubectl version skew** — parses `kubectl version --client -o json` and warns when skew exceeds +/-1 minor version from reference (v1.31)
+- **Docker socket permissions** — detects permission denied on Linux and suggests `usermod -aG docker $USER` fix
+
+### Kernel & Security Checks (Linux)
+
+- **inotify limits** — warns when `max_user_watches` < 524288 or `max_user_instances` < 512 with exact `sysctl` fix commands
+- **Kernel version** — fails on kernels below 4.6 (cgroup namespace support is a hard blocker for kind)
+- **AppArmor** — detects enabled AppArmor and warns about stale profile interference (`moby/moby#7512`)
+- **SELinux** — detects enforcing mode on Fedora and warns about `/dev/dma_heap` denials
+- **firewalld** — detects nftables backend (Fedora 32+ default) and warns about Docker networking issues
+
+### Platform Checks
+
+- **WSL2** — multi-signal detection (microsoft in `/proc/version` + `WSL_DISTRO_NAME` or `WSLInterop`) prevents Azure VM false positives. Checks cgroup v2 controllers (cpu, memory, pids)
+- **Rootfs device** — detects BTRFS as Docker storage driver or backing filesystem
+- **Subnet clash** — detects Docker network subnet overlaps with host routing table using `netip.Prefix.Overlaps`. Handles macOS abbreviated CIDR notation
+
+### Create-Flow Integration
+
+- `kinder create cluster` calls `ApplySafeMitigations()` after containerd config patches and before provisioning
+- Only tier-1 mitigations applied (env vars, cluster config adjustments) — never calls `sudo` or modifies system files
+- Mitigation errors are informational warnings, never block cluster creation
+
+### Website
+
+- **[Known Issues](/known-issues/)** page documenting all 18 diagnostic checks across 8 categories with What/Why/Platforms/Fix structure
+- Known Issues added to sidebar navigation
+- Cross-linked from [Troubleshooting](/cli-reference/troubleshooting/) page
+
+### Internal
+
+- `golang.org/x/sys/unix` promoted from indirect to direct dependency for `unix.Statfs` and `unix.Uname`
+- Deps struct injection pattern for all checks: injectable `readFile`, `execCmd`, `lookPath` for unit testing without system calls
+- Build-tagged platform pairs: `kernel_linux.go`/`kernel_other.go`, `disk_unix.go`/`disk_other.go`
+- 80+ new unit tests across 10 check files with table-driven parallel execution
+
+---
+
 ## v1.2 — Distribution & GPU Support
 
 **Released:** March 5, 2026
