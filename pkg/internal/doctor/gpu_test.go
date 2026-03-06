@@ -287,14 +287,17 @@ func TestNvidiaDockerRuntimeCheck_Run(t *testing.T) {
 func TestAllChecks_RegisteredOrder(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 5 {
-		t.Fatalf("AllChecks() returned %d checks, want 5", len(checks))
+	if len(checks) != 8 {
+		t.Fatalf("AllChecks() returned %d checks, want 8", len(checks))
 	}
 	expected := []struct {
 		name     string
 		category string
 	}{
 		{"container-runtime", "Runtime"},
+		{"disk-space", "Docker"},
+		{"daemon-json-init", "Docker"},
+		{"docker-snap", "Docker"},
 		{"kubectl", "Tools"},
 		{"nvidia-driver", "GPU"},
 		{"nvidia-container-toolkit", "GPU"},
