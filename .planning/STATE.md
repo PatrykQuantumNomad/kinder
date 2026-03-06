@@ -5,13 +5,13 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 41-02 (ApplySafeMitigations wiring into create flow)"
+last_activity: "2026-03-06 — Completed 41-01 (subnet clash detection with TDD)"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 41 (4 of 4) — Network, Create-Flow Integration, and Website
-Plan: 2 of 3 (41-02 complete)
+Plan: 2 of 3 (41-01, 41-02 complete)
 Status: Executing Phase 41
-Last activity: 2026-03-06 — Completed 41-02 (ApplySafeMitigations wiring into create flow)
+Last activity: 2026-03-06 — Completed 41-01 (subnet clash detection with TDD)
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -76,6 +76,10 @@ Progress: [████████░░] 80%
 - [Phase 41]: P41-02: SafeMitigations returns []SafeMitigation{} matching allChecks non-nil guarantee pattern
 - [Phase 41]: P41-02: ApplySafeMitigations called between containerd config patches and p.Provision()
 - [Phase 41]: P41-02: Mitigation errors are warnings, never block cluster creation
+- [Phase 41]: P41-01: Injectable getRoutesFunc for testable route parsing without system calls
+- [Phase 41]: P41-01: Self-referential Docker routes skipped by exact netip.Prefix equality
+- [Phase 41]: P41-01: IPv4 only -- IPv6 ULA clashes are extremely rare
+- [Phase 41]: P41-01: allChecks registry now 18 checks: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(1)
 
 ### Pending Todos
 
@@ -88,5 +92,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 41-02-PLAN.md. ApplySafeMitigations wired into create flow. Next: 41-01 or 41-03.
+Stopped at: Completed 41-01-PLAN.md. Subnet clash detection implemented with TDD. Next: 41-03 (website).
 Resume file: None

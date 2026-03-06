@@ -35,7 +35,7 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 
 - [x] **PLAT-01**: Doctor detects firewalld nftables backend on Fedora 32+
 - [x] **PLAT-02**: Doctor detects WSL2 with multi-signal approach and checks cgroup v2 config
-- [ ] **PLAT-03**: Doctor detects Docker network subnet clashes with host routes
+- [x] **PLAT-03**: Doctor detects Docker network subnet clashes with host routes
 - [x] **PLAT-04**: Doctor checks device node access for rootfs (BTRFS/NVMe)
 
 ### Website

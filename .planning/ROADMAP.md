@@ -141,7 +141,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 41-01-PLAN.md — Subnet clash detection check with TDD (PLAT-03)
+- [x] 41-01-PLAN.md — Subnet clash detection check with TDD (PLAT-03)
 - [x] 41-02-PLAN.md — ApplySafeMitigations wiring into create flow (INFRA-05)
 - [ ] 41-03-PLAN.md — Known Issues documentation page on website (SITE-01)
 
@@ -164,4 +164,4 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 40. Kernel & Platform Checks | v2.1 | 3/3 | Complete | 2026-03-06 |
-| 41. Network, Integration & Website | v2.1 | 1/3 | In progress | - |
+| 41. Network, Integration & Website | v2.1 | 2/3 | In progress | - |
