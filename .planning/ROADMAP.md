@@ -107,11 +107,11 @@ Plans:
   3. `kinder doctor` detects Docker installed via snap (symlink to /snap/bin/docker) and warns about TMPDIR issues
   4. `kinder doctor` detects kubectl client version skew (more than one minor version from the cluster's server version) and warns about potential incompatibility
   5. `kinder doctor` detects Docker socket permission denied on Linux and suggests the specific fix command (adding user to docker group)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 39-01: TBD
-- [ ] 39-02: TBD
+- [ ] 39-01-PLAN.md — Disk space, daemon.json, and Docker snap checks (DOCK-01, DOCK-02, DOCK-03)
+- [ ] 39-02-PLAN.md — Kubectl version skew and Docker socket permission checks (DOCK-04, DOCK-05)
 
 ### Phase 40: Kernel, Security, and Platform-Specific Checks
 **Goal**: Linux users running `kinder doctor` get advance warnings about kernel limits, security modules, and platform configurations that would silently break or degrade kind clusters
@@ -160,6 +160,6 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 36. Homebrew Tap | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
-| 39. Docker & Tool Checks | v2.1 | 0/? | Not started | - |
+| 39. Docker & Tool Checks | v2.1 | 0/2 | Not started | - |
 | 40. Kernel & Platform Checks | v2.1 | 0/? | Not started | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |
