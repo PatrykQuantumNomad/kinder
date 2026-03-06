@@ -162,5 +162,5 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
-| 40. Kernel & Platform Checks | 2/3 | In Progress|  | - |
+| 40. Kernel & Platform Checks | v2.1 | 2/3 | In Progress | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |

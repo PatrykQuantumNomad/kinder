@@ -5,7 +5,7 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 40-01 (inotify limits, kernel version checks)"
+last_activity: "2026-03-06 — Completed 40-02 (AppArmor, SELinux, firewalld checks)"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -30,7 +30,7 @@ Plan: 2 of 3 complete
 Status: Executing Phase 40
 Last activity: 2026-03-06 — Completed 40-02 (AppArmor, SELinux, firewalld checks)
 
-Progress: [███████░░░] 75%
+Progress: [████████░░] 87%
 
 ## Performance Metrics
 
@@ -81,5 +81,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 40-01-PLAN.md (inotify limits, kernel version checks).
+Stopped at: Completed 40-02-PLAN.md. Next: 40-03 (WSL2, rootfs, allChecks registry wiring).
 Resume file: None
