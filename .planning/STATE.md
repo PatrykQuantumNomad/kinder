@@ -5,13 +5,13 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Phase 38 complete (Check Infrastructure and Interface)"
+last_activity: "2026-03-06 — Completed 39-01 (disk space, daemon.json, snap checks)"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  total_plans: 4
+  completed_plans: 3
+  percent: 37
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 39 (2 of 4) — Docker and Tool Configuration Checks
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-06 — Phase 38 complete
+Plan: 1 of 2 complete
+Status: Executing plan 39-02
+Last activity: 2026-03-06 — Completed 39-01 (disk space, daemon.json, snap checks)
 
-Progress: [██░░░░░░░░] 25%
+Progress: [███░░░░░░░] 37%
 
 ## Performance Metrics
 
@@ -55,6 +55,9 @@ Progress: [██░░░░░░░░] 25%
 - v2.1 P38-01: ApplySafeMitigations early-returns on non-Linux platforms
 - [Phase 38]: P38-02: Inline fakeCmd test doubles instead of importing testutil from pkg/cluster/internal/
 - [Phase 38]: P38-02: nvidiaDockerRuntimeCheck returns skip when docker binary not found
+- [Phase 39]: P39-01: Build-tagged statfsFreeBytes with int64 cast for macOS/Linux Bsize portability
+- [Phase 39]: P39-01: daemonJSONCheck searches 6 candidate paths including Windows ProgramData
+- [Phase 39]: P39-01: dockerSnapCheck uses filepath.EvalSymlinks for snap detection
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Phase 38 complete, ready to plan Phase 39
+Stopped at: Completed 39-01-PLAN.md, ready for 39-02-PLAN.md
 Resume file: None
