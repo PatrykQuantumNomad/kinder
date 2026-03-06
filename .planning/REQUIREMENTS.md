@@ -13,7 +13,7 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 - [x] **INFRA-02**: Result type with ok/warn/fail/skip statuses and category-grouped output
 - [x] **INFRA-03**: AllChecks() registry with centralized platform filtering
 - [x] **INFRA-04**: Mitigation tier system (auto-apply, suggest-only, document-only) with SafeMitigation struct
-- [ ] **INFRA-05**: ApplySafeMitigations() integrated into create flow before p.Provision()
+- [x] **INFRA-05**: ApplySafeMitigations() integrated into create flow before p.Provision()
 - [x] **INFRA-06**: Existing checks (container-runtime, kubectl, NVIDIA GPU) migrated to Check interface
 
 ### Docker & Tools
@@ -127,7 +127,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-02 | Phase 38 | Complete |
 | INFRA-03 | Phase 38 | Complete |
 | INFRA-04 | Phase 38 | Complete |
-| INFRA-05 | Phase 41 | Pending |
+| INFRA-05 | Phase 41 | Complete |
 | INFRA-06 | Phase 38 | Complete |
 | DOCK-01 | Phase 39 | Complete |
 | DOCK-02 | Phase 39 | Complete |

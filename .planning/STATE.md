@@ -5,13 +5,13 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 40-03 (WSL2, rootfs, allChecks registry wiring)"
+last_activity: "2026-03-06 — Completed 41-02 (ApplySafeMitigations wiring into create flow)"
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 75
+  total_plans: 10
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 ## Current Position
 
-Phase: 40 (3 of 4) — Kernel, Security, and Platform-Specific Checks (COMPLETE)
-Plan: 3 of 3 complete
-Status: Phase 40 complete, ready for Phase 41
-Last activity: 2026-03-06 — Completed 40-03 (WSL2, rootfs, allChecks registry wiring)
+Phase: 41 (4 of 4) — Network, Create-Flow Integration, and Website
+Plan: 2 of 3 (41-02 complete)
+Status: Executing Phase 41
+Last activity: 2026-03-06 — Completed 41-02 (ApplySafeMitigations wiring into create flow)
 
-Progress: [███████░░░] 75%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -73,6 +73,9 @@ Progress: [███████░░░] 75%
 - [Phase 40]: P40-03: Cgroup v2 check verifies cpu, memory, pids controllers when WSL2 confirmed
 - [Phase 40]: P40-03: Rootfs check queries both Docker .Driver and .DriverStatus for BTRFS detection
 - [Phase 40]: P40-03: allChecks registry ordered: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3)
+- [Phase 41]: P41-02: SafeMitigations returns []SafeMitigation{} matching allChecks non-nil guarantee pattern
+- [Phase 41]: P41-02: ApplySafeMitigations called between containerd config patches and p.Provision()
+- [Phase 41]: P41-02: Mitigation errors are warnings, never block cluster creation
 
 ### Pending Todos
 
@@ -85,5 +88,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 40-03-PLAN.md. Phase 40 complete. Next: Phase 41 (Network, Create-Flow Integration, Website).
+Stopped at: Completed 41-02-PLAN.md. ApplySafeMitigations wired into create flow. Next: 41-01 or 41-03.
 Resume file: None
