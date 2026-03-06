@@ -160,11 +160,11 @@ func TestDockerSocketCheck_Run(t *testing.T) {
 func TestAllChecks_Registry(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 10 {
-		t.Fatalf("AllChecks() has %d entries, want 10", len(checks))
+	if len(checks) != 17 {
+		t.Fatalf("AllChecks() has %d entries, want 17", len(checks))
 	}
 
-	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3)
+	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3)
 	expected := []struct {
 		name     string
 		category string
@@ -179,6 +179,13 @@ func TestAllChecks_Registry(t *testing.T) {
 		{"nvidia-driver", "GPU"},
 		{"nvidia-container-toolkit", "GPU"},
 		{"nvidia-docker-runtime", "GPU"},
+		{"inotify-limits", "Kernel"},
+		{"kernel-version", "Kernel"},
+		{"apparmor", "Security"},
+		{"selinux", "Security"},
+		{"firewalld-backend", "Platform"},
+		{"wsl2-cgroup", "Platform"},
+		{"rootfs-device", "Platform"},
 	}
 
 	for i, exp := range expected {

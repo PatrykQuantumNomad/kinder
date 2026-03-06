@@ -49,7 +49,7 @@ type Result struct {
 }
 
 // allChecks is the explicit registry of all diagnostic checks.
-// Order defines category grouping: Runtime, Docker, Tools, GPU.
+// Order defines category grouping: Runtime, Docker, Tools, GPU, Kernel, Security, Platform.
 var allChecks = []Check{
 	// Category: Runtime
 	newContainerRuntimeCheck(),
@@ -65,6 +65,16 @@ var allChecks = []Check{
 	newNvidiaDriverCheck(),
 	newNvidiaContainerToolkitCheck(),
 	newNvidiaDockerRuntimeCheck(),
+	// Category: Kernel (Phase 40)
+	newInotifyCheck(),
+	newKernelVersionCheck(),
+	// Category: Security (Phase 40)
+	newApparmorCheck(),
+	newSELinuxCheck(),
+	// Category: Platform (Phase 40)
+	newFirewalldCheck(),
+	newWSL2Check(),
+	newRootfsDeviceCheck(),
 }
 
 // AllChecks returns all registered diagnostic checks.

@@ -287,8 +287,8 @@ func TestNvidiaDockerRuntimeCheck_Run(t *testing.T) {
 func TestAllChecks_RegisteredOrder(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 10 {
-		t.Fatalf("AllChecks() returned %d checks, want 10", len(checks))
+	if len(checks) != 17 {
+		t.Fatalf("AllChecks() returned %d checks, want 17", len(checks))
 	}
 	expected := []struct {
 		name     string
@@ -304,6 +304,13 @@ func TestAllChecks_RegisteredOrder(t *testing.T) {
 		{"nvidia-driver", "GPU"},
 		{"nvidia-container-toolkit", "GPU"},
 		{"nvidia-docker-runtime", "GPU"},
+		{"inotify-limits", "Kernel"},
+		{"kernel-version", "Kernel"},
+		{"apparmor", "Security"},
+		{"selinux", "Security"},
+		{"firewalld-backend", "Platform"},
+		{"wsl2-cgroup", "Platform"},
+		{"rootfs-device", "Platform"},
 	}
 	for i, exp := range expected {
 		if checks[i].Name() != exp.name {
