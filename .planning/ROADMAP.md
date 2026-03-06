@@ -123,11 +123,12 @@ Plans:
   3. `kinder doctor` on Linux checks kernel version and warns if below 4.6 (no cgroup namespace support), which is a hard blocker for kind
   4. `kinder doctor` on Linux detects firewalld with nftables backend on Fedora 32+ and warns about networking issues
   5. `kinder doctor` detects WSL2 using multi-signal approach (/proc/version + $WSL_DISTRO_NAME or /proc/sys/fs/binfmt_misc/WSLInterop) and checks cgroup v2 configuration, without false-positiving on Azure VMs
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 40-01: TBD
-- [ ] 40-02: TBD
+- [ ] 40-01-PLAN.md — Inotify limits and kernel version checks (KERN-01, KERN-04)
+- [ ] 40-02-PLAN.md — AppArmor, SELinux, and firewalld checks (KERN-02, KERN-03, PLAT-01)
+- [ ] 40-03-PLAN.md — WSL2 detection, rootfs device check, and allChecks registry wiring (PLAT-02, PLAT-04)
 
 ### Phase 41: Network, Create-Flow Integration, and Website
 **Goal**: Users get subnet clash detection before cluster creation, automatic safe mitigations during `kinder create cluster`, and a comprehensive Known Issues page on the website documenting all checks
@@ -161,5 +162,5 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
-| 40. Kernel & Platform Checks | v2.1 | 0/? | Not started | - |
+| 40. Kernel & Platform Checks | v2.1 | 0/3 | Not started | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |
