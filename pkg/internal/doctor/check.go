@@ -49,8 +49,14 @@ type Result struct {
 }
 
 // allChecks is the explicit registry of all diagnostic checks.
-// Initially empty -- populated in Plan 02 with migrated checks.
-var allChecks = []Check{}
+// Order defines category grouping: Runtime, Tools, GPU.
+var allChecks = []Check{
+	newContainerRuntimeCheck(),
+	newKubectlCheck(),
+	newNvidiaDriverCheck(),
+	newNvidiaContainerToolkitCheck(),
+	newNvidiaDockerRuntimeCheck(),
+}
 
 // AllChecks returns all registered diagnostic checks.
 func AllChecks() []Check {
