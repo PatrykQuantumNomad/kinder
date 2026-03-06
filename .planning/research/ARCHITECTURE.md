@@ -1,655 +1,652 @@
-# Architecture Research
+# Architecture Patterns: Doctor Check Integration
 
-**Domain:** Distribution pipeline (GoReleaser + GitHub Releases + Homebrew tap) + NVIDIA GPU addon for kinder Go CLI
-**Researched:** 2026-03-04
-**Confidence:** HIGH — existing code read directly; GoReleaser config from official docs; NVIDIA from official repo
+**Domain:** Diagnostic check integration into existing kinder doctor command
+**Researched:** 2026-03-06
+**Overall confidence:** HIGH (based on direct codebase analysis, no external dependencies)
 
----
+## Recommended Architecture
 
-## System Overview
+### Decision 1: Check Registration Pattern -- Lightweight Check Interface with Registry Slice
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                  DISTRIBUTION LAYER (new)                           │
-│                                                                     │
-│  .goreleaser.yaml         .github/workflows/release.yml            │
-│  (builds + archives +     (existing: tag-triggered,                │
-│   checksums + brews)       softprops/action-gh-release)            │
-│         │                           │                              │
-│         └─────────────┬─────────────┘                              │
-│                       │                                            │
-│         ┌─────────────▼─────────────┐                              │
-│         │     github.com/releases   │   ← cross-platform binaries  │
-│         │     (kinder-linux-amd64   │     + sha256sums             │
-│         │      kinder-darwin-arm64  │                              │
-│         │      kinder-windows-amd64 │                              │
-│         │      ...)                 │                              │
-│         └─────────────┬─────────────┘                              │
-│                       │ GoReleaser writes formula                  │
-│         ┌─────────────▼─────────────┐                              │
-│         │ homebrew-kinder (tap repo) │   ← Formula/kinder.rb       │
-│         └───────────────────────────┘                              │
-└─────────────────────────────────────────────────────────────────────┘
+**Recommendation:** Introduce a `Check` interface and a registry slice in a shared internal package. Do NOT use a plugin/auto-registration pattern.
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                  ADDON LAYER (existing, extended)                   │
-│                                                                     │
-│  pkg/cluster/internal/create/create.go                             │
-│  ┌────────────────────────────────────────────────────────────┐    │
-│  │                  Wave 1 (errgroup, limit 3)                 │    │
-│  │  LocalRegistry  MetalLB  MetricsServer  CoreDNSTuning      │    │
-│  │  Dashboard      CertManager                                │    │
-│  └───────────────────────────┬────────────────────────────────┘    │
-│                              │ Wait                                │
-│  ┌───────────────────────────▼────────────────────────────────┐    │
-│  │               Wave 2 (sequential)                          │    │
-│  │  EnvoyGateway     [NvidiaGPU — new, Wave 1 candidate]      │    │
-│  └────────────────────────────────────────────────────────────┘    │
-│                                                                     │
-│  Each addon: pkg/cluster/internal/create/actions/<name>/<name>.go  │
-│              go:embed manifests/*.yaml                             │
-│              Execute(*ActionContext) error                         │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                  BUILD LAYER (existing, extended)                   │
-│                                                                     │
-│  Makefile                 hack/release/build/cross.sh              │
-│  (local build/install)    (cross-compile 5 targets)                │
-│                                                                     │
-│  pkg/internal/kindversion/version.go                               │
-│  (gitCommit + versionCore injected via -ldflags at build time)     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Component Responsibilities
-
-| Component | Responsibility | New / Modified |
-|-----------|----------------|----------------|
-| `.goreleaser.yaml` | Cross-compile all targets, package archives, compute checksums, publish GitHub Release, push Homebrew formula | NEW |
-| `.github/workflows/release.yml` | Tag-triggered release workflow that invokes GoReleaser | MODIFIED (replace current shell-based release) |
-| `github.com/<owner>/homebrew-kinder` | Separate tap repository holding `Formula/kinder.rb` | NEW repo |
-| `pkg/cluster/internal/create/actions/installnvidiagpu/` | NVIDIA GPU addon package: embeds DaemonSet manifest, executes device plugin install + RuntimeClass | NEW package |
-| `pkg/internal/apis/config/types.go` (internal) | Add `NvidiaGPU bool` field to `Addons` struct | MODIFIED |
-| `pkg/apis/config/v1alpha4/types.go` (public) | Add `NvidiaGPU *bool` field to `Addons` struct | MODIFIED |
-| `pkg/cluster/internal/create/create.go` | Register NvidiaGPU addon in wave1 slice | MODIFIED |
-
----
-
-## Distribution Pipeline: GoReleaser Integration
-
-### How GoReleaser maps to the existing build
-
-The existing `Makefile` and `hack/release/build/cross.sh` already produce the correct binaries. GoReleaser replaces `cross.sh` for release builds. The `Makefile`'s `KIND_BUILD_LD_FLAGS` pattern (injecting `gitCommit` and `gitCommitCount` via `-X`) must be replicated in `.goreleaser.yaml`:
-
-```yaml
-# .goreleaser.yaml
-version: 2
-
-project_name: kinder
-
-builds:
-  - binary: kinder
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -trimpath
-      - -buildid=
-      - -w
-      - -X sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit={{ .Commit }}
-      - -X sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount={{ .Env.COMMIT_COUNT }}
-    mod_timestamp: "{{ .CommitTimestamp }}"
-```
-
-Critical: the `-X` flags must reference `pkg/internal/kindversion.*` — the package that currently holds the build-time injected vars. The existing `Makefile` uses `KIND_VERSION_PKG:=sigs.k8s.io/kind/pkg/internal/kindversion` as the target package path.
-
-### Archive and checksum configuration
-
-```yaml
-archives:
-  - format: tar.gz
-    format_overrides:
-      - goos: windows
-        format: zip
-    name_template: "kinder-{{ .Os }}-{{ .Arch }}"
-
-checksum:
-  name_template: "checksums.txt"
-  algorithm: sha256
-```
-
-The existing `cross.sh` names binaries `kinder-${GOOS}-${GOARCH}` and appends `.sha256sum` files. GoReleaser's `name_template` should match this convention to avoid breaking any users who reference the binary URL pattern.
-
-### Homebrew tap configuration
-
-GoReleaser's `brews` section generates a Ruby formula and pushes it to a separate tap repository (`homebrew-kinder`). The tap repo must exist before first release.
-
-```yaml
-brews:
-  - name: kinder
-    repository:
-      owner: "{{ .Env.HOMEBREW_TAP_OWNER }}"
-      name: homebrew-kinder
-      token: "{{ .Env.HOMEBREW_TOKEN }}"
-    commit_author:
-      name: goreleaserbot
-      email: goreleaser@kinder
-    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    directory: Formula
-    homepage: "https://kinder.sigs.k8s.io"
-    description: "batteries-included local Kubernetes clusters (kind fork)"
-    license: "Apache-2.0"
-    install: |
-      bin.install "kinder"
-    test: |
-      system "#{bin}/kinder", "version"
-```
-
-### GitHub Actions workflow change
-
-The existing `release.yml` uses `softprops/action-gh-release` directly. Replace with `goreleaser/goreleaser-action`:
-
-```yaml
-# .github/workflows/release.yml — new structure
-name: Release
-on:
-  push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
-
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # GoReleaser needs full git history for changelog
-
-      - name: Read Go version
-        id: go-version
-        run: echo "version=$(cat .go-version)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ steps.go-version.outputs.version }}
-
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
-          HOMEBREW_TAP_OWNER: ${{ github.repository_owner }}
-```
-
-`HOMEBREW_TOKEN` must be a GitHub PAT with `contents: write` permission scoped to the tap repository. It cannot be the default `GITHUB_TOKEN` (which is scoped to the current repo only).
-
-### New tap repository structure
-
-```
-homebrew-kinder/
-└── Formula/
-    └── kinder.rb        ← generated and updated by GoReleaser on each release
-```
-
-GoReleaser generates the formula with the correct download URLs, SHA256 hashes, and OS-specific `on_macos`/`on_linux` blocks automatically.
-
----
-
-## NVIDIA GPU Addon: Integration with Existing Architecture
-
-### The GPU passthrough problem on kind
-
-kind nodes are Docker/Podman containers. To expose NVIDIA GPUs to pods running inside kind nodes, two pre-conditions must hold on the host:
-
-1. `nvidia-container-toolkit` is installed and configured as the containerd runtime
-2. The toolkit is configured with `accept-nvidia-visible-devices-as-volume-mounts=true` (the nvkind approach)
-
-**Without these host pre-conditions, the addon cannot function.** The addon must detect their presence and fail gracefully if absent. This is the central architectural constraint distinguishing GPU from all other addons.
-
-### What the NvidiaGPU addon does at cluster creation time
-
-The addon has no provisioning-time component (no `ContainerdConfigPatches` injection is needed — the host's nvidia-container-toolkit configures this before cluster creation). All steps execute post-cluster-creation via kubectl, exactly like every other addon:
-
-1. Apply NVIDIA device plugin DaemonSet (`manifests/nvidia-device-plugin.yaml`, embedded via `go:embed`)
-2. Apply NVIDIA RuntimeClass (`manifests/runtime-class.yaml`, embedded)
-3. Wait for DaemonSet to be available on GPU-capable nodes (with tolerance for `NoSchedule` taint on non-GPU nodes)
-
-The DaemonSet manifest is the static YAML from `https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.x/deployments/static/nvidia-device-plugin.yml` — pinned version, embedded at build time.
-
-### Package structure (mirrors existing addons exactly)
-
-```
-pkg/cluster/internal/create/actions/installnvidiagpu/
-├── nvidiagpu.go              ← Execute(*ActionContext) error
-└── manifests/
-    ├── nvidia-device-plugin.yaml   ← embedded DaemonSet
-    └── runtime-class.yaml          ← RuntimeClass "nvidia"
-```
-
-`nvidiagpu.go` structure:
+**Rationale:** The existing code uses direct function calls (`checkBinary`, `checkKubectl`, `checkNvidiaDriver`, etc.) with results appended inline. This works for 6 checks but becomes unmaintainable at 19+. However, kinder's codebase favors simplicity over abstraction (e.g., the action system uses a flat `[]actions.Action` slice in `create.go`, not a plugin registry). A lightweight interface with an explicit slice preserves this philosophy while making checks composable and testable.
 
 ```go
-package installnvidiagpu
+// Check represents a single diagnostic check.
+type Check interface {
+    // Name returns the display name for this check (e.g., "ip-forwarding").
+    Name() string
+    // Category returns the category grouping (e.g., "kernel", "docker", "network").
+    Category() string
+    // Platforms returns the set of GOOS values this check applies to.
+    // An empty slice means "all platforms".
+    Platforms() []string
+    // Run executes the check and returns one or more results.
+    Run() []Result
+}
+```
 
-import (
-    _ "embed"
-    "strings"
+**Why not individual functions:** The existing pattern of `checkNvidiaDriver() []result` provides no metadata (name, category, platform). Each check is called manually, so adding 13 more would require 13 new conditional blocks in `runE`. An interface lets the main loop handle platform filtering, categorized output, and JSON serialization generically.
 
-    "sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
-    "sigs.k8s.io/kind/pkg/cluster/nodeutils"
-    "sigs.k8s.io/kind/pkg/errors"
-)
+**Why not auto-registration (init):** The action system in `create.go` explicitly lists addons in `wave1` and `wave2` slices. Kinder does not use init()-based registration anywhere. An explicit slice keeps check ordering deterministic and discoverable -- you read the slice, you know what runs.
 
-//go:embed manifests/nvidia-device-plugin.yaml
-var devicePluginManifest string
+**Explicit registry:**
 
-//go:embed manifests/runtime-class.yaml
-var runtimeClassManifest string
-
-type action struct{}
-
-func NewAction() actions.Action { return &action{} }
-
-func (a *action) Execute(ctx *actions.ActionContext) error {
-    ctx.Status.Start("Installing NVIDIA GPU support")
-    defer ctx.Status.End(false)
-
-    allNodes, err := ctx.Nodes()
-    // ... get control plane node ...
-
-    // Step 1: Apply RuntimeClass "nvidia"
-    if err := node.CommandContext(ctx.Context, "kubectl",
-        "--kubeconfig=/etc/kubernetes/admin.conf",
-        "apply", "-f", "-",
-    ).SetStdin(strings.NewReader(runtimeClassManifest)).Run(); err != nil {
-        return errors.Wrap(err, "failed to apply NVIDIA RuntimeClass")
+```go
+// allChecks returns the ordered list of all doctor checks.
+// This is the single source of truth for which checks exist and their order.
+func AllChecks() []Check {
+    return []Check{
+        // Category: Runtime
+        newContainerRuntimeCheck(),
+        newKubectlCheck(),
+        newDockerCgroupDriverCheck(),
+        newDockerStorageDriverCheck(),
+        // Category: Kernel
+        newIPForwardingCheck(),
+        newBridgeNFCallCheck(),
+        newConntrackCheck(),
+        newSwapCheck(),
+        // Category: Network
+        newPortAvailabilityCheck(),
+        newDNSResolutionCheck(),
+        newProxyEnvCheck(),
+        // Category: Resources
+        newDiskSpaceCheck(),
+        newMemoryCheck(),
+        newCPUCheck(),
+        newInotifyCheck(),
+        // Category: GPU (Linux only)
+        newNvidiaDriverCheck(),
+        newNvidiaContainerToolkitCheck(),
+        newNvidiaDockerRuntimeCheck(),
     }
+}
+```
 
-    // Step 2: Apply device plugin DaemonSet
-    if err := node.CommandContext(ctx.Context, "kubectl",
-        "--kubeconfig=/etc/kubernetes/admin.conf",
-        "apply", "-f", "-",
-    ).SetStdin(strings.NewReader(devicePluginManifest)).Run(); err != nil {
-        return errors.Wrap(err, "failed to apply NVIDIA device plugin")
+### Decision 2: Platform-Specific Checks -- Explicit "skip" Status with Reason
+
+**Recommendation:** Add a `"skip"` status to the result type. Checks that do not apply to the current platform return `status: "skip"` with a message like `"Linux only"`.
+
+**Rationale:** Silent skipping hides information from the user. The user running `kinder doctor` on macOS should see that kernel checks exist but are not applicable, so they know what would be checked on the target Linux host. JSON consumers need this too -- an absent check vs. a skipped check have different semantics.
+
+```go
+type Result struct {
+    Name     string
+    Status   string // "ok", "warn", "fail", "skip"
+    Message  string
+    Category string
+}
+```
+
+**Human-readable output:**
+```
+[ OK ] docker
+[ OK ] kubectl
+[SKIP] ip-forwarding: Linux only
+[SKIP] bridge-nf-call: Linux only
+[ OK ] disk-space: 45.2 GB available
+```
+
+**JSON output:**
+```json
+[
+  {"name": "docker", "status": "ok", "category": "runtime"},
+  {"name": "ip-forwarding", "status": "skip", "message": "Linux only", "category": "kernel"}
+]
+```
+
+**Platform filtering in the main loop** (not in each check):
+
+```go
+for _, check := range checks.AllChecks() {
+    platforms := check.Platforms()
+    if len(platforms) > 0 && !contains(platforms, runtime.GOOS) {
+        results = append(results, checks.Result{
+            Name:     check.Name(),
+            Status:   "skip",
+            Message:  fmt.Sprintf("%s only", strings.Join(platforms, "/")),
+            Category: check.Category(),
+        })
+        continue
     }
-
-    // Step 3: Wait — only for nodes that have GPUs (DaemonSet may have 0 desired pods on GPU-free nodes)
-    // Use kubectl rollout status with a short timeout; tolerate failure (warn-and-continue)
-    _ = node.CommandContext(ctx.Context, "kubectl",
-        "--kubeconfig=/etc/kubernetes/admin.conf",
-        "rollout", "status", "daemonset/nvidia-device-plugin-daemonset",
-        "-n", "kube-system", "--timeout=60s",
-    ).Run()
-
-    ctx.Status.End(true)
-    return nil
+    results = append(results, check.Run()...)
 }
 ```
 
-### Config API changes (three files must change together)
+This keeps platform logic out of individual check implementations. The `Platforms()` method on the interface is pure metadata; the filtering decision is centralized.
 
-**1. Public API: `pkg/apis/config/v1alpha4/types.go`**
+### Decision 3: Auto-Mitigations -- Shared Package, Doctor Reports, Create Applies
+
+**Recommendation:** Create check implementations AND their associated mitigation functions in a shared `pkg/internal/doctor/` package. Doctor reports mitigations as suggestions. The create flow calls mitigations automatically before provisioning.
+
+**Why `pkg/internal/doctor/` (not `pkg/cmd/kind/doctor/checks/`):** The create flow in `pkg/cluster/internal/create/create.go` needs to import mitigation functions. It already imports from `pkg/internal/` (e.g., `pkg/internal/apis/config/`, `pkg/internal/cli/`). The `pkg/cmd/` layer is CLI-specific and should NOT be imported by cluster internals -- that would invert the dependency direction.
+
+**Package structure:**
+
+```
+pkg/internal/doctor/
+    check.go           -- Check interface, Result type, AllChecks() registry
+    runtime.go         -- Container runtime checks
+    runtime_test.go
+    kernel.go          -- Kernel parameter checks (ip_forward, bridge-nf-call, etc.)
+    kernel_test.go
+    network.go         -- Network checks (ports, DNS, proxy env)
+    network_test.go
+    resources.go       -- Resource checks (disk, memory, CPU, inotify)
+    resources_test.go
+    gpu.go             -- NVIDIA GPU checks (migrated from doctor.go)
+    gpu_test.go
+    mitigations.go     -- Mitigation functions (sysctl, etc.)
+    mitigations_test.go
+
+pkg/cmd/kind/doctor/
+    doctor.go          -- CLI command, imports pkg/internal/doctor/
+
+pkg/cluster/internal/create/
+    create.go          -- Imports pkg/internal/doctor/ for pre-flight mitigations
+```
+
+**Doctor behavior (report only):**
+```
+[FAIL] ip-forwarding: net.ipv4.ip_forward is 0
+       Fix: sudo sysctl -w net.ipv4.ip_forward=1
+[WARN] bridge-nf-call: bridge-nf-call-iptables is 0
+       Fix: sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+```
+
+**Create behavior (auto-apply non-destructive mitigations):**
+
+The create flow should auto-apply non-destructive, idempotent mitigations (like setting sysctl values) before provisioning. This matches the existing `validateProvider()` pattern in `create.go` -- pre-flight checks that block creation. The distinction:
+
+| Mitigation Type | Doctor | Create |
+|----------------|--------|--------|
+| Non-destructive sysctl (ip_forward=1) | Report with fix command | Auto-apply silently |
+| Destructive (swapoff) | Report with fix command | Warn but do NOT auto-apply |
+| Missing binary (nvidia-smi) | Report install instructions | Fail with error |
+| Configuration (Docker cgroup driver) | Report fix steps | Warn, do NOT auto-apply |
 
 ```go
-type Addons struct {
-    // ... existing fields unchanged ...
-    // NvidiaGPU enables NVIDIA device plugin for GPU workloads.
-    // Requires nvidia-container-toolkit on the host.
-    // +optional (default: false — opt-in, unlike other addons)
-    NvidiaGPU *bool `yaml:"nvidiaGPU,omitempty" json:"nvidiaGPU,omitempty"`
+// In create.go, before p.Provision():
+if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
+    for _, err := range errs {
+        logger.Warnf("Pre-flight mitigation: %v", err)
+    }
 }
 ```
 
-**2. Internal API: `pkg/internal/apis/config/types.go`**
+### Decision 4: Check Organization -- By Category with Flat Execution
+
+**Recommendation:** Organize check source files by category (runtime, kernel, network, resources, gpu) but execute them as a flat ordered list. Category is metadata on each check, used for grouped output display.
+
+**Rationale:** The existing doctor output is a flat list. Users benefit from visual grouping but do not need nested command structure. Categories appear in output formatting only.
+
+**Human-readable grouped output:**
+```
+Runtime:
+  [ OK ] docker: Docker 24.0.7
+  [ OK ] kubectl: v1.29.0
+
+Kernel:
+  [ OK ] ip-forwarding
+  [ OK ] bridge-nf-call-iptables
+  [WARN] conntrack-max: 65536 (recommend 131072+ for multi-node)
+
+Network:
+  [ OK ] port-6443: available
+  [ OK ] dns-resolution
+  [SKIP] proxy-env: no HTTP_PROXY set
+
+Resources:
+  [ OK ] disk-space: 45.2 GB available
+  [ OK ] memory: 16 GB available
+  [WARN] inotify-watches: 8192 (recommend 524288+)
+```
+
+**JSON output preserves category for filtering:**
+```json
+[
+  {"name": "docker", "status": "ok", "category": "runtime", "message": "Docker 24.0.7"},
+  {"name": "ip-forwarding", "status": "ok", "category": "kernel"}
+]
+```
+
+### Decision 5: Root/Sudo Checks -- Check Without Root, Report Fix With Sudo
+
+**Recommendation:** Doctor checks should NEVER require root to run. They read system state (files in /proc, /sys, etc.) which is world-readable. Mitigations that require root include `sudo` in the reported fix command. Auto-mitigations in the create flow should detect if running as root and apply directly, or skip with a warning if not root.
+
+**Design:**
 
 ```go
-type Addons struct {
-    // ... existing fields unchanged ...
-    NvidiaGPU bool
+// checkIPForwarding reads /proc/sys/net/ipv4/ip_forward (world-readable).
+// No root required to CHECK.
+func (c *ipForwardingCheck) Run() []Result {
+    val, err := c.readSysctl("net.ipv4.ip_forward")
+    if err != nil {
+        return []Result{{Name: c.Name(), Status: "warn", Category: c.Category(),
+            Message: "could not read ip_forward: " + err.Error()}}
+    }
+    if val == "1" {
+        return []Result{{Name: c.Name(), Status: "ok", Category: c.Category()}}
+    }
+    return []Result{{
+        Name:     c.Name(),
+        Status:   "fail",
+        Category: c.Category(),
+        Message:  "net.ipv4.ip_forward is 0\n       Fix: sudo sysctl -w net.ipv4.ip_forward=1",
+    }}
+}
+
+// MitigateIPForwarding sets ip_forward=1. Requires root.
+func MitigateIPForwarding() error {
+    if os.Geteuid() != 0 {
+        return errors.New("ip_forward mitigation requires root -- run with sudo or set manually")
+    }
+    return os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0644)
 }
 ```
 
-**3. Conversion: `pkg/internal/apis/config/convert_v1alpha4.go`**
+**Key principle:** Reading /proc/sys is always safe without root. Writing to /proc/sys requires root. Doctor reads. Create's pre-flight mitigation writes (if root) or warns (if not root).
 
-The conversion function that maps `*bool` (public) to `bool` (internal) must handle `NvidiaGPU`. The existing pattern: `nil` → `defaultValue`, `&true` → `true`, `&false` → `false`.
+### Decision 6: Testability -- Deps Struct Over Package-Level Vars
 
-Unlike other addons (default `true`), `NvidiaGPU` defaults to `false` — it is opt-in because it requires host-level prerequisites.
+**Recommendation:** Use a deps struct on each check type for injectable dependencies, rather than package-level function variables. This is an improvement over the existing `currentOS`/`checkPrerequisites` pattern from the NVIDIA GPU addon.
 
-**4. `pkg/apis/config/v1alpha4/default.go`**
-
-Must set `NvidiaGPU` default. Since it's opt-in, the default is `false`, and the default function sets it only if unset:
+**Rationale:** The NVIDIA GPU addon uses package-level vars:
 
 ```go
-// NvidiaGPU defaults to false (opt-in: requires host nvidia-container-toolkit)
-if cfg.Addons.NvidiaGPU == nil {
-    cfg.Addons.NvidiaGPU = boolPointer(false)
-}
+// Existing pattern (installnvidiagpu/nvidiagpu.go):
+var currentOS = runtime.GOOS
+var checkPrerequisites = checkHostPrerequisites
 ```
 
-### Wave placement in create.go
-
-`NvidiaGPU` belongs in Wave 1 (parallel, independent). It does not depend on MetalLB and does not conflict with other Wave 1 addons.
+Tests that modify these are explicitly NOT parallel (`TestExecute_NonLinuxSkips` saves/restores `currentOS`). With 13+ checks, this approach creates 20+ package-level vars and forces many tests to be sequential. The deps struct approach scales better:
 
 ```go
-// create.go — wave1 slice addition
-wave1 := []AddonEntry{
-    {"Local Registry", opts.Config.Addons.LocalRegistry, installlocalregistry.NewAction()},
-    {"MetalLB",        opts.Config.Addons.MetalLB,        installmetallb.NewAction()},
-    {"Metrics Server", opts.Config.Addons.MetricsServer,  installmetricsserver.NewAction()},
-    {"CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning,  installcorednstuning.NewAction()},
-    {"Dashboard",      opts.Config.Addons.Dashboard,      installdashboard.NewAction()},
-    {"Cert Manager",   opts.Config.Addons.CertManager,    installcertmanager.NewAction()},
-    {"NVIDIA GPU",     opts.Config.Addons.NvidiaGPU,      installnvidiagpu.NewAction()}, // NEW
+type ipForwardingCheck struct {
+    readSysctl func(string) (string, error)
+}
+
+func newIPForwardingCheck() Check {
+    return &ipForwardingCheck{
+        readSysctl: readSysctlFromProc,
+    }
 }
 ```
 
----
+Tests inject dependencies at construction time, enabling full parallel execution:
 
-## Recommended Project Structure (delta from current)
-
-```
-kinder/
-├── .goreleaser.yaml                   ← NEW: GoReleaser config (replaces cross.sh in CI)
-│
-├── .github/
-│   └── workflows/
-│       └── release.yml                ← MODIFIED: goreleaser-action replaces shell build
-│
-└── pkg/
-    ├── apis/config/v1alpha4/
-    │   ├── types.go                   ← MODIFIED: NvidiaGPU *bool in Addons
-    │   └── default.go                 ← MODIFIED: NvidiaGPU default = false
-    │
-    ├── internal/apis/config/
-    │   ├── types.go                   ← MODIFIED: NvidiaGPU bool in Addons
-    │   └── convert_v1alpha4.go        ← MODIFIED: convert NvidiaGPU field
-    │
-    └── cluster/internal/create/
-        ├── create.go                  ← MODIFIED: add NvidiaGPU to wave1
-        └── actions/
-            └── installnvidiagpu/      ← NEW package
-                ├── nvidiagpu.go       ← Execute() using CommandContext pattern
-                └── manifests/
-                    ├── nvidia-device-plugin.yaml  ← embedded DaemonSet manifest
-                    └── runtime-class.yaml         ← embedded RuntimeClass
-
-(separate GitHub repo)
-homebrew-kinder/
-└── Formula/
-    └── kinder.rb                      ← generated by GoReleaser on tag push
+```go
+func TestIPForwardingCheck(t *testing.T) {
+    t.Parallel()
+    tests := []struct {
+        name       string
+        sysctlVal  string
+        sysctlErr  error
+        wantStatus string
+    }{
+        {"enabled", "1", nil, "ok"},
+        {"disabled", "0", nil, "fail"},
+        {"read error", "", errors.New("no such file"), "warn"},
+    }
+    for _, tc := range tests {
+        tc := tc
+        t.Run(tc.name, func(t *testing.T) {
+            t.Parallel()
+            check := &ipForwardingCheck{
+                readSysctl: func(_ string) (string, error) {
+                    return tc.sysctlVal, tc.sysctlErr
+                },
+            }
+            results := check.Run()
+            if results[0].Status != tc.wantStatus {
+                t.Errorf("got status %q, want %q", results[0].Status, tc.wantStatus)
+            }
+        })
+    }
+}
 ```
 
-### Structure Rationale
+**Key advantage:** No global state mutation, no save/restore, full parallel test execution. The `newIPForwardingCheck()` constructor wires real dependencies; tests construct with fakes directly.
 
-- **`.goreleaser.yaml` at repo root:** GoReleaser's required location; consistent with all Go CLI projects using GoReleaser.
-- **`installnvidiagpu/` mirrors all existing addon packages exactly:** Same `Execute(*ActionContext) error` interface, same `go:embed manifests/*.yaml` pattern, same package naming convention (`install` + noun).
-- **Two embedded YAML files instead of one:** RuntimeClass and DaemonSet serve different purposes and may need independent updates. Keeps manifests small and independently auditable.
-- **NvidiaGPU defaults `false`:** Host prerequisites (nvidia-container-toolkit) are not universally present. Silent failure when enabled-by-default would confuse users on GPU-free machines.
+**For checks using exec.Command (docker, kubectl):** Use the same FakeCmd infrastructure from `testutil/fake.go`:
 
----
+```go
+type containerRuntimeCheck struct {
+    lookPath func(string) (string, error)
+    execCmd  func(name string, args ...string) exec.Cmd
+}
 
-## Architectural Patterns
+func newContainerRuntimeCheck() Check {
+    return &containerRuntimeCheck{
+        lookPath: osexec.LookPath,
+        execCmd:  exec.Command,
+    }
+}
+```
 
-### Pattern 1: GoReleaser replaces `hack/release/build/cross.sh` for CI releases
+Tests inject `lookPath` that returns/errors and `execCmd` that returns `*testutil.FakeCmd`.
 
-**What:** GoReleaser orchestrates the same cross-compilation (GOOS/GOARCH matrix) that `cross.sh` does via `xargs -P`, but adds archive packaging, SHA256 checksums, GitHub Release creation, and Homebrew formula push in a single tool.
+### Decision 7: Where Auto-Mitigation Code Lives and Integration Points
 
-**When to use:** Tag push triggers `release.yml`. Local builds still use `make build`. `cross.sh` can remain for manual release testing but is no longer the CI path.
+**Recommendation:** Mitigations live in `pkg/internal/doctor/mitigations.go`. The create flow imports and calls them via a single entry point.
 
-**Trade-offs:** GoReleaser adds a tool dependency in CI. The `.goreleaser.yaml` must stay in sync with the ldflags in `Makefile`. The existing `cross.sh` output naming (`kinder-${GOOS}-${GOARCH}`) must be matched in the archive `name_template`.
+**Integration point in create.go:**
 
-### Pattern 2: Opt-in addon with pre-condition check
+```go
+// In pkg/cluster/internal/create/create.go, Cluster() function,
+// AFTER validateProvider() and BEFORE p.Provision():
 
-**What:** NvidiaGPU addon defaults to `false` (unlike all other addons which default to `true`). The addon's `Execute()` does not validate host GPU presence — it applies manifests and relies on the device plugin DaemonSet to surface GPU-specific errors (the DaemonSet won't schedule pods on non-GPU nodes, which is correct behavior).
+import "sigs.k8s.io/kind/pkg/internal/doctor"
 
-**When to use:** Any addon that requires host-level configuration outside kinder's control.
+// Pre-flight mitigations (best-effort, warn-and-continue).
+if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
+    for _, err := range errs {
+        logger.Warnf("Pre-flight mitigation: %v", err)
+    }
+}
+```
 
-**Trade-offs:** Users must explicitly set `addons.nvidiaGPU: true` in their config YAML or pass a flag. Slightly more friction, but avoids confusing errors on GPU-free machines.
+**Why this location:** The `Cluster()` function in `create.go` already has a pre-flight section (`validateProvider`, `fixupOptions`, `alreadyExists`). Adding `ApplySafeMitigations` fits naturally in this sequence -- it is a pre-condition check with auto-fix capability.
 
-### Pattern 3: Pinned manifest version via `go:embed`
+**Mitigation design:**
 
-**What:** The device plugin DaemonSet YAML is fetched once at development time, pinned at a specific upstream version, and embedded in the Go binary. No runtime fetching.
+```go
+// mitigations.go
 
-**When to use:** All addons. Follows the established pattern used by MetalLB, Envoy Gateway, cert-manager, Dashboard, Local Registry, Metrics Server.
+// SafeMitigation represents an idempotent, non-destructive fix.
+type SafeMitigation struct {
+    Name      string
+    NeedsFix  func() bool
+    Apply     func() error
+    NeedsRoot bool
+}
 
-**Trade-offs:** Manifest updates require a kinder release. This is intentional — it prevents silent breakage from upstream manifest changes.
+// SafeMitigations returns the list of mitigations safe for auto-apply.
+func SafeMitigations() []SafeMitigation {
+    return []SafeMitigation{
+        {
+            Name:      "ip-forwarding",
+            NeedsFix:  func() bool { v, _ := readSysctlFromProc("net.ipv4.ip_forward"); return v != "1" },
+            Apply:     func() error { return writeSysctl("net.ipv4.ip_forward", "1") },
+            NeedsRoot: true,
+        },
+        {
+            Name:      "bridge-nf-call-iptables",
+            NeedsFix:  func() bool { v, _ := readSysctlFromProc("net.bridge.bridge-nf-call-iptables"); return v != "1" },
+            Apply:     func() error { return writeSysctl("net.bridge.bridge-nf-call-iptables", "1") },
+            NeedsRoot: true,
+        },
+    }
+}
 
----
+// ApplySafeMitigations runs all safe mitigations, logging results.
+// Returns errors for mitigations that failed to apply (informational, not fatal).
+func ApplySafeMitigations(logger log.Logger) []error {
+    if runtime.GOOS != "linux" {
+        return nil
+    }
+    var errs []error
+    for _, m := range SafeMitigations() {
+        if !m.NeedsFix() {
+            continue
+        }
+        if m.NeedsRoot && os.Geteuid() != 0 {
+            logger.Warnf("Skipping %s mitigation (requires root)", m.Name)
+            continue
+        }
+        if err := m.Apply(); err != nil {
+            errs = append(errs, fmt.Errorf("%s: %w", m.Name, err))
+        } else {
+            logger.V(0).Infof("Applied mitigation: %s", m.Name)
+        }
+    }
+    return errs
+}
+```
+
+**Import direction (verified clean):**
+```
+pkg/cluster/internal/create/create.go
+    imports -> pkg/internal/doctor/           (for ApplySafeMitigations)
+    imports -> pkg/cluster/internal/create/actions/  (for addon actions)
+
+pkg/cmd/kind/doctor/doctor.go
+    imports -> pkg/internal/doctor/           (for AllChecks, Result)
+```
+
+Both consumers import from `pkg/internal/` which is the correct shared-logic layer. No circular dependencies. No CLI-to-internals imports.
+
+## Component Boundaries
+
+| Component | Responsibility | Location | New/Modified |
+|-----------|---------------|----------|-------------|
+| Check interface | Defines the contract for all checks | `pkg/internal/doctor/check.go` | **NEW** |
+| Result type | Exported result struct with category | `pkg/internal/doctor/check.go` | **NEW** |
+| AllChecks registry | Ordered slice of all checks | `pkg/internal/doctor/check.go` | **NEW** |
+| Runtime checks | Docker/podman/nerdctl, kubectl, cgroup driver, storage driver | `pkg/internal/doctor/runtime.go` | **NEW** |
+| Kernel checks | ip_forward, bridge-nf-call, conntrack, swap | `pkg/internal/doctor/kernel.go` | **NEW** |
+| Network checks | Port availability, DNS, proxy env | `pkg/internal/doctor/network.go` | **NEW** |
+| Resource checks | Disk, memory, CPU, inotify | `pkg/internal/doctor/resources.go` | **NEW** |
+| GPU checks | NVIDIA driver, toolkit, runtime | `pkg/internal/doctor/gpu.go` | **NEW** (migrated from doctor.go) |
+| Mitigations | Safe auto-fix functions + ApplySafeMitigations | `pkg/internal/doctor/mitigations.go` | **NEW** |
+| Doctor command | CLI entry point, output formatting, uses Check interface | `pkg/cmd/kind/doctor/doctor.go` | **MODIFIED** |
+| Create flow | Pre-flight mitigations call before provisioning | `pkg/cluster/internal/create/create.go` | **MODIFIED** |
+| checkResult JSON struct | Add Category field (backward-compatible) | `pkg/cmd/kind/doctor/doctor.go` | **MODIFIED** |
 
 ## Data Flow
 
-### GoReleaser Release Flow
+### Doctor Command Flow
 
 ```
-git push tag v0.5.0
-    ↓
-.github/workflows/release.yml triggers
-    ↓
-goreleaser/goreleaser-action@v6
-    ↓
-.goreleaser.yaml: builds section
-    → go build (5 GOOS/GOARCH targets in parallel)
-    → output: bin/kinder-linux-amd64, bin/kinder-darwin-arm64, ...
-    ↓
-archives section
-    → tar.gz (unix) / zip (windows) per target
-    ↓
-checksum section
-    → checksums.txt (sha256 of all archives)
-    ↓
-release section (GitHub)
-    → creates GitHub Release at tag v0.5.0
-    → uploads all archives + checksums.txt as assets
-    ↓
-brews section
-    → generates Formula/kinder.rb with correct download URLs + SHA256
-    → commits to homebrew-kinder repo via HOMEBREW_TOKEN
+User runs: kinder doctor [--output json]
+    |
+    v
+doctor.runE()
+    |
+    +-- doctor.AllChecks() returns []Check
+    |
+    +-- for each check:
+    |     +-- check.Platforms() -> platform filter (centralized in runE)
+    |     +-- if skip: append Result{Status: "skip"}
+    |     +-- if applicable: check.Run() -> append Results
+    |
+    +-- compute exit code from results
+    |     (skip does NOT trigger warning exit code 2)
+    |
+    +-- if --output json:
+    |     +-- json.NewEncoder -> stdout (with category field)
+    |     +-- os.Exit(code)
+    |
+    +-- else (human-readable):
+          +-- group by category for display
+          +-- format [STATUS] name: message
+          +-- os.Exit(code)
 ```
 
-### NVIDIA GPU Addon Flow (within cluster creation)
+### Create Command Flow (with mitigations)
 
 ```
-kinder create cluster (with addons.nvidiaGPU: true in config)
-    ↓
-create.go: wave1 goroutine pool
-    ↓
-installnvidiagpu.Execute(*ActionContext)
-    ↓
-node.CommandContext(ctx, "kubectl", "apply", "-f", "-")
-    └── stdin: runtimeClassManifest (go:embed)
-    → creates RuntimeClass "nvidia" in cluster
-    ↓
-node.CommandContext(ctx, "kubectl", "apply", "-f", "-")
-    └── stdin: devicePluginManifest (go:embed)
-    → creates DaemonSet "nvidia-device-plugin-daemonset" in kube-system
-    ↓
-node.CommandContext(ctx, "kubectl", "rollout", "status", ...)
-    → waits up to 60s (warn-and-continue on timeout)
-    ↓
-addonResult{name: "NVIDIA GPU", enabled: true, err: nil/err}
-    → collected by wave1 mutex
-    ↓
-logAddonSummary() includes "NVIDIA GPU installed (Xs)" or "NVIDIA GPU FAILED: ..."
+User runs: kinder create cluster
+    |
+    v
+create.Cluster()
+    |
+    +-- validateProvider()                      (existing)
+    +-- fixupOptions()                          (existing)
+    +-- alreadyExists()                         (existing)
+    +-- doctor.ApplySafeMitigations(logger)     <-- NEW
+    |     +-- runtime.GOOS != "linux"? return nil
+    |     +-- for each SafeMitigation:
+    |           +-- NeedsFix()? -> check current state
+    |           +-- NeedsRoot && !root? -> warn, skip
+    |           +-- Apply() -> write sysctl / fix
+    |
+    +-- p.Provision()                           (existing)
+    +-- [sequential actions: loadbalancer, kubeadm, CNI, ...]  (existing)
+    +-- [addon waves 1 and 2]                   (existing)
 ```
 
-### User Install Flow (after Homebrew tap is live)
+## Patterns to Follow
 
-```
-User runs: brew tap <owner>/kinder
-    ↓
-Homebrew fetches Formula/kinder.rb from homebrew-kinder repo
-    ↓
-brew install kinder
-    ↓
-Homebrew downloads kinder-darwin-arm64.tar.gz (or amd64) from GitHub Releases
-    → verifies sha256 against checksums in formula
-    → extracts and installs kinder binary to $(brew --prefix)/bin/kinder
-```
+### Pattern 1: Check Implementation with Deps Struct
 
----
+**What:** Each check type embeds function dependencies for injectable testing.
+**When:** All new check implementations.
 
-## Integration Points
+```go
+type ipForwardingCheck struct {
+    readSysctl func(string) (string, error)
+}
 
-### New vs. Modified Components (explicit)
+func newIPForwardingCheck() Check {
+    return &ipForwardingCheck{
+        readSysctl: readSysctlFromProc,
+    }
+}
 
-| Component | New / Modified | What Changes |
-|-----------|---------------|--------------|
-| `.goreleaser.yaml` | NEW | GoReleaser config for builds, archives, checksums, GitHub Release, Homebrew formula |
-| `.github/workflows/release.yml` | MODIFIED | Replace `softprops/action-gh-release` + `cross.sh` with `goreleaser/goreleaser-action@v6` |
-| `pkg/apis/config/v1alpha4/types.go` | MODIFIED | `NvidiaGPU *bool` field added to `Addons` struct |
-| `pkg/apis/config/v1alpha4/default.go` | MODIFIED | NvidiaGPU default set to `false` |
-| `pkg/internal/apis/config/types.go` | MODIFIED | `NvidiaGPU bool` field added to internal `Addons` struct |
-| `pkg/internal/apis/config/convert_v1alpha4.go` | MODIFIED | NvidiaGPU conversion from `*bool` to `bool` |
-| `pkg/cluster/internal/create/create.go` | MODIFIED | `NvidiaGPU` entry added to `wave1` slice |
-| `pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu.go` | NEW | Addon Execute() using CommandContext, two manifests |
-| `pkg/cluster/internal/create/actions/installnvidiagpu/manifests/nvidia-device-plugin.yaml` | NEW | Pinned device plugin DaemonSet YAML (embedded) |
-| `pkg/cluster/internal/create/actions/installnvidiagpu/manifests/runtime-class.yaml` | NEW | RuntimeClass "nvidia" YAML (embedded) |
-| `homebrew-kinder` (separate GitHub repo) | NEW repo | Tap repository; `Formula/kinder.rb` generated by GoReleaser |
-| GitHub repo secrets | NEW | `HOMEBREW_TOKEN` PAT with `contents: write` on homebrew-kinder |
+func (c *ipForwardingCheck) Name() string        { return "ip-forwarding" }
+func (c *ipForwardingCheck) Category() string     { return "kernel" }
+func (c *ipForwardingCheck) Platforms() []string  { return []string{"linux"} }
 
-### Boundaries that do NOT change
-
-| Boundary | Reason |
-|----------|--------|
-| `ActionContext` interface | NvidiaGPU addon uses the existing interface exactly (CommandContext, Nodes(), Logger, Config, Status) |
-| Provider abstraction | Docker/Podman/nerdctl providers unchanged; GPU addon uses kubectl-in-node pattern like all other addons |
-| Wave system | NvidiaGPU fits in Wave 1 (independent); no new wave needed |
-| Config API versioning | `v1alpha4` remains the single version; adding a new `*bool` field with `omitempty` is backward-compatible |
-| Binary naming convention | GoReleaser `name_template` matches existing `kinder-${GOOS}-${GOARCH}` pattern from `cross.sh` |
-
----
-
-## Build Order Recommendation
-
-Dependencies determine order. Each step is independently verifiable.
-
-```
-Step 1: GoReleaser setup (no code changes, independent)
-    1a. Install goreleaser locally (brew install goreleaser or go install)
-    1b. Create .goreleaser.yaml with builds + archives + checksum sections
-    1c. goreleaser check (validates config without building)
-    1d. goreleaser release --snapshot --clean (local test build)
-    1e. Verify ldflags: built binary `kinder version` shows correct commit hash
-
-Step 2: Homebrew tap repo (independent of code changes)
-    2a. Create github.com/<owner>/homebrew-kinder repository
-    2b. Create Formula/ directory with placeholder
-    2c. Add HOMEBREW_TOKEN secret to kinder repo (PAT with contents:write on homebrew-kinder)
-    2d. Add brews section to .goreleaser.yaml
-    2e. goreleaser check (re-validate)
-
-Step 3: Update release workflow (depends on Steps 1 and 2)
-    3a. Replace release.yml content with goreleaser-action workflow
-    3b. git push tag vX.Y.Z-test to validate end-to-end
-    3c. Verify GitHub Release created, binaries attached, formula committed to tap
-
-Step 4: NvidiaGPU addon — config API layer (depends on nothing else)
-    4a. Add NvidiaGPU *bool to pkg/apis/config/v1alpha4/types.go
-    4b. Add NvidiaGPU default (false) to pkg/apis/config/v1alpha4/default.go
-    4c. Add NvidiaGPU bool to pkg/internal/apis/config/types.go
-    4d. Update convert_v1alpha4.go conversion function
-    4e. go build ./... (must compile — all config consumers see new field as zero value)
-    4f. go test ./pkg/internal/apis/config/...
-
-Step 5: NvidiaGPU addon — action package (depends on Step 4)
-    5a. Fetch pinned device plugin YAML from NVIDIA/k8s-device-plugin repo
-    5b. Create runtime-class.yaml (RuntimeClass "nvidia")
-    5c. Create pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu.go
-    5d. go build ./pkg/cluster/internal/create/actions/installnvidiagpu/...
-
-Step 6: Wire addon into create.go (depends on Steps 4 and 5)
-    6a. Add import for installnvidiagpu package in create.go
-    6b. Add AddonEntry to wave1 slice
-    6c. go build ./...
-    6d. Manual test: kinder create cluster (GPU addon skipped — defaults false)
-    6e. Manual test on GPU-equipped Linux host: kinder create cluster with nvidiaGPU: true
+func (c *ipForwardingCheck) Run() []Result {
+    val, err := c.readSysctl("net.ipv4.ip_forward")
+    if err != nil {
+        return []Result{{Name: c.Name(), Status: "warn", Category: c.Category(),
+            Message: "could not read ip_forward: " + err.Error()}}
+    }
+    if val == "1" {
+        return []Result{{Name: c.Name(), Status: "ok", Category: c.Category()}}
+    }
+    return []Result{{Name: c.Name(), Status: "fail", Category: c.Category(),
+        Message: "net.ipv4.ip_forward is 0\n       Fix: sudo sysctl -w net.ipv4.ip_forward=1"}}
+}
 ```
 
----
+### Pattern 2: Table-Driven Sysctl Checks (Reduce Boilerplate)
 
-## Anti-Patterns
+**What:** Many kernel checks follow the same pattern: read a sysctl value, compare to expected. A generic struct handles this.
+**When:** ip_forward, bridge-nf-call-iptables, bridge-nf-call-ip6tables, nf_conntrack_max.
 
-### Anti-Pattern 1: Defaulting NvidiaGPU to true
+```go
+type sysctlCheck struct {
+    checkName  string
+    key        string
+    expected   string
+    comparator string // "eq", "gte"
+    severity   string // "fail" or "warn"
+    fixCmd     string
+    readSysctl func(string) (string, error)
+}
 
-**What people do:** Add `NvidiaGPU` to the Addons struct with default `true` to match all other addons.
+func newSysctlCheck(name, key, expected, comparator, severity, fixCmd string) Check {
+    return &sysctlCheck{
+        checkName:  name,
+        key:        key,
+        expected:   expected,
+        comparator: comparator,
+        severity:   severity,
+        fixCmd:     fixCmd,
+        readSysctl: readSysctlFromProc,
+    }
+}
 
-**Why it's wrong:** On machines without NVIDIA drivers and `nvidia-container-toolkit`, the device plugin DaemonSet will enter `CrashLoopBackOff`. This makes `kinder create cluster` fail or produce confusing output for the vast majority of users who don't have GPUs.
+func (c *sysctlCheck) Name() string        { return c.checkName }
+func (c *sysctlCheck) Category() string     { return "kernel" }
+func (c *sysctlCheck) Platforms() []string  { return []string{"linux"} }
+```
 
-**Do this instead:** Default `NvidiaGPU` to `false`. Users with GPU setups opt-in via `addons.nvidiaGPU: true` in config or a `--addon nvidia-gpu` flag (if a flag-based addon toggle is added). Document the host prerequisites clearly.
+This reduces boilerplate: 4 kernel sysctl checks become 4 calls to `newSysctlCheck()` in the registry.
 
-### Anti-Pattern 2: Diverging the ldflags between Makefile and .goreleaser.yaml
+### Pattern 3: Mitigation as Paired Function
 
-**What people do:** Copy the `go build` command from `cross.sh` into `.goreleaser.yaml` without checking the `-X` package path. The `Makefile` injects version vars at `pkg/internal/kindversion.*` but `.goreleaser.yaml` is written with `pkg/cmd/kind/version.*`.
+**What:** Each mitigation is a standalone function paired with a check by naming convention.
+**When:** For all mitigations that the create flow should auto-apply.
 
-**Why it's wrong:** Release binaries show empty version strings or wrong commit hashes. Users see `kinder v` or `kind v0.0.0` instead of the real version.
+The pairing is explicit in `SafeMitigations()` -- each entry references the check logic (NeedsFix) and the fix logic (Apply). This is not a formal interface relationship; it is a convention that keeps checks and mitigations co-located in the same package.
 
-**Do this instead:** Explicitly verify by running `goreleaser release --snapshot --clean` and checking `./dist/kinder_linux_amd64_v1/kinder version` output before merging the workflow change.
+## Anti-Patterns to Avoid
 
-### Anti-Pattern 3: Using GITHUB_TOKEN for the Homebrew tap push
+### Anti-Pattern 1: Check Registration via init()
 
-**What people do:** Pass `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` as the token for both the GitHub Release creation and the Homebrew formula push to the tap repo.
+**What:** Using `func init() { RegisterCheck(myCheck) }` in each check file.
+**Why bad:** Kinder does not use init-registration anywhere. It makes check ordering non-deterministic (depends on file compilation order within a package). It makes it impossible to read which checks run by looking at one place.
+**Instead:** Explicit slice in `AllChecks()` function.
 
-**Why it's wrong:** `GITHUB_TOKEN` is scoped to the triggering repository only. GoReleaser cannot push to `homebrew-kinder` (a different repo) with this token and will fail with a 403 or "no permission" error.
+### Anti-Pattern 2: Checks That Modify System State
 
-**Do this instead:** Create a PAT (classic or fine-grained) with `contents: write` permission on `homebrew-kinder`, store it as `HOMEBREW_TOKEN` secret in the kinder repo, and reference it in the brews `token` field of `.goreleaser.yaml`.
+**What:** Having a check function that "fixes" things while checking them.
+**Why bad:** `kinder doctor` should be safe to run at any time, even by non-root users, even on production hosts. A check that modifies state could break things unexpectedly.
+**Instead:** Checks are pure readers. Mitigations are separate functions called only from the create flow.
 
-### Anti-Pattern 4: Applying the GPU DaemonSet with `kubectl apply` (standard) when the manifest exceeds annotation limits
+### Anti-Pattern 3: Global Package-Level Vars for Every Dependency
 
-**What people do:** Use `kubectl apply -f -` without `--server-side` for the device plugin manifest.
+**What:** Following the NVIDIA GPU addon pattern of `var readSysctl = readSysctlFromProc` at package level for every injectable dependency.
+**Why bad:** With 13+ checks, you would have 20+ package-level vars. Tests that modify these cannot run in parallel. The NVIDIA addon had a single check; this approach does not scale to many checks.
+**Instead:** Deps struct on each check type. Package-level vars only for backward compatibility with existing NVIDIA code (which can be migrated later).
 
-**Why it's wrong:** Large YAML manifests (> 256 KB) fail with standard `apply` due to the `last-applied-configuration` annotation size limit. The existing `installenvoygw` addon already encountered this and explicitly uses `--server-side`. The NVIDIA device plugin manifest is smaller but this pattern must be checked.
+### Anti-Pattern 4: Putting Check Logic in pkg/cmd/kind/doctor/
 
-**Do this instead:** Check manifest size before embedding. If > ~100 KB, use `--server-side`. For the device plugin's static manifest (which is small), standard apply is fine, but add a comment documenting the size check.
+**What:** Implementing diagnostic check logic directly in the CLI command package.
+**Why bad:** The create flow needs access to the same check/mitigation logic. If it lives in `pkg/cmd/`, the cluster internals (`pkg/cluster/internal/create/`) would need to import from the CLI layer, violating the dependency direction. The existing codebase is strict about this: `pkg/cluster/internal/` imports from `pkg/internal/`, never from `pkg/cmd/`.
+**Instead:** Shared `pkg/internal/doctor/` package importable by both the CLI and the create flow.
 
-### Anti-Pattern 5: Embedding the "latest" device plugin manifest URL
+### Anti-Pattern 5: Adding --auto-fix Flag to Doctor
 
-**What people do:** Instead of embedding a pinned manifest, use `kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/main/deployments/static/nvidia-device-plugin.yml` (pulling from main branch at runtime).
+**What:** Having `kinder doctor --auto-fix` that both diagnoses and remediates.
+**Why bad:** Conflates two concerns. Doctor is a diagnostic tool that should be safe and read-only. Auto-fix belongs in the create flow where the user has already consented to system changes by running `kinder create cluster`.
+**Instead:** Doctor reports. Create auto-mitigates (for safe, idempotent fixes only).
 
-**Why it's wrong:** Runtime manifest fetching requires internet access in the kind node container and ties kinder to whatever NVIDIA ships at that moment. This breaks offline use and creates reproducibility issues.
+## Migration Path for Existing Checks
 
-**Do this instead:** Pin the manifest to a specific version tag (e.g., `v0.17.1`), embed it via `go:embed`, and update it deliberately with a kinder release when the device plugin has a significant new version.
+The current `doctor.go` has inline check functions (`checkBinary`, `checkKubectl`, `checkNvidiaDriver`, etc.). These should be migrated to the new Check interface:
 
----
+1. **Step 1:** Create `pkg/internal/doctor/` with Check interface, Result type, and AllChecks() registry
+2. **Step 2:** Implement new checks (kernel, network, resources) in the new package
+3. **Step 3:** Migrate existing checks (container runtime, kubectl, NVIDIA) to Check implementations
+4. **Step 4:** Refactor `doctor.go` to use `AllChecks()` loop instead of inline calls
+5. **Step 5:** Add mitigations and integrate with create flow
+6. **Step 6:** Add category-grouped output formatting
 
-## Scaling Considerations
+**The existing `checkResult` JSON struct gains a `Category` field.** This is backward-compatible for JSON consumers (new field with `omitempty`, existing fields unchanged).
 
-| Concern | Now (no distribution) | After GoReleaser | At 10k+ users |
-|---------|----------------------|-----------------|---------------|
-| Binary distribution | Source-only, `make install` | Pre-built binaries via GitHub Releases + Homebrew | No change needed — GitHub Releases scales |
-| Addon manifest updates | Edit .yaml + rebuild | Same + kinder release | Same |
-| GPU adoption | No GPU addon | Opt-in GPU addon | Consider GPU-specific node image if demand grows |
-| Release cadence | Manual `cross.sh` + manual GitHub Release | Fully automated on tag push | No change needed |
+```go
+type checkResult struct {
+    Name     string `json:"name"`
+    Status   string `json:"status"`
+    Message  string `json:"message,omitempty"`
+    Category string `json:"category,omitempty"` // NEW: backward-compatible
+}
+```
 
----
+## Exit Code Semantics
+
+The existing exit codes remain unchanged:
+- **0:** All checks pass (ok or skip)
+- **1:** At least one check failed
+- **2:** No failures, but at least one warning
+
+The new `"skip"` status does NOT trigger exit code 2 (it is informational, not a warning).
+
+## Scalability Considerations
+
+| Concern | At 19 checks (current goal) | At 50+ checks (future) |
+|---------|---------------------------|----------------------|
+| Execution time | Run sequentially, under 2s total | Add `--check` flag to run subset |
+| Output verbosity | Grouped by category | Add `--category` filter flag |
+| Test isolation | Deps struct per check, full parallel | Same approach scales |
+| Package organization | Single `pkg/internal/doctor/` | Split into sub-packages by category if needed |
 
 ## Sources
 
-- Kinder codebase, direct read — `pkg/cluster/internal/create/create.go`, `actions/action.go`, all addon packages, `pkg/apis/config/v1alpha4/types.go`, `pkg/internal/apis/config/types.go`, `Makefile`, `hack/release/build/cross.sh`, `.github/workflows/release.yml` — HIGH confidence
-- GoReleaser Homebrew Formulas docs: [goreleaser.com/customization/homebrew_formulas/](https://goreleaser.com/customization/homebrew_formulas/) — HIGH confidence
-- GoReleaser GitHub Actions docs: [goreleaser.com/ci/actions/](https://goreleaser.com/ci/actions/) — HIGH confidence
-- GoReleaser Go builds docs: [goreleaser.com/customization/builds/go/](https://goreleaser.com/customization/builds/go/) — HIGH confidence
-- NVIDIA k8s-device-plugin: [github.com/NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin) — HIGH confidence
-- nvkind (NVIDIA's kind+GPU tool): [github.com/NVIDIA/nvkind](https://github.com/NVIDIA/nvkind) — MEDIUM confidence (verify GPU passthrough mechanism before implementation)
-- NVIDIA GPU Operator docs: [docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) — MEDIUM confidence (GPU Operator is heavier than device-plugin-only approach)
-- GoReleaser homebrew token discussion: [github.com/orgs/goreleaser/discussions/4926](https://github.com/orgs/goreleaser/discussions/4926) — MEDIUM confidence
-
----
-*Architecture research for: kinder distribution pipeline (GoReleaser + GitHub Releases + Homebrew) + NVIDIA GPU addon*
-*Researched: 2026-03-04*
+- Direct codebase analysis of `pkg/cmd/kind/doctor/doctor.go` (current doctor implementation) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/create.go` (create flow, action system, wave pattern) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu.go` (existing package-level var test injection pattern) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu_test.go` (test patterns: init override, save/restore, non-parallel) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/actions/testutil/fake.go` (FakeCmd/FakeNode/FakeProvider test infrastructure) -- HIGH confidence
+- Direct codebase analysis of `pkg/exec/types.go` (Cmd interface) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/providers/provider.go` (Provider interface, layering) -- HIGH confidence
+- Direct codebase analysis of `.planning/codebase/ARCHITECTURE.md` (layer boundaries and conventions) -- HIGH confidence
+- Direct codebase analysis of `.planning/codebase/TESTING.md` (test patterns, parallel, table-driven) -- HIGH confidence
+- Direct codebase analysis of `.planning/codebase/CONVENTIONS.md` (naming, imports, error handling) -- HIGH confidence

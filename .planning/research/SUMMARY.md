@@ -1,186 +1,173 @@
 # Project Research Summary
 
-**Project:** kinder — v2.0 milestone (Distribution pipeline + NVIDIA GPU addon)
-**Domain:** Go CLI tool distribution (GoReleaser + GitHub Releases + Homebrew tap) + NVIDIA GPU Kubernetes addon
-**Researched:** 2026-03-04
-**Confidence:** HIGH for distribution pipeline; MEDIUM for NVIDIA GPU addon in kind context
+**Project:** kinder -- Diagnostic checks and auto-mitigations for `kinder doctor`
+**Domain:** System-level diagnostic tooling for Kubernetes-in-Docker cluster management (Go CLI)
+**Researched:** 2026-03-06
+**Confidence:** HIGH
 
 ## Executive Summary
 
-Kinder v2.0 adds two orthogonal capabilities to an existing, working Go CLI tool: a professional distribution pipeline and an NVIDIA GPU addon. The distribution pipeline replaces a hand-rolled `cross.sh` + `softprops/action-gh-release` workflow with GoReleaser (v2.14.1), which handles cross-platform binary builds, SHA-256 checksums, automated changelogs, GitHub Release creation, and Homebrew Cask publishing to a custom tap — all from a single `.goreleaser.yaml`. The recommended approach is well-documented and carries HIGH confidence: GoReleaser is the de facto standard for Go CLI distribution, the configuration maps directly from the existing Makefile, and all versions are live-verified. The one structural complexity is kinder's fork status: `go.mod` declares `module sigs.k8s.io/kind` (upstream path), not the GitHub repository URL, which requires explicit `gomod.proxy: false` and `project_name: kinder` in the GoReleaser config to prevent silent wrong-binary builds.
+This milestone adds 13 diagnostic checks to the existing `kinder doctor` command and introduces automatic mitigations during `kinder create cluster`. The research confirms that every check is implementable using Go standard library packages plus one already-present indirect dependency (`golang.org/x/sys/unix` v0.41.0). Zero new go.mod dependencies are needed. Six external libraries were evaluated and rejected. The existing doctor infrastructure -- result/checkResult pattern, JSON output, ok/warn/fail formatters, structured exit codes (0/1/2) -- provides a solid foundation, but the current inline-function approach does not scale to 19+ checks. A lightweight `Check` interface with an explicit registry slice and a shared `pkg/internal/doctor/` package is the recommended architecture.
 
-The NVIDIA GPU addon adds an 8th addon (`installnvidiagpu`) following the identical `go:embed` + `kubectl apply` pattern as the existing 7 addons. The critical distinction from all other addons is that GPU support is Linux-only, opt-in by default (not on by default like the others), and depends on host-level prerequisites (NVIDIA drivers + nvidia-container-toolkit) that kinder cannot install. The recommended approach is to use the standalone NVIDIA k8s-device-plugin DaemonSet (NOT the full GPU Operator), because kind is not on NVIDIA's official GPU Operator supported platforms list. The addon must include a pre-flight check for host toolkit configuration — this is the most important part of the implementation and the most common failure mode.
+The recommended approach is to first build the check infrastructure (interface, registry, platform filtering, "skip" status, mitigation tier system), then implement checks in three waves: Docker/tool configuration checks (cross-platform, highest user value), system resource and kernel checks (Linux-only, catches silent failures), and platform-specific/network checks (WSL2, SELinux, AppArmor, subnet clashes). Auto-mitigations must be strictly tiered: only environment variables and cluster config adjustments are safe for automatic application; sysctl changes should be suggested but never auto-applied; system configuration files should be documented but never modified by kinder. The doctor command must remain read-only and safe to run at any time.
 
-The primary risk across both workstreams is silent failure: GoReleaser can build the wrong binary (upstream kind instead of kinder) if `gomod.proxy` is not explicitly disabled; the Homebrew tap can silently stop updating if the wrong token is used; the GPU addon can install successfully while exposing 0 GPU resources if host prerequisites are missing. The mitigation pattern is consistent across all three risks: verify outputs explicitly (run `kinder version` after GoReleaser builds, check tap repo commits via `gh api`, test GPU allocation with a real workload) rather than trusting that workflow exit 0 means success.
-
----
+The primary risks are: (1) `/proc` filesystem reads crashing on non-Linux platforms if checks lack proper gating, (2) daemon.json location varying across six different Docker install methods causing silent false negatives, (3) WSL2 detection producing false positives on Azure VMs, and (4) auto-mitigations modifying system state beyond the cluster lifecycle. All are preventable with the architecture and testing patterns documented in the research. The mitigation tier system must be defined in Phase 1 before any individual checks are implemented.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The distribution pipeline requires no Go code changes — it is purely tooling. GoReleaser OSS v2.14.1 (released 2026-02-25) replaces `hack/release/build/cross.sh` for CI release builds while the existing Makefile `build`/`install` targets remain unchanged for local development. The `goreleaser-action@v7` GitHub Action replaces `softprops/action-gh-release@v2` in the release workflow. A new `homebrew-kinder` repository under `PatrykQuantumNomad` must be created before any tagged release, and a GitHub PAT (not the default `GITHUB_TOKEN`) with `contents: write` scope on that repo must be added as a secret before the release workflow is updated.
-
-The NVIDIA GPU addon embeds pre-rendered manifests via `go:embed`, identical to all other addons. The NVIDIA k8s-device-plugin v0.18.2 (a DaemonSet) is the correct component — not the GPU Operator — because kind is not an officially supported GPU Operator platform. Helm is used only during development to pre-render manifests offline; kinder itself has no Helm runtime dependency.
+Every check uses Go stdlib (`os`, `os/exec`, `encoding/json`, `net/netip`, `strings`, `strconv`, `runtime`) plus the existing kinder exec wrappers (`sigs.k8s.io/kind/pkg/exec`). The only go.mod change is promoting `golang.org/x/sys` from indirect to direct dependency (same version, v0.41.0). Six external libraries were evaluated and rejected: `opencontainers/selinux` (shelling out to `getenforce` is simpler), `google/nftables` and `coreos/go-iptables` (only need to read config files), `Masterminds/semver` (kinder has `pkg/internal/version`), `shirou/gopsutil` (overkill for what `unix.Statfs` provides), and `yl2chen/cidranger` (`net/netip.Prefix.Overlaps()` is purpose-built).
 
 **Core technologies:**
-- GoReleaser OSS v2.14.1: cross-platform builds, GitHub Release, Homebrew Cask — industry standard; single config replaces `cross.sh` + `softprops`
-- goreleaser-action v7.0.0: GitHub Actions integration for GoReleaser — official action, defaults to GoReleaser v2
-- `homebrew-kinder` tap repo: separate GitHub repository holding GoReleaser-generated Cask file — required for `brew install`
-- NVIDIA k8s-device-plugin v0.18.2: Kubernetes DaemonSet that exposes GPU resources to the scheduler — the only approach confirmed to work with kind
-- GitHub PAT (HOMEBREW_TAP_TOKEN): separate from GITHUB_TOKEN — mandatory for cross-repo tap pushes; GITHUB_TOKEN is scoped to the triggering repo only
+- `os.ReadFile` + `strconv`: procfs/sysfs reads for inotify, kernel, AppArmor, WSL2 -- standard Go approach for Linux system inspection
+- `os/exec` via `sigs.k8s.io/kind/pkg/exec`: shell-outs to `docker`, `kubectl`, `getenforce`, `ip route` -- consistent with existing doctor pattern
+- `encoding/json`: parse `docker info`, `docker network inspect`, `kubectl version`, `daemon.json` -- already imported in doctor.go
+- `net/netip.ParsePrefix` + `Overlaps()`: subnet clash detection -- stdlib since Go 1.18, purpose-built for CIDR overlap
+- `golang.org/x/sys/unix.Statfs` + `unix.Uname`: disk space and kernel version -- already in go.mod, replaces deprecated `syscall` package
+- `sigs.k8s.io/kind/pkg/internal/version.ParseSemantic`: kubectl version skew comparison -- existing codebase, no external semver library needed
 
 ### Expected Features
 
-**Must have (table stakes for v2.0):**
-- Pre-built binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 — users should not need to install Go toolchain to try kinder
-- SHA-256 checksums for all binaries — GoReleaser generates `checksums.txt` automatically
-- `brew install patrykquantumnomad/kinder/kinder` installation path — the biggest single adoption barrier to remove
-- Automated changelog generation — GoReleaser generates from git commits with configurable prefix filtering
-- NVIDIA GPU addon (`addons.nvidiaGPU: true`) — enables `nvidia.com/gpu` resource in kind clusters on Linux; Linux-only, opt-in
-- `kinder doctor` GPU pre-flight checks — validates NVIDIA driver, container toolkit, and runtime configuration before cluster creation
+**Must have (table stakes):**
+- Disk space check -- #1 silent failure mode; warn at <5GB, fail at <2GB
+- Docker daemon.json `"init": true` detection -- causes the most cryptic kind error message
+- Kubectl version skew detection -- most common user confusion after Docker Desktop updates
+- Docker socket permission check -- #1 new-user issue on Linux; enhancement to existing container-runtime check
+- Inotify limits check -- top-5 kind debugging question on Linux; recommend >=524288 watches, >=512 instances
+- Docker subnet clash detection -- extremely common in enterprise/VPN environments
 
-**Should have (competitive, add in v2.x):**
-- GPU time-slicing ConfigMap — multiple pods sharing one GPU via `sharing.timeSlicing.resources`; defer until basic GPU flow is validated
-- Shell completions in Homebrew Cask — bash/zsh/fish completions via GoReleaser `homebrew_casks.completions` config; nice-to-have
-- Cosign binary signing — supply chain security; emerging best practice, add when users request it
+**Should have (differentiators -- no Kind-based tool provides these):**
+- Docker snap installation detection -- prevents TMPDIR debugging; simple path check
+- AppArmor interference detection -- Linux desktop users frequently hit this
+- Rootfs device node access check -- BTRFS/NVMe users need advance warning
+- Firewalld nftables backend detection -- Fedora 32+ users need this detected early
+- SELinux enforcing mode detection -- Fedora 33 specific, simple getenforce check
+- Old kernel / cgroup namespace check -- hard blocker for RHEL 7 (kernel <4.6)
+- WSL2 cgroup misconfiguration detection -- Windows developers using WSL2 need this
 
-**Defer (v3+):**
-- Chocolatey/Winget for Windows — limited kind Windows support; defer until adoption data justifies maintenance
-- Homebrew core submission — requires project maturity, build-from-source, 30-day review; fork status and non-standard module path complicate this indefinitely
-- AMD GPU addon (ROCm) — much smaller user base than NVIDIA; defer
+**Defer (v2+):**
+- `kinder doctor --check <name>` -- run specific check subsets
+- `kinder doctor --fix` -- apply safe auto-fixes with user confirmation
+- Check result caching for repeated runs
+- Post-creation health checks (pod scheduling, DNS, CoreDNS)
+- Plugin-based check system for custom user checks
+- CI mode with JUnit XML output
 
 ### Architecture Approach
 
-The distribution pipeline is a workflow-level change with no Go source modifications: `.goreleaser.yaml` replaces `cross.sh` as the CI release artifact producer; `release.yml` replaces `softprops/action-gh-release@v2` with `goreleaser-action@v7`. The NVIDIA GPU addon is a minimal Go source addition: a new package `pkg/cluster/internal/create/actions/installnvidiagpu/` with one Go file and two embedded YAML manifests, plus config API field additions to four existing files (`v1alpha4/types.go`, `v1alpha4/default.go`, `internal/config/types.go`, `convert_v1alpha4.go`) and a one-line registration entry in `create.go`. The addon belongs in Wave 1 (parallel execution alongside other addons) and defaults to `false` — unlike all other addons which default to `true`.
+The architecture centers on a `Check` interface with `Name()`, `Category()`, `Platforms()`, and `Run()` methods, registered in an explicit `AllChecks()` slice in a shared `pkg/internal/doctor/` package. This package is importable by both the doctor CLI command (`pkg/cmd/kind/doctor/`) and the create flow (`pkg/cluster/internal/create/`), maintaining correct dependency direction. Checks are organized by category (runtime, kernel, network, resources, gpu) in separate source files but execute as a flat ordered list. A new `"skip"` status is added to the result type for platform-inapplicable checks, treated as equivalent to `"ok"` for exit code purposes. Each check uses a deps struct pattern for injectable dependencies, enabling full parallel test execution without global state mutation.
 
 **Major components:**
-1. `.goreleaser.yaml` (NEW) — defines all build targets, archive formats, checksums, GitHub Release, and Homebrew Cask publishing; must replicate Makefile ldflags exactly using GoReleaser template variables; `project_name: kinder` must be explicit to avoid inference from module path
-2. `installnvidiagpu/` package (NEW) — `Execute(*ActionContext)` applies two embedded manifests (RuntimeClass "nvidia" + device plugin DaemonSet) via `kubectl apply`; pre-flight check validates host toolkit before proceeding; defaults to `false` unlike other addons
-3. Config API changes (MODIFIED, 4 files) — adds `NvidiaGPU *bool` (public v1alpha4) / `NvidiaGPU bool` (internal) with `false` default; follows identical `*bool` conversion pattern as all other addons
-4. `homebrew-kinder` repository (NEW repo) — separate GitHub repo; GoReleaser pushes updated `Casks/kinder.rb` on every tagged release via HOMEBREW_TAP_TOKEN
+1. **Check interface + Result type + AllChecks registry** (`pkg/internal/doctor/check.go`) -- contract for all checks, explicit ordered registry, exported Result struct with Category field
+2. **Category-organized check implementations** (`pkg/internal/doctor/runtime.go`, `kernel.go`, `network.go`, `resources.go`, `gpu.go`) -- each check uses deps struct for injectable testing
+3. **Mitigations module** (`pkg/internal/doctor/mitigations.go`) -- `SafeMitigation` struct with `NeedsFix`/`Apply`/`NeedsRoot` fields; `ApplySafeMitigations()` entry point called by create flow
+4. **Refactored doctor CLI** (`pkg/cmd/kind/doctor/doctor.go`) -- uses `AllChecks()` loop with centralized platform filtering, category-grouped human output, backward-compatible JSON with `category` field
+5. **Create flow integration** (`pkg/cluster/internal/create/create.go`) -- calls `doctor.ApplySafeMitigations(logger)` after `validateProvider()` and before `p.Provision()`
 
 ### Critical Pitfalls
 
-1. **GoReleaser `gomod.proxy` builds upstream kind instead of kinder** — the fork's `go.mod` declares `module sigs.k8s.io/kind`; if `gomod.proxy: true` is set, GoReleaser fetches upstream kind source from the Go module proxy and produces the wrong binary. Prevention: set `gomod.proxy: false` explicitly and `project_name: kinder` explicitly in `.goreleaser.yaml`; verify by running `kinder version` on the built binary; verify with `goreleaser build --snapshot --clean` before enabling release mode.
+1. **`/proc` reads crash on non-Linux** -- Every check reading `/proc` or `/sys` must be gated by the Check interface's `Platforms()` method with centralized filtering in the main loop. Use `//go:build linux` for helper functions calling Linux-only syscalls; keep check registration cross-platform to emit "skip" status on macOS/Windows.
 
-2. **GITHUB_TOKEN cannot push to the Homebrew tap repo** — the default Actions token is scoped to the triggering repository only; GoReleaser logs a warning but does not fail the pipeline, so the tap stops updating without any visible CI failure. Prevention: create a PAT with `contents: write` on `homebrew-kinder`, store as `HOMEBREW_TAP_TOKEN`, verify after every release with `gh api repos/PatrykQuantumNomad/homebrew-kinder/commits`.
+2. **daemon.json location varies across 6+ install methods** -- Must implement `daemonJSONPaths()` returning prioritized candidate paths based on `runtime.GOOS` and env vars. Native Linux (`/etc/docker/daemon.json`), Docker Desktop macOS (`~/.docker/daemon.json`), rootless Docker (`$XDG_CONFIG_HOME/docker/daemon.json`), Snap Docker (`/var/snap/docker/current/config/daemon.json`), Rancher Desktop (`~/.rd/docker/daemon.json`). Hardcoding a single path is never acceptable.
 
-3. **ldflags version metadata not replicated in GoReleaser** — the Makefile injects `gitCommit` and `gitCommitCount` via `-X` flags; GoReleaser's default ldflags omit these, resulting in empty version strings in release binaries. Prevention: explicitly replicate all `-X` flags in `.goreleaser.yaml` using `{{ .FullCommit }}`; verify with `kinder version` after snapshot build; simplest approach is to drop `gitCommitCount` from release builds (it is not user-visible in tagged releases).
+3. **Auto-mitigation modifying system state is dangerous** -- Never auto-apply sysctl changes, never call `sudo` from kinder, never modify system config files. Tier the strategy: Tier 1 (auto-apply: env vars, cluster config adjustments), Tier 2 (suggest only: `sysctl -w`), Tier 3 (document only: editing sysctl.conf, disabling firewalld/SELinux).
 
-4. **GPU addon installs successfully but reports 0 GPUs** — if `nvidia-container-toolkit` is installed but not configured as the Docker runtime, kind nodes start without GPU access; the device plugin DaemonSet runs and reports 0 GPUs with no obvious cluster-level error. Prevention: implement pre-flight check in `Execute()` that verifies `docker info --format {{json .Runtimes}}` contains the `nvidia` key before proceeding; return an actionable error message with the exact command needed to fix it.
+4. **WSL2 detection false positives on Azure VMs** -- `/proc/version` containing "microsoft" alone is insufficient. Require multi-signal detection: `/proc/version` + (`$WSL_DISTRO_NAME` OR `/proc/sys/fs/binfmt_misc/WSLInterop`). Never auto-mitigate based on WSL2 detection alone.
 
-5. **`brews:` (deprecated) instead of `homebrew_casks:`** — deprecated since GoReleaser v2.10, removed in v3; produces a Homebrew Formula (wrong format for binary-only distribution) instead of a Cask. Prevention: use `homebrew_casks:` from day one; run `goreleaser check` to verify no deprecation warnings; never copy from tutorials predating GoReleaser v2.10.
-
----
+5. **SELinux and AppArmor can coexist since kernel 5.1** -- LSMs can stack. Check both independently, report both, indicate which is the active enforcing MAC. Do not use if/else pattern assuming mutual exclusivity.
 
 ## Implications for Roadmap
 
-Both workstreams can proceed largely in parallel. The dependency chain is: GoReleaser must be configured and validated before the Homebrew tap can be tested end-to-end (the tap formula references GitHub Release archive URLs). The GPU addon has no dependency on the distribution pipeline and can be developed entirely in parallel with Phases 1 and 2.
+Based on research, suggested phase structure:
 
-### Phase 1: GoReleaser Foundation
+### Phase 1: Check Infrastructure and Interface
 
-**Rationale:** The distribution pipeline is a prerequisite for Homebrew tap publishing. GoReleaser must be configured, validated locally with `--snapshot`, and the release workflow must be updated before any tagged release is pushed. This phase has the highest risk from the fork-specific `gomod.proxy` pitfall and the ldflags replication requirement — both must be caught before any public release. The existing `cross.sh` + `softprops` workflow must be retired in the same commit that enables GoReleaser to prevent duplicate asset uploads (422 errors from GitHub API).
+**Rationale:** All 13 checks and the create-flow integration depend on the Check interface, Result type with "skip" status, AllChecks registry, category-grouped output, and mitigation tier system. This is the foundation -- nothing else can proceed without it.
+**Delivers:** `pkg/internal/doctor/` package with Check interface, Result type (ok/warn/fail/skip), AllChecks() registry, category-grouped human output, backward-compatible JSON output with category field, mitigation tier constants, SafeMitigation struct, and ApplySafeMitigations entry point skeleton. Migrate existing checks (container runtime, kubectl, NVIDIA GPU) to the new interface.
+**Addresses:** Check registration pattern, platform filtering, "skip" status, exit code contract preservation (0/1/2), deps struct testability pattern
+**Avoids:** Pitfall 1 (/proc crash on non-Linux by establishing platform filtering), Pitfall 5 (auto-mitigation safety by defining tiers), Pitfall F2 (import layering by establishing pkg/internal/doctor/), Pitfall F3 (exit code contract by adding "skip" status)
 
-**Delivers:** `.goreleaser.yaml` with cross-platform builds, SHA-256 checksums, automated changelog; updated `release.yml` replacing `cross.sh` + `softprops`; two new Makefile targets (`goreleaser-check`, `goreleaser-snapshot`); validated binary with correct `kinder version` output showing real git commit.
+### Phase 2: Docker and Tool Configuration Checks
 
-**Addresses:** Pre-built binaries (table stakes), SHA-256 checksums (table stakes), reproducible builds with version metadata.
+**Rationale:** Docker configuration checks (daemon.json, snap, socket permissions) and tool version checks (kubectl skew) are cross-platform or near-cross-platform, have the highest user value, and are the simplest to implement (file reads and command output parsing). They depend on the Phase 1 infrastructure but not on platform-specific kernel APIs. Also includes disk space check which works cross-platform via `unix.Statfs`.
+**Delivers:** Checks 1 (kubectl version skew), 2 (Docker snap), 3 (disk space), 4 (daemon.json init:true), 5 (Docker socket permissions). Five of six table-stakes features.
+**Uses:** `os.ReadFile`, `encoding/json`, `path/filepath.EvalSymlinks`, `golang.org/x/sys/unix.Statfs`, `pkg/internal/version.ParseSemantic`
+**Avoids:** Pitfall 3 (daemon.json multi-path resolution implemented from day one)
 
-**Avoids:** Pitfall 1 (gomod.proxy wrong binary — explicit `false`), Pitfall 3 (ldflags version vars — replicate all `-X` flags), Pitfall 5 (GitHub Release 422 on re-run — `release.mode: replace`), fetch-depth: 0 comment to prevent future breakage.
+### Phase 3: Kernel, Security, and Platform-Specific Checks
 
-**Research flag:** Standard patterns — GoReleaser is well-documented; no additional research needed. Fork-specific `gomod.proxy` issue is fully understood from PITFALLS.md research.
+**Rationale:** Linux-only checks (inotify, kernel version, SELinux, AppArmor, firewalld, WSL2, rootfs device) share the pattern of reading `/proc`/`/sys` or shelling out to Linux-specific commands. Grouping them ensures consistent platform gating and testing. WSL2 detection requires multi-signal approach. SELinux+AppArmor require independent checking.
+**Delivers:** Checks 6 (inotify limits), 7 (AppArmor), 8 (rootfs device node), 9 (firewalld nftables), 10 (SELinux), 11 (kernel version), 12 (WSL2 cgroups). All seven differentiator features.
+**Uses:** `os.ReadFile` for procfs/sysfs, `exec.Command` for `getenforce`/`aa-status`, `golang.org/x/sys/unix.Uname`
+**Avoids:** Pitfall 4 (WSL2 false positives with multi-signal detection), Pitfall 7 (SELinux+AppArmor coexistence with independent checks)
 
-### Phase 2: Homebrew Tap
+### Phase 4: Network Checks, Create-Flow Integration, and Polish
 
-**Rationale:** Depends on Phase 1 (Homebrew Cask formula references GitHub Release archive URLs by hash; GoReleaser must produce at least one tagged release before the tap formula can be generated and tested). The tap repository must exist and HOMEBREW_TAP_TOKEN must be configured before any release tag is pushed — GoReleaser silently fails to push the cask if the tap repo does not exist.
-
-**Delivers:** `homebrew-kinder` repository created with `Casks/` directory; `homebrew_casks:` section added to `.goreleaser.yaml` (using correct non-deprecated key); HOMEBREW_TAP_TOKEN secret configured; `brew install patrykquantumnomad/kinder/kinder` working on macOS after first real tagged release.
-
-**Addresses:** `brew install` table-stakes feature; removes the biggest single adoption barrier; macOS Gatekeeper quarantine documented via `caveats` message.
-
-**Avoids:** Pitfall 2 (GITHUB_TOKEN PAT scope — dedicated HOMEBREW_TAP_TOKEN PAT), Pitfall 4 (brews vs homebrew_casks — use only `homebrew_casks:`), Pitfall 10 (binary name inference — explicit `project_name: kinder`).
-
-**Research flag:** Standard patterns — Homebrew tap structure and GoReleaser `homebrew_casks` are well-documented in official sources.
-
-### Phase 3: NVIDIA GPU Addon
-
-**Rationale:** Fully independent of the distribution pipeline; can be developed in parallel with Phases 1 and 2 or sequentially afterward. It is the highest-complexity addition in this milestone: config API changes in 4 files, a new addon package with two embedded manifests, and a pre-flight check implementation. The GPU-on-kind approach is community-documented but not officially supported by NVIDIA, so certain implementation details (ContainerdConfigPatches vs extraMounts, GPU Operator vs device plugin) require resolution via nvkind source examination before writing the addon.
-
-**Delivers:** `installnvidiagpu/` package with embedded RuntimeClass and device plugin DaemonSet manifests; `NvidiaGPU *bool` config API field (opt-in, defaults `false`); Wave 1 registration in `create.go`; `kinder doctor` GPU pre-flight checks with actionable error messages; clear documentation of Linux-only constraint and host prerequisites.
-
-**Addresses:** NVIDIA GPU addon (unique capability, no equivalent in kind-based tools), `kinder doctor` GPU checks (UX prerequisite for GPU users).
-
-**Avoids:** Pitfall 7 (host toolkit pre-flight check before cluster creation), Pitfall 8 (driver.enabled=false hardcoded — GPU Operator path if chosen), Pitfall 9 (cgroup v2 + accept-nvidia-visible-devices-as-volume-mounts config requirement).
-
-**Research flag:** Needs deeper research during phase planning. Specific areas requiring resolution before implementation: (a) GPU Operator vs standalone device plugin — STACK.md and FEATURES.md disagree on the correct approach; nvkind source code is the tiebreaker; (b) whether `ContainerdConfigPatches` is needed in the kind cluster config for GPU — FEATURES.md says yes, ARCHITECTURE.md says no; (c) end-to-end validation requires a Linux host with a real NVIDIA GPU.
+**Rationale:** Subnet clash detection (Check 13) requires cross-platform route table parsing which is the most complex single check. Create-flow integration (`ApplySafeMitigations` call in `create.go`) should come last so all checks and mitigations are available. Performance optimization rounds out the milestone.
+**Delivers:** Check 13 (Docker subnet clash), create-flow pre-flight integration, performance optimization (batch `docker info` call, consider parallel check groups), comprehensive end-to-end testing.
+**Uses:** `net/netip.ParsePrefix` + `Overlaps()`, platform-specific route parsers (`ip route` on Linux, `netstat -rn` on macOS), `docker network inspect`
+**Avoids:** Pitfall 6 (cross-platform route enumeration with platform-separated implementations), performance traps (sequential execution of 19+ checks)
 
 ### Phase Ordering Rationale
 
-- **GoReleaser before Homebrew:** The Homebrew Cask formula references GitHub Release archive URLs by hash. GoReleaser must produce at least one tagged release before the tap formula can be generated, tested, and verified end-to-end.
-- **GPU addon is parallel:** No dependency on distribution pipeline phases. Can be code-reviewed and merged at any point. It does not affect or conflict with the release pipeline.
-- **Pre-flight checks in Phase 3, not a separate phase:** GPU `kinder doctor` checks are tightly coupled to the addon — they share precondition knowledge and must be implemented together to avoid shipping an addon without actionable error messages.
-- **Retire cross.sh in Phase 1:** Running GoReleaser and `cross.sh` in parallel would produce duplicate release assets causing 422 errors from the GitHub API. The retirement must happen in the same PR that enables GoReleaser release mode.
+- **Phase 1 first:** Every other phase depends on the Check interface and registry. The mitigation tier system prevents dangerous auto-fix patterns from creeping into later phases.
+- **Phase 2 before Phase 3:** Cross-platform checks have wider user impact and simpler implementation. Docker/tool checks work on macOS where most kinder development happens, enabling faster iteration and feedback.
+- **Phase 3 before Phase 4:** Linux-specific checks are independent of each other and can be implemented in parallel. They must be complete before create-flow integration so all mitigations are available.
+- **Phase 4 last:** Subnet clash detection is the most complex single check. Create-flow integration is a final wiring step that benefits from all checks being available. Performance optimization is polish.
 
 ### Research Flags
 
-Phases needing deeper research during planning:
-- **Phase 3 (GPU addon):** The GPU Operator vs device-plugin decision must be resolved by examining nvkind source code. The `ContainerdConfigPatches` TOML content discrepancy between FEATURES.md and ARCHITECTURE.md must be resolved before implementation begins. End-to-end GPU validation requires dedicated Linux hardware with an NVIDIA GPU.
+Phases likely needing deeper research during planning:
+- **Phase 3:** WSL2 detection requires testing on actual WSL2 and Azure VM environments to validate multi-signal approach. SELinux+AppArmor coexistence needs testing on LSM-stacking distros. Rootfs device node detection for BTRFS/NVMe has high complexity and may produce false positives.
+- **Phase 4:** Cross-platform route table parsing needs real output samples from various Linux distros and macOS versions. Docker Desktop network isolation behavior needs validation for subnet clash detection.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (GoReleaser):** Fully documented in official GoReleaser docs; all fork-specific pitfalls identified and addressed; all versions live-verified via GitHub API.
-- **Phase 2 (Homebrew tap):** Standard GoReleaser `homebrew_casks` pattern; well-documented in official GoReleaser and Homebrew docs.
-
----
+- **Phase 1:** Check interface pattern, registry slice, Result type -- all derived from direct codebase analysis. Well-documented Go patterns with clear precedent in the existing codebase.
+- **Phase 2:** File reads, JSON parsing, version comparison, `Statfs` -- all use Go stdlib with well-documented APIs. Daemon.json paths documented in Docker's official docs.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All versions live-verified via GitHub API; GoReleaser v2.14.1, goreleaser-action v7.0.0, k8s-device-plugin v0.18.2 confirmed; go.mod analyzed directly from codebase |
-| Features | HIGH for distribution; MEDIUM for GPU | GoReleaser/Homebrew features fully confirmed from official docs; GPU addon approach (device plugin vs GPU Operator) confirmed from NVIDIA's platform support page — kind is explicitly absent; specific GPU Operator vs device plugin recommendation differs between STACK.md and FEATURES.md |
-| Architecture | HIGH for distribution; MEDIUM for GPU | Distribution architecture reads directly from existing kinder codebase; GPU addon architecture synthesized from community guides — the `ContainerdConfigPatches` approach is unverified end-to-end on a real kind+GPU setup; nvkind source not examined |
-| Pitfalls | HIGH | GoReleaser pitfalls sourced from official docs and verified issue tracker; GPU pitfalls from NVIDIA security bulletins, official container toolkit docs, and Kubernetes GPU scheduling docs |
+| Stack | HIGH | Zero new dependencies; all APIs verified against Go stdlib docs and existing go.mod. `golang.org/x/sys/unix` already present at v0.41.0. |
+| Features | HIGH | All 13 checks map directly to kind's documented Known Issues page. Thresholds and detection methods verified against official docs and kind issue tracker. |
+| Architecture | HIGH | Based entirely on direct codebase analysis. Package layering, import direction, test patterns, and dependency struct approach all verified against existing code conventions. |
+| Pitfalls | HIGH/MEDIUM | HIGH for /proc gating, daemon.json paths, test isolation, permission, exit code, and firewalld pitfalls. MEDIUM for WSL2 detection (heuristic-based, needs empirical validation) and SELinux+AppArmor coexistence (kernel 5.1+ LSM stacking is documented but rare in practice). |
 
-**Overall confidence:** HIGH for the distribution pipeline milestone; MEDIUM for GPU addon implementation specifics.
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **GPU Operator vs standalone device plugin (direct contradiction between research files):** STACK.md recommends GPU Operator v25.10.1 with `driver.enabled=false`. FEATURES.md explicitly recommends the standalone k8s-device-plugin DaemonSet and states the GPU Operator is NOT supported on kind. FEATURES.md reasoning is stronger (cites NVIDIA's official platform support list). Resolve in Phase 3 planning by examining nvkind (NVIDIA's own kind+GPU tool) source code to determine which approach NVIDIA itself uses.
-
-- **ContainerdConfigPatches vs no-op for GPU addon (direct contradiction between research files):** FEATURES.md says the GPU addon must apply a `containerdConfigPatches` TOML patch to inject the NVIDIA runtime into the kind node's containerd config (required before `Provision()`). ARCHITECTURE.md says the addon is purely post-provision with no config patches needed (the host nvidia-container-toolkit handles this). This is a critical implementation detail that determines the two-phase vs one-phase addon structure. Resolve before Phase 3 begins.
-
-- **COMMIT_COUNT in GoReleaser:** The existing Makefile derives `COMMIT_COUNT` via `git describe --tags`; GoReleaser has no built-in template for this. Both STACK.md and FEATURES.md recommend dropping `gitCommitCount` from release binary ldflags (it only appears in pre-release version strings, not tagged releases). Validate this decision is acceptable before Phase 1 implementation.
-
-- **GPU end-to-end validation gap:** No research source provides a tested, working kind+NVIDIA configuration from 2025 or later. The nvkind tool (NVIDIA's own implementation at `github.com/NVIDIA/nvkind`) is the authoritative reference and must be examined before writing the addon.
-
----
+- **WSL2 multi-signal detection validation:** The recommended two-signal approach has not been tested on actual Azure VMs to confirm false-positive prevention. Validate during Phase 3 implementation with real WSL2 and Azure VM environments.
+- **Docker Desktop inotify remediation:** On macOS/Windows, inotify limits are inside Docker's Linux VM. The correct remediation path (Docker Desktop settings vs. `wsl -d docker-desktop sysctl`) needs platform-specific validation during Phase 3.
+- **Rootfs device node detection specificity:** The BTRFS/NVMe issue only affects certain configurations. The check may produce false positives on BTRFS setups that work fine with kind. Needs empirical testing during Phase 3.
+- **Performance budget:** The 2-second target for all checks assumes some parallelization. The actual latency of `docker info`, `docker network inspect`, and other shell-outs needs measurement during Phase 4 to determine if parallel execution is required.
+- **Existing check migration scope:** Migrating existing checks (container runtime, kubectl, NVIDIA) to the new Check interface is included in Phase 1 but could be deferred. Trade-off between clean migration vs. incremental adoption needs a decision during Phase 1 planning.
+- **kubectl version skew without running cluster:** Full skew validation requires both client and server versions. Without a running cluster, doctor can only report client version and flag very old versions. Consider adding `--cluster` flag support as a v2 enhancement.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- GoReleaser official docs (goreleaser.com/customization/, ci/actions/, deprecations/) — all GoReleaser configuration, `homebrew_casks` feature, `brews` deprecation
-- goreleaser/goreleaser GitHub API — v2.14.1 release (2026-02-25) confirmed
-- goreleaser/goreleaser-action GitHub API — v7.0.0 release (2026-02-21) confirmed
-- NVIDIA/gpu-operator GitHub API — v25.10.1 release (2025-12-04) confirmed
-- NVIDIA/k8s-device-plugin GitHub API — v0.18.2 release (2026-01-23) confirmed
-- NVIDIA GPU Operator platform support docs — confirmed kind is NOT listed as a supported platform
-- NVIDIA Container Toolkit install guide — host prerequisites, cgroup v2 requirements
-- NVIDIA security bulletin (Jan 2025) — `accept-nvidia-visible-devices-envvar-when-unprivileged` CVE-2024-0132
-- Homebrew docs (docs.brew.sh) — tap structure, Cask vs Formula distinction, Cask Cookbook
-- Kubernetes docs — scheduling GPUs guide
-- Kinder codebase (direct read) — Makefile, release.yml, cross.sh, kindversion package, all 7 addon packages, config API files (v1alpha4/types.go, internal/apis/config/types.go)
-- GoReleaser issue tracker — asset override on re-run (#557), gomod.proxy issues (#2833), Homebrew tokens discussion (#4926)
+- Kind Known Issues page: https://kind.sigs.k8s.io/docs/user/known-issues/ -- specification for all 13 checks
+- Docker daemon configuration docs: https://docs.docker.com/engine/daemon/ -- daemon.json locations and options
+- Go `net/netip` package: https://pkg.go.dev/net/netip -- `ParsePrefix`, `Overlaps` for subnet clash detection
+- Go `golang.org/x/sys/unix` package: https://pkg.go.dev/golang.org/x/sys/unix -- v0.41.0, `Statfs`, `Uname`
+- Kubernetes Version Skew Policy: https://kubernetes.io/releases/version-skew-policy/ -- kubectl +/-1 minor version
+- Firewalld nftables backend docs: https://firewalld.org/2018/07/nftables-backend -- `FirewallBackend=` configuration
+- Kubernetes inotify issue #46230: https://github.com/kubernetes/kubernetes/issues/46230 -- recommended thresholds
+- Kinder codebase: `doctor.go`, `create.go`, `go.mod`, `network.go`, `nvidiagpu.go`, `exec/types.go`, `version.go` -- architecture patterns and conventions
 
 ### Secondary (MEDIUM confidence)
-- NVIDIA/nvkind — NVIDIA's own kind+GPU tool; confirms the approach but source not read directly
-- SeineAI/nvidia-kind-deploy — community toolkit for kind + GPU operator; undated
-- Kind + CAPI + GPU community gist (mproffitt) — `containerdConfigPatches` and `extraMounts` approach for kind+GPU
-- Jim Angel blog post — NVIDIA GPU on Kubernetes practical guide (community-verified)
-- Jacob Tomlinson blog post — Adding GPU support to kind (2022; may be outdated for modern nvidia-container-toolkit security defaults)
+- WSL2 /proc/version detection: https://gist.github.com/s0kil/336a246cc2bc8608e645c69876c17466 -- community pattern, universally used
+- Microsoft WSL detection issue #4071: https://github.com/microsoft/WSL/issues/4071 -- documents false positive/negative cases
+- WSL2 cgroupsv2 fix guide: https://github.com/spurin/wsl-cgroupsv2 -- community solution for cgroup misconfiguration
+- SELinux vs AppArmor LSM stacking analysis: https://securitylabs.datadoghq.com/articles/container-security-fundamentals-part-5/
+- Inotify in containers behavior: https://william-yeh.net/post/2019/06/inotify-in-containers/
 
 ### Tertiary (LOW confidence)
-- Stack Overflow answers on GoReleaser `brews` vs `homebrew_casks` — predated the v2.10 migration; treat as historical context only
+- None -- all findings corroborated by at least two sources
 
 ---
-*Research completed: 2026-03-04*
+*Research completed: 2026-03-06*
 *Ready for roadmap: yes*
