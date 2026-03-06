@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Known Issues & Proactive Diagnostics
-status: executing
-stopped_at: Completed 38-01-PLAN.md
-last_updated: "2026-03-06T14:25:22.112Z"
-last_activity: 2026-03-06 — Completed Plan 01 (Check interface, formatters, mitigations skeleton)
+status: completed
+stopped_at: Completed 38-02-PLAN.md
+last_updated: "2026-03-06T14:33:48.043Z"
+last_activity: 2026-03-06 — Completed Plan 02 (Check migration and doctor.go refactor)
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 38 - Check Infrastructure and Interface
+**Current focus:** Phase 38 - Check Infrastructure and Interface (Complete)
 
 ## Current Position
 
 Phase: 38 (1 of 4) — Check Infrastructure and Interface
-Plan: 01 of 2 complete
-Status: Executing
-Last activity: 2026-03-06 — Completed Plan 01 (Check interface, formatters, mitigations skeleton)
+Plan: 02 of 2 complete
+Status: Phase Complete
+Last activity: 2026-03-06 — Completed Plan 02 (Check migration and doctor.go refactor)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -53,6 +53,8 @@ Progress: [█████░░░░░] 50%
 - v2.1 P38-01: allChecks initialized as []Check{} (not nil) for non-nil guarantee
 - v2.1 P38-01: FormatJSON returns map[string]interface{} for flexible JSON serialization
 - v2.1 P38-01: ApplySafeMitigations early-returns on non-Linux platforms
+- [Phase 38]: P38-02: Inline fakeCmd test doubles instead of importing testutil from pkg/cluster/internal/
+- [Phase 38]: P38-02: nvidiaDockerRuntimeCheck returns skip when docker binary not found
 
 ### Pending Todos
 
@@ -64,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T14:25:22.110Z
-Stopped at: Completed 38-01-PLAN.md
+Last session: 2026-03-06T14:33:48.041Z
+Stopped at: Completed 38-02-PLAN.md
 Resume file: None

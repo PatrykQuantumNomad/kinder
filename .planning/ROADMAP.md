@@ -74,7 +74,7 @@ Phases 35-37: GoReleaser Foundation, Homebrew Tap, NVIDIA GPU Addon.
 
 **Milestone Goal:** Address Kind's documented known issues by expanding `kinder doctor` with 13 new diagnostic checks, adding automatic mitigations during cluster creation where safe, and documenting all checks on the website.
 
-- [ ] **Phase 38: Check Infrastructure and Interface** - Shared doctor package with Check interface, Result type, registry, mitigation tiers, and existing check migration
+- [x] **Phase 38: Check Infrastructure and Interface** - Shared doctor package with Check interface, Result type, registry, mitigation tiers, and existing check migration (completed 2026-03-06)
 - [ ] **Phase 39: Docker and Tool Configuration Checks** - Cross-platform checks for disk space, daemon.json, Docker snap, kubectl skew, and socket permissions
 - [ ] **Phase 40: Kernel, Security, and Platform-Specific Checks** - Linux-only checks for inotify, AppArmor, SELinux, kernel version, firewalld, WSL2, and rootfs devices
 - [ ] **Phase 41: Network, Create-Flow Integration, and Website** - Subnet clash detection, ApplySafeMitigations wiring into create flow, and Known Issues documentation page
@@ -159,7 +159,7 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 35. GoReleaser Foundation | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 36. Homebrew Tap | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
-| 38. Check Infrastructure | 1/2 | In Progress|  | - |
+| 38. Check Infrastructure | 2/2 | Complete   | 2026-03-06 | - |
 | 39. Docker & Tool Checks | v2.1 | 0/? | Not started | - |
 | 40. Kernel & Platform Checks | v2.1 | 0/? | Not started | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |
