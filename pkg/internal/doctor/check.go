@@ -57,8 +57,10 @@ var allChecks = []Check{
 	newDiskSpaceCheck(),
 	newDaemonJSONCheck(),
 	newDockerSnapCheck(),
+	newDockerSocketCheck(),
 	// Category: Tools
 	newKubectlCheck(),
+	newKubectlVersionSkewCheck(),
 	// Category: GPU
 	newNvidiaDriverCheck(),
 	newNvidiaContainerToolkitCheck(),

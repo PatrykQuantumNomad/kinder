@@ -171,7 +171,7 @@ func TestAllChecks_Registry(t *testing.T) {
 	}{
 		{"container-runtime", "Runtime"},
 		{"disk-space", "Docker"},
-		{"daemon-json", "Docker"},
+		{"daemon-json-init", "Docker"},
 		{"docker-snap", "Docker"},
 		{"docker-socket", "Docker"},
 		{"kubectl", "Tools"},
