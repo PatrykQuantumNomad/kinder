@@ -37,11 +37,14 @@ func (t *testInfoLogger) Info(message string)                      {}
 func (t *testInfoLogger) Infof(format string, args ...interface{}) {}
 func (t *testInfoLogger) Enabled() bool                            { return true }
 
-func TestSafeMitigations_ReturnsNil(t *testing.T) {
+func TestSafeMitigations_ReturnsEmptyNonNil(t *testing.T) {
 	t.Parallel()
 	mitigations := SafeMitigations()
-	if mitigations != nil {
-		t.Errorf("SafeMitigations() should return nil (skeleton), got %v", mitigations)
+	if mitigations == nil {
+		t.Fatal("SafeMitigations() must return non-nil slice (non-nil guarantee)")
+	}
+	if len(mitigations) != 0 {
+		t.Errorf("SafeMitigations() should return empty slice, got %d mitigations", len(mitigations))
 	}
 }
 
