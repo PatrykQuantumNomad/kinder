@@ -5,9 +5,9 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Milestone v2.1 started"
+last_activity: "2026-03-06 — Roadmap created for v2.1 (Phases 38-41)"
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Defining requirements for v2.1
+**Current focus:** Phase 38 - Check Infrastructure and Interface
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-06 — Milestone v2.1 started
+Phase: 38 (1 of 4) — Check Infrastructure and Interface
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-06 — Roadmap created for v2.1
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -45,13 +47,9 @@ Last activity: 2026-03-06 — Milestone v2.1 started
 
 ### Decisions
 
-- v1.0: Fork kind, addons as creation actions, on-by-default opt-out, go:embed for manifests
-- v1.1: Astro + Starlight, kinder-site/ dir, dark-only mode, npm for CI
-- v1.2: Kinder logo from modified kind robot, favicon.ico over SVG, llms.txt for GEO
-- v1.3: common/ provider dedup, local registry addon, cert-manager addon, CLI diagnostic tools
-- v1.4: Context in struct (not param), wave-based parallel (not DAG), sync.OnceValues for Nodes(), errgroup.SetLimit(3), flagpole/switch/json.NewEncoder pattern, CreateWithAddonProfile with 4 presets
-- v1.5: Core/optional addon grouping, Symptom/Cause/Fix troubleshooting pattern, tutorial structure (overview/prerequisites/steps/cleanup), ci profile = MetricsServer + CertManager only
-- v2.0: GoReleaser pipeline, goreleaser-action@v7, Homebrew cask via homebrew-kinder tap, NVIDIA GPU addon opt-in (boolValOptIn), NvidiaGPU package-level vars for test injection
+- v1.0-v2.0: See PROJECT.md Key Decisions table
+- v2.1: INFRA-05 (create flow integration) moved to Phase 41 so all checks exist before wiring mitigations into create flow
+- v2.1: Research confirms zero new go.mod dependencies; golang.org/x/sys/unix promoted from indirect to direct
 
 ### Pending Todos
 
@@ -64,5 +62,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: null
+Stopped at: Roadmap created, ready to plan Phase 38
 Resume file: None

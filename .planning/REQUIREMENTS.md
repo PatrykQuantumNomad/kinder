@@ -123,32 +123,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| INFRA-06 | — | Pending |
-| DOCK-01 | — | Pending |
-| DOCK-02 | — | Pending |
-| DOCK-03 | — | Pending |
-| DOCK-04 | — | Pending |
-| DOCK-05 | — | Pending |
-| KERN-01 | — | Pending |
-| KERN-02 | — | Pending |
-| KERN-03 | — | Pending |
-| KERN-04 | — | Pending |
-| PLAT-01 | — | Pending |
-| PLAT-02 | — | Pending |
-| PLAT-03 | — | Pending |
-| PLAT-04 | — | Pending |
-| SITE-01 | — | Pending |
+| INFRA-01 | Phase 38 | Pending |
+| INFRA-02 | Phase 38 | Pending |
+| INFRA-03 | Phase 38 | Pending |
+| INFRA-04 | Phase 38 | Pending |
+| INFRA-05 | Phase 41 | Pending |
+| INFRA-06 | Phase 38 | Pending |
+| DOCK-01 | Phase 39 | Pending |
+| DOCK-02 | Phase 39 | Pending |
+| DOCK-03 | Phase 39 | Pending |
+| DOCK-04 | Phase 39 | Pending |
+| DOCK-05 | Phase 39 | Pending |
+| KERN-01 | Phase 40 | Pending |
+| KERN-02 | Phase 40 | Pending |
+| KERN-03 | Phase 40 | Pending |
+| KERN-04 | Phase 40 | Pending |
+| PLAT-01 | Phase 40 | Pending |
+| PLAT-02 | Phase 40 | Pending |
+| PLAT-03 | Phase 41 | Pending |
+| PLAT-04 | Phase 40 | Pending |
+| SITE-01 | Phase 41 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-06 after initial definition*
+*Last updated: 2026-03-06 after roadmap creation*
