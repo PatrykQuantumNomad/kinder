@@ -56,15 +56,14 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-## Current Milestone: v2.0 Distribution & GPU Support
+## Current Milestone: v2.1 Known Issues & Proactive Diagnostics
 
-**Goal:** Make kinder installable via Homebrew with pre-built binaries from GitHub Releases, and add full NVIDIA GPU stack as a new addon.
+**Goal:** Address Kind's documented known issues by expanding `kinder doctor` with ~13 new diagnostic checks and adding automatic mitigations during cluster creation where possible.
 
 **Target features:**
-- GoReleaser setup for automated cross-platform binary builds
-- First public GitHub Release (v2.0.0) with binaries on PatrykQuantumNomad/kinder
-- Homebrew custom tap for `brew install kinder`
-- NVIDIA GPU addon (GPU Operator + device plugin + container toolkit config)
+- Expanded `kinder doctor` with checks for: inotify limits, disk space, Docker snap installs, Docker init daemon config, Docker permissions, firewalld nftables backend, SELinux enforcing mode, AppArmor interference, rootfs device access, WSL2 cgroup misconfiguration, old kernel/cgroup namespace support, kubectl version skew, subnet clashes
+- Automatic mitigations during `kinder create cluster` where safe (e.g., inotify tuning suggestions, subnet clash detection)
+- Website Known Issues / Troubleshooting page documenting all checks and mitigations
 
 ### Out of Scope
 
@@ -147,4 +146,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
 ---
-*Last updated: 2026-03-04 after v2.0 milestone started*
+*Last updated: 2026-03-06 after v2.1 milestone started*
