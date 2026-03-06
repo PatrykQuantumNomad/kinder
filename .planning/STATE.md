@@ -5,13 +5,13 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 39-02 (kubectl version skew, docker socket checks)"
+last_activity: "2026-03-06 — Completed 40-01 (inotify limits, kernel version checks)"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 50
+  total_plans: 8
+  completed_plans: 7
+  percent: 87
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 39 - Docker and Tool Configuration Checks
+**Current focus:** Phase 40 - Kernel, Security, and Platform-Specific Checks
 
 ## Current Position
 
-Phase: 39 (2 of 4) — Docker and Tool Configuration Checks [COMPLETE]
-Plan: 2 of 2 complete
-Status: Phase 39 complete, ready for next phase
-Last activity: 2026-03-06 — Completed 39-02 (kubectl version skew, docker socket checks)
+Phase: 40 (3 of 4) — Kernel, Security, and Platform-Specific Checks
+Plan: 2 of 3 complete
+Status: Executing Phase 40
+Last activity: 2026-03-06 — Completed 40-02 (AppArmor, SELinux, firewalld checks)
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
@@ -61,6 +61,14 @@ Progress: [█████░░░░░] 50%
 - [Phase 39]: P39-02: referenceK8sMinor = 31 as constant, +/-1 minor skew tolerance for kubectl
 - [Phase 39]: P39-02: dockerSocketCheck linux-only, macOS Docker Desktop manages socket permissions
 - [Phase 39]: P39-02: Non-permission docker info failures return ok (daemon-not-running handled elsewhere)
+- [Phase 40]: P40-02: AppArmor and SELinux checks are completely independent (LSM stacking since kernel 5.1)
+- [Phase 40]: P40-02: SELinux warns only on Fedora (ID=fedora in os-release); returns ok on non-Fedora enforcing
+- [Phase 40]: P40-02: Firewalld defaults to nftables when FirewallBackend config line absent (Fedora 32+ default)
+- [Phase 40]: P40-02: isFedora returns false on os-release read error (err on safe side)
+- [Phase 40]: P40-01: inotifyCheck returns multiple results when both limits low, single ok when sufficient
+- [Phase 40]: P40-01: kernelVersionCheck uses fail (not warn) for < 4.6 -- cgroup namespace is hard blocker
+- [Phase 40]: P40-01: kernel_other.go stub returns nil from Run(), matching platform filtering pattern
+- [Phase 40]: P40-01: fakeReadFile test helper in inotify_test.go, reusable across doctor package
 
 ### Pending Todos
 
@@ -73,5 +81,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 39-02-PLAN.md, Phase 39 complete. Ready for next phase.
+Stopped at: Completed 40-01-PLAN.md (inotify limits, kernel version checks).
 Resume file: None

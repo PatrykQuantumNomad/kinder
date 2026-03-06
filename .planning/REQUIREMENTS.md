@@ -26,14 +26,14 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 
 ### Kernel & Security
 
-- [ ] **KERN-01**: Doctor checks inotify max_user_watches (>=524288) and max_user_instances (>=512)
-- [ ] **KERN-02**: Doctor detects AppArmor profiles interfering with kind containers
-- [ ] **KERN-03**: Doctor detects SELinux enforcing mode on Fedora
-- [ ] **KERN-04**: Doctor checks kernel version >=4.6 for cgroup namespace support
+- [x] **KERN-01**: Doctor checks inotify max_user_watches (>=524288) and max_user_instances (>=512)
+- [x] **KERN-02**: Doctor detects AppArmor profiles interfering with kind containers
+- [x] **KERN-03**: Doctor detects SELinux enforcing mode on Fedora
+- [x] **KERN-04**: Doctor checks kernel version >=4.6 for cgroup namespace support
 
 ### Platform & Network
 
-- [ ] **PLAT-01**: Doctor detects firewalld nftables backend on Fedora 32+
+- [x] **PLAT-01**: Doctor detects firewalld nftables backend on Fedora 32+
 - [ ] **PLAT-02**: Doctor detects WSL2 with multi-signal approach and checks cgroup v2 config
 - [ ] **PLAT-03**: Doctor detects Docker network subnet clashes with host routes
 - [ ] **PLAT-04**: Doctor checks device node access for rootfs (BTRFS/NVMe)
@@ -134,11 +134,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOCK-03 | Phase 39 | Complete |
 | DOCK-04 | Phase 39 | Complete |
 | DOCK-05 | Phase 39 | Complete |
-| KERN-01 | Phase 40 | Pending |
-| KERN-02 | Phase 40 | Pending |
-| KERN-03 | Phase 40 | Pending |
-| KERN-04 | Phase 40 | Pending |
-| PLAT-01 | Phase 40 | Pending |
+| KERN-01 | Phase 40 | Complete |
+| KERN-02 | Phase 40 | Complete |
+| KERN-03 | Phase 40 | Complete |
+| KERN-04 | Phase 40 | Complete |
+| PLAT-01 | Phase 40 | Complete |
 | PLAT-02 | Phase 40 | Pending |
 | PLAT-03 | Phase 41 | Pending |
 | PLAT-04 | Phase 40 | Pending |
