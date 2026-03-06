@@ -38,9 +38,9 @@ type SafeMitigation struct {
 }
 
 // SafeMitigations returns the list of mitigations safe for auto-apply.
-// Populated in later phases as checks are added.
+// No tier-1 auto-fixable mitigations currently; infrastructure ready for future use.
 func SafeMitigations() []SafeMitigation {
-	return nil // skeleton -- populated in Phases 39-41
+	return []SafeMitigation{}
 }
 
 // ApplySafeMitigations runs all safe mitigations. Called from create flow.
