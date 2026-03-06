@@ -54,16 +54,16 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 - ✓ Website updated with 3 tutorials, 3 CLI reference pages, 7 enriched addon pages, 19-page clean build — v1.5
 
+- ✓ 18 diagnostic checks in `kinder doctor` across 8 categories with Check interface infrastructure — v2.1
+- ✓ Docker checks: disk space, daemon.json init, snap, kubectl version skew, socket permissions — v2.1
+- ✓ Kernel/security checks: inotify limits, kernel >=4.6, AppArmor, SELinux, firewalld — v2.1
+- ✓ Platform checks: WSL2 cgroup v2, BTRFS rootfs, subnet clash detection — v2.1
+- ✓ ApplySafeMitigations wired into create flow before provisioning — v2.1
+- ✓ Known Issues documentation page on website with all 18 checks — v2.1
+
 ### Active
 
-## Current Milestone: v2.1 Known Issues & Proactive Diagnostics
-
-**Goal:** Address Kind's documented known issues by expanding `kinder doctor` with ~13 new diagnostic checks and adding automatic mitigations during cluster creation where possible.
-
-**Target features:**
-- Expanded `kinder doctor` with checks for: inotify limits, disk space, Docker snap installs, Docker init daemon config, Docker permissions, firewalld nftables backend, SELinux enforcing mode, AppArmor interference, rootfs device access, WSL2 cgroup misconfiguration, old kernel/cgroup namespace support, kubectl version skew, subnet clashes
-- Automatic mitigations during `kinder create cluster` where safe (e.g., inotify tuning suggestions, subnet clash detection)
-- Website Known Issues / Troubleshooting page documenting all checks and mitigations
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -89,7 +89,9 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Shipped v1.3 with bug fixes, provider dedup, local registry, cert-manager, CLI tools
 - Shipped v1.4 with Go 1.24, context.Context, unit tests, parallel execution, JSON output, profile presets
 - Shipped v1.5 with 3 tutorials, 3 CLI reference pages, 7 enriched addon pages, 19-page clean production build
-- Total codebase: ~29,592 LOC Go, ~3,386 LOC site (Astro/MDX/TS/CSS)
+- Shipped v2.0 with GoReleaser, Homebrew tap, NVIDIA GPU addon
+- Shipped v2.1 with 18 diagnostic checks, create-flow mitigations, Known Issues page
+- Total codebase: ~35,636 LOC Go, ~3,900 LOC site (Astro/MDX/TS/CSS)
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
@@ -145,5 +147,11 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Consistent flagpole/switch/json.NewEncoder | All JSON commands follow same pattern | ✓ Good |
 | CreateWithAddonProfile with 4 presets | Covers minimal/full/gateway/ci without YAML config files | ✓ Good |
 
+| Check interface + registry architecture | Clean single-integration-point for all 18 checks | Good |
+| Build-tagged platform abstractions | disk_unix.go/kernel_linux.go compile cleanly on all platforms | Good |
+| Deps struct injection for check testability | Injectable readFile/execCmd/lookPath without mocking packages | Good |
+| WSL2 multi-signal detection | Prevents Azure VM false positives with corroborating evidence | Good |
+| Warn-and-continue mitigations | Mitigation errors never block cluster creation | Good |
+
 ---
-*Last updated: 2026-03-06 after v2.1 milestone started*
+*Last updated: 2026-03-06 after v2.1 milestone*

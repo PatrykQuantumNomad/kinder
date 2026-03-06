@@ -1,8 +1,57 @@
 # Project Milestones: Kinder
 
+## v2.1 Known Issues & Proactive Diagnostics (Shipped: 2026-03-06)
+
+**Delivered:** Expanded `kinder doctor` from 3 to 18 diagnostic checks across 8 categories, wired automatic mitigations into cluster creation, and documented all checks on the website's Known Issues page.
+
+**Phases completed:** 38-41 (10 plans total)
+
+**Key accomplishments:**
+- Built Check interface infrastructure with category-grouped output, platform filtering, JSON/human-readable formatters, and SafeMitigation system
+- Expanded `kinder doctor` from 3 to 18 diagnostic checks across 8 categories (Runtime, Docker, Tools, GPU, Kernel, Security, Platform, Network)
+- Docker environment checks: disk space thresholds, daemon.json init flag, snap detection, kubectl version skew, socket permissions
+- Linux kernel and security checks: inotify limits, kernel >=4.6, AppArmor interference, SELinux on Fedora, firewalld nftables backend
+- Platform checks: WSL2 multi-signal detection with cgroup v2 verification, BTRFS rootfs, Docker subnet clash detection
+- Website Known Issues page documenting all 18 checks with What/Why/Platforms/Fix structure, plus create-flow mitigation wiring
+
+**Stats:**
+- 77 files created/modified
+- 12,609 lines inserted, 305 deleted (35,636 total Go LOC)
+- 4 phases, 10 plans
+- 1 day (2026-03-06)
+
+**Git range:** `feat(38-01)` -> `feat(41-03)`
+
+**What's next:** TBD
+
+---
+
+## v2.0 Distribution & GPU Support (Shipped: 2026-03-05)
+
+**Delivered:** GoReleaser cross-platform binary distribution, Homebrew tap for macOS installation, and NVIDIA GPU addon with device plugin, RuntimeClass, and doctor checks.
+
+**Phases completed:** 35-37 (7 plans total)
+
+**Key accomplishments:**
+- GoReleaser config producing cross-platform binaries (linux/darwin amd64+arm64, windows amd64) with SHA-256 checksums and automated changelog
+- Homebrew Cask in PatrykQuantumNomad/homebrew-kinder tap for `brew install` distribution
+- NVIDIA GPU addon with device plugin DaemonSet, RuntimeClass, and opt-in v1alpha4 config field
+- Three new `kinder doctor` checks for NVIDIA driver, container toolkit, and Docker nvidia runtime
+- Website updated with Homebrew install instructions and GPU addon documentation page
+
+**Stats:**
+- 3 phases, 7 plans
+- 2 days (2026-03-04 -> 2026-03-05)
+
+**Git range:** `feat(35-01)` -> `docs(phase-37)`
+
+**What's next:** v2.1 Known Issues & Proactive Diagnostics
+
+---
+
 ## v1.5 Website Use Cases & Documentation (Shipped: 2026-03-04)
 
-**Delivered:** Updated the kinder website with detailed use cases, tutorials, and CLI reference pages — enriching all 7 addon pages with practical examples and troubleshooting, writing 3 end-to-end tutorials, and creating 3 CLI reference pages.
+**Delivered:** Updated the kinder website with detailed use cases, tutorials, and CLI reference pages -- enriching all 7 addon pages with practical examples and troubleshooting, writing 3 end-to-end tutorials, and creating 3 CLI reference pages.
 
 **Phases completed:** 30-34 (7 plans total)
 
@@ -19,7 +68,7 @@
 - 5 phases, 7 plans, 35 commits
 - 1 day (2026-03-04)
 
-**Git range:** `feat(30-01)` → `docs(phase-34)`
+**Git range:** `feat(30-01)` -> `docs(phase-34)`
 
 **What's next:** TBD
 
@@ -43,9 +92,9 @@
 - 195 files created/modified
 - 13,646 lines inserted, 3,775 deleted (29,592 total Go LOC)
 - 5 phases, 13 plans, 66 commits
-- 2 days (2026-03-03 → 2026-03-04)
+- 2 days (2026-03-03 -> 2026-03-04)
 
-**Git range:** `feat(25-03)` → `docs(phase-29)`
+**Git range:** `feat(25-03)` -> `docs(phase-29)`
 
 **What's next:** TBD
 
@@ -71,15 +120,15 @@
 - 6 phases, 8 plans, 43 commits
 - ~5 hours (single day, 2026-03-03)
 
-**Git range:** `docs(19)` → `docs(phase-24)`
+**Git range:** `docs(19)` -> `docs(phase-24)`
 
-**What's next:** TBD — potential v1.4 with registry enhancements, trust-manager, kinder env --shell fish, kinder doctor --fix
+**What's next:** TBD -- potential v1.4 with registry enhancements, trust-manager, kinder env --shell fish, kinder doctor --fix
 
 ---
 
 ## v1.2 Branding & Polish (Shipped: 2026-03-02)
 
-**Delivered:** Distinct kinder visual identity, SEO discoverability, documentation rewrite, and dark-only theme enforcement — establishing kinder as its own project beyond the kind fork.
+**Delivered:** Distinct kinder visual identity, SEO discoverability, documentation rewrite, and dark-only theme enforcement -- establishing kinder as its own project beyond the kind fork.
 
 **Phases completed:** 15-18
 
@@ -98,13 +147,13 @@
 
 **Git range:** v1.2 formalized existing work
 
-**What's next:** TBD — potential v1.3 with animated terminal demo, contributing guide, or blog section
+**What's next:** TBD -- potential v1.3 with animated terminal demo, contributing guide, or blog section
 
 ---
 
 ## v1.1 Kinder Website (Shipped: 2026-03-02)
 
-**Delivered:** Standalone documentation website with dark terminal aesthetic, interactive landing page, and 10 documentation pages — live at kinder.patrykgolabek.dev via GitHub Pages.
+**Delivered:** Standalone documentation website with dark terminal aesthetic, interactive landing page, and 10 documentation pages -- live at kinder.patrykgolabek.dev via GitHub Pages.
 
 **Phases completed:** 9-14 (8 plans total)
 
@@ -122,9 +171,9 @@
 - 6 phases, 8 plans, 41 commits
 - 2 days from start to ship
 
-**Git range:** `feat(09-01)` → `feat(14-01)`
+**Git range:** `feat(09-01)` -> `feat(14-01)`
 
-**What's next:** TBD — potential v1.2 with animated terminal demo, blog section, or contributing guide
+**What's next:** TBD -- potential v1.2 with animated terminal demo, blog section, or contributing guide
 
 ---
 
@@ -148,8 +197,8 @@
 - 8 phases, 12 plans, 36 commits
 - 1 day from start to ship
 
-**Git range:** `feat(01-01)` → `fix(08-02)`
+**Git range:** `feat(01-01)` -> `fix(08-02)`
 
-**What's next:** TBD — potential v1.1 with cert-manager, NodeLocal DNSCache, or Prometheus stack
+**What's next:** TBD -- potential v1.1 with cert-manager, NodeLocal DNSCache, or Prometheus stack
 
 ---
