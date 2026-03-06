@@ -126,9 +126,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 40-01-PLAN.md — Inotify limits and kernel version checks (KERN-01, KERN-04)
-- [ ] 40-02-PLAN.md — AppArmor, SELinux, and firewalld checks (KERN-02, KERN-03, PLAT-01)
-- [ ] 40-03-PLAN.md — WSL2 detection, rootfs device check, and allChecks registry wiring (PLAT-02, PLAT-04)
+- [x] 40-01-PLAN.md — Inotify limits and kernel version checks (KERN-01, KERN-04)
+- [x] 40-02-PLAN.md — AppArmor, SELinux, and firewalld checks (KERN-02, KERN-03, PLAT-01)
+- [x] 40-03-PLAN.md — WSL2 detection, rootfs device check, and allChecks registry wiring (PLAT-02, PLAT-04)
 
 ### Phase 41: Network, Create-Flow Integration, and Website
 **Goal**: Users get subnet clash detection before cluster creation, automatic safe mitigations during `kinder create cluster`, and a comprehensive Known Issues page on the website documenting all checks
@@ -162,5 +162,5 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
-| 40. Kernel & Platform Checks | v2.1 | 2/3 | In Progress | - |
+| 40. Kernel & Platform Checks | v2.1 | 3/3 | Complete | 2026-03-06 |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |

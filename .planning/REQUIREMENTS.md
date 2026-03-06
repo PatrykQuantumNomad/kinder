@@ -34,9 +34,9 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 ### Platform & Network
 
 - [x] **PLAT-01**: Doctor detects firewalld nftables backend on Fedora 32+
-- [ ] **PLAT-02**: Doctor detects WSL2 with multi-signal approach and checks cgroup v2 config
+- [x] **PLAT-02**: Doctor detects WSL2 with multi-signal approach and checks cgroup v2 config
 - [ ] **PLAT-03**: Doctor detects Docker network subnet clashes with host routes
-- [ ] **PLAT-04**: Doctor checks device node access for rootfs (BTRFS/NVMe)
+- [x] **PLAT-04**: Doctor checks device node access for rootfs (BTRFS/NVMe)
 
 ### Website
 
@@ -139,9 +139,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KERN-03 | Phase 40 | Complete |
 | KERN-04 | Phase 40 | Complete |
 | PLAT-01 | Phase 40 | Complete |
-| PLAT-02 | Phase 40 | Pending |
+| PLAT-02 | Phase 40 | Complete |
 | PLAT-03 | Phase 41 | Pending |
-| PLAT-04 | Phase 40 | Pending |
+| PLAT-04 | Phase 40 | Complete |
 | SITE-01 | Phase 41 | Pending |
 
 **Coverage:**

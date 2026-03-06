@@ -5,13 +5,13 @@ milestone_name: Known Issues & Proactive Diagnostics
 status: active
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 40-02 (AppArmor, SELinux, firewalld checks)"
+last_activity: "2026-03-06 — Completed 40-03 (WSL2, rootfs, allChecks registry wiring)"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 87
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 40 - Kernel, Security, and Platform-Specific Checks
+**Current focus:** Phase 41 - Network, Create-Flow Integration, and Website
 
 ## Current Position
 
-Phase: 40 (3 of 4) — Kernel, Security, and Platform-Specific Checks
-Plan: 2 of 3 complete
-Status: Executing Phase 40
-Last activity: 2026-03-06 — Completed 40-02 (AppArmor, SELinux, firewalld checks)
+Phase: 40 (3 of 4) — Kernel, Security, and Platform-Specific Checks (COMPLETE)
+Plan: 3 of 3 complete
+Status: Phase 40 complete, ready for Phase 41
+Last activity: 2026-03-06 — Completed 40-03 (WSL2, rootfs, allChecks registry wiring)
 
-Progress: [████████░░] 87%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -69,6 +69,10 @@ Progress: [████████░░] 87%
 - [Phase 40]: P40-01: kernelVersionCheck uses fail (not warn) for < 4.6 -- cgroup namespace is hard blocker
 - [Phase 40]: P40-01: kernel_other.go stub returns nil from Run(), matching platform filtering pattern
 - [Phase 40]: P40-01: fakeReadFile test helper in inotify_test.go, reusable across doctor package
+- [Phase 40]: P40-03: WSL2 detection requires two signals (microsoft + WSL_DISTRO_NAME/WSLInterop) to prevent Azure VM false positives
+- [Phase 40]: P40-03: Cgroup v2 check verifies cpu, memory, pids controllers when WSL2 confirmed
+- [Phase 40]: P40-03: Rootfs check queries both Docker .Driver and .DriverStatus for BTRFS detection
+- [Phase 40]: P40-03: allChecks registry ordered: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3)
 
 ### Pending Todos
 
@@ -81,5 +85,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 40-02-PLAN.md. Next: 40-03 (WSL2, rootfs, allChecks registry wiring).
+Stopped at: Completed 40-03-PLAN.md. Phase 40 complete. Next: Phase 41 (Network, Create-Flow Integration, Website).
 Resume file: None
