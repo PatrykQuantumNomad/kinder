@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 	"sigs.k8s.io/kind/pkg/internal/apis/config/encoding"
 	"sigs.k8s.io/kind/pkg/internal/cli"
+	"sigs.k8s.io/kind/pkg/internal/doctor"
 	"sigs.k8s.io/kind/pkg/log"
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
@@ -166,6 +167,15 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
   config_path = "/etc/containerd/certs.d"
 `,
 		)
+	}
+
+	// Apply safe mitigations before provisioning.
+	// Tier-1 only: env vars, cluster config adjustments. Never calls sudo.
+	// Errors are informational -- log and continue to provisioning.
+	if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
+		for _, err := range errs {
+			logger.Warnf("Mitigation warning: %v", err)
+		}
 	}
 
 	// Create node containers implementing defined config Nodes
