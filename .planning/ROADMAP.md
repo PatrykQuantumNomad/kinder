@@ -94,8 +94,8 @@ Phases 35-37: GoReleaser Foundation, Homebrew Tap, NVIDIA GPU Addon.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 38-01-PLAN.md — Check interface, Result type, registry, platform filtering, output formatters, SafeMitigation skeleton
-- [ ] 38-02-PLAN.md — Migrate 3 existing checks to Check interface and refactor doctor.go CLI layer
+- [x] 38-01-PLAN.md — Check interface, Result type, registry, platform filtering, output formatters, SafeMitigation skeleton
+- [x] 38-02-PLAN.md — Migrate 3 existing checks to Check interface and refactor doctor.go CLI layer
 
 ### Phase 39: Docker and Tool Configuration Checks
 **Goal**: Users running `kinder doctor` get actionable warnings about the five most common Docker/tool configuration problems before they cause cryptic cluster creation failures
@@ -159,7 +159,7 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 35. GoReleaser Foundation | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 36. Homebrew Tap | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
-| 38. Check Infrastructure | 2/2 | Complete   | 2026-03-06 | - |
+| 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 0/? | Not started | - |
 | 40. Kernel & Platform Checks | v2.1 | 0/? | Not started | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |
