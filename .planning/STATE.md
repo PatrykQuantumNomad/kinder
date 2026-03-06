@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Known Issues & Proactive Diagnostics
-status: active
+status: complete
 stopped_at: null
 last_updated: "2026-03-06"
-last_activity: "2026-03-06 — Completed 41-01 (subnet clash detection with TDD)"
+last_activity: "2026-03-06 — Completed 41-03 (Known Issues documentation page). v2.1 milestone complete."
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Phase 41 - Network, Create-Flow Integration, and Website
+**Current focus:** v2.1 milestone complete
 
 ## Current Position
 
 Phase: 41 (4 of 4) — Network, Create-Flow Integration, and Website
-Plan: 2 of 3 (41-01, 41-02 complete)
-Status: Executing Phase 41
-Last activity: 2026-03-06 — Completed 41-01 (subnet clash detection with TDD)
+Plan: 3 of 3 (all complete)
+Status: v2.1 milestone complete
+Last activity: 2026-03-06 — Completed 41-03 (Known Issues documentation page)
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [█████████░] 90%
 - v1.4: 13 plans, 5 phases, 2 days
 - v1.5: 7 plans, 5 phases, 1 day
 - v2.0: 7 plans, 3 phases, 2 days
+- v2.1: 10 plans, 4 phases, 1 day
 
 ## Accumulated Context
 
@@ -80,6 +81,10 @@ Progress: [█████████░] 90%
 - [Phase 41]: P41-01: Self-referential Docker routes skipped by exact netip.Prefix equality
 - [Phase 41]: P41-01: IPv4 only -- IPv6 ULA clashes are extremely rare
 - [Phase 41]: P41-01: allChecks registry now 18 checks: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(1)
+- [Phase 41]: P41-03: Known Issues page organized by category matching allChecks registry order
+- [Phase 41]: P41-03: GPU checks section prefaced with informational note for NVIDIA addon users only
+- [Phase 41]: P41-03: What/Why/Platforms/Fix consistent four-section structure for all 18 check docs
+- [Phase 41]: P41-03: Automatic Mitigations section documents tier-1 constraints and current empty state
 
 ### Pending Todos
 
@@ -92,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 41-01-PLAN.md. Subnet clash detection implemented with TDD. Next: 41-03 (website).
+Stopped at: Completed 41-03-PLAN.md. v2.1 milestone complete. All 10 plans across 4 phases shipped.
 Resume file: None

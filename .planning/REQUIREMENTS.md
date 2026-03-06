@@ -40,7 +40,7 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 
 ### Website
 
-- [ ] **SITE-01**: Known Issues / Troubleshooting page documenting all checks and mitigations
+- [x] **SITE-01**: Known Issues / Troubleshooting page documenting all checks and mitigations
 
 ## v2.0 Requirements (Complete)
 
@@ -140,9 +140,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KERN-04 | Phase 40 | Complete |
 | PLAT-01 | Phase 40 | Complete |
 | PLAT-02 | Phase 40 | Complete |
-| PLAT-03 | Phase 41 | Pending |
+| PLAT-03 | Phase 41 | Complete |
 | PLAT-04 | Phase 40 | Complete |
-| SITE-01 | Phase 41 | Pending |
+| SITE-01 | Phase 41 | Complete |
 
 **Coverage:**
 - v2.1 requirements: 20 total

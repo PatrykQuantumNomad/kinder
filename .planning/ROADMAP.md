@@ -9,7 +9,7 @@
 - SHIPPED **v1.4 Code Quality & Features** - Phases 25-29 (shipped 2026-03-04)
 - SHIPPED **v1.5 Website Use Cases & Documentation** - Phases 30-34 (shipped 2026-03-04)
 - SHIPPED **v2.0 Distribution & GPU Support** - Phases 35-37 (shipped 2026-03-05)
-- IN PROGRESS **v2.1 Known Issues & Proactive Diagnostics** - Phases 38-41
+- SHIPPED **v2.1 Known Issues & Proactive Diagnostics** - Phases 38-41 (shipped 2026-03-06)
 
 ## Phases
 
@@ -70,14 +70,14 @@ Phases 35-37: GoReleaser Foundation, Homebrew Tap, NVIDIA GPU Addon.
 
 </details>
 
-### v2.1 Known Issues & Proactive Diagnostics (In Progress)
+### v2.1 Known Issues & Proactive Diagnostics (Shipped 2026-03-06)
 
 **Milestone Goal:** Address Kind's documented known issues by expanding `kinder doctor` with 13 new diagnostic checks, adding automatic mitigations during cluster creation where safe, and documenting all checks on the website.
 
 - [x] **Phase 38: Check Infrastructure and Interface** - Shared doctor package with Check interface, Result type, registry, mitigation tiers, and existing check migration (completed 2026-03-06)
 - [x] **Phase 39: Docker and Tool Configuration Checks** - Cross-platform checks for disk space, daemon.json, Docker snap, kubectl skew, and socket permissions (completed 2026-03-06)
 - [x] **Phase 40: Kernel, Security, and Platform-Specific Checks** - Linux-only checks for inotify, AppArmor, SELinux, kernel version, firewalld, WSL2, and rootfs devices (completed 2026-03-06)
-- [ ] **Phase 41: Network, Create-Flow Integration, and Website** - Subnet clash detection, ApplySafeMitigations wiring into create flow, and Known Issues documentation page
+- [x] **Phase 41: Network, Create-Flow Integration, and Website** - Subnet clash detection, ApplySafeMitigations wiring into create flow, and Known Issues documentation page (completed 2026-03-06)
 
 ## Phase Details
 
@@ -143,7 +143,7 @@ Plans:
 Plans:
 - [x] 41-01-PLAN.md — Subnet clash detection check with TDD (PLAT-03)
 - [x] 41-02-PLAN.md — ApplySafeMitigations wiring into create flow (INFRA-05)
-- [ ] 41-03-PLAN.md — Known Issues documentation page on website (SITE-01)
+- [x] 41-03-PLAN.md — Known Issues documentation page on website (SITE-01)
 
 ## Progress
 
@@ -164,4 +164,4 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 40. Kernel & Platform Checks | v2.1 | 3/3 | Complete | 2026-03-06 |
-| 41. Network, Integration & Website | v2.1 | 2/3 | In progress | - |
+| 41. Network, Integration & Website | v2.1 | 3/3 | Complete | 2026-03-06 |
