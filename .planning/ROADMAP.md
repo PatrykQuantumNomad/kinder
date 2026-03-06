@@ -75,7 +75,7 @@ Phases 35-37: GoReleaser Foundation, Homebrew Tap, NVIDIA GPU Addon.
 **Milestone Goal:** Address Kind's documented known issues by expanding `kinder doctor` with 13 new diagnostic checks, adding automatic mitigations during cluster creation where safe, and documenting all checks on the website.
 
 - [x] **Phase 38: Check Infrastructure and Interface** - Shared doctor package with Check interface, Result type, registry, mitigation tiers, and existing check migration (completed 2026-03-06)
-- [ ] **Phase 39: Docker and Tool Configuration Checks** - Cross-platform checks for disk space, daemon.json, Docker snap, kubectl skew, and socket permissions
+- [x] **Phase 39: Docker and Tool Configuration Checks** - Cross-platform checks for disk space, daemon.json, Docker snap, kubectl skew, and socket permissions (completed 2026-03-06)
 - [ ] **Phase 40: Kernel, Security, and Platform-Specific Checks** - Linux-only checks for inotify, AppArmor, SELinux, kernel version, firewalld, WSL2, and rootfs devices
 - [ ] **Phase 41: Network, Create-Flow Integration, and Website** - Subnet clash detection, ApplySafeMitigations wiring into create flow, and Known Issues documentation page
 
@@ -110,8 +110,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 39-01-PLAN.md — Disk space, daemon.json, and Docker snap checks (DOCK-01, DOCK-02, DOCK-03)
-- [ ] 39-02-PLAN.md — Kubectl version skew and Docker socket permission checks (DOCK-04, DOCK-05)
+- [x] 39-01-PLAN.md — Disk space, daemon.json, and Docker snap checks (DOCK-01, DOCK-02, DOCK-03)
+- [x] 39-02-PLAN.md — Kubectl version skew and Docker socket permission checks (DOCK-04, DOCK-05)
 
 ### Phase 40: Kernel, Security, and Platform-Specific Checks
 **Goal**: Linux users running `kinder doctor` get advance warnings about kernel limits, security modules, and platform configurations that would silently break or degrade kind clusters
@@ -160,6 +160,6 @@ Phases execute in numeric order: 38 -> 39 -> 40 -> 41
 | 36. Homebrew Tap | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 37. NVIDIA GPU Addon | v2.0 | 3/3 | Complete | 2026-03-05 |
 | 38. Check Infrastructure | v2.1 | 2/2 | Complete | 2026-03-06 |
-| 39. Docker & Tool Checks | 1/2 | In Progress|  | - |
+| 39. Docker & Tool Checks | v2.1 | 2/2 | Complete | 2026-03-06 |
 | 40. Kernel & Platform Checks | v2.1 | 0/? | Not started | - |
 | 41. Network, Integration & Website | v2.1 | 0/? | Not started | - |

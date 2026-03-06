@@ -21,8 +21,8 @@ Requirements for v2.1 Known Issues & Proactive Diagnostics. Each maps to roadmap
 - [x] **DOCK-01**: Doctor checks available disk space, warns at <5GB, fails at <2GB
 - [x] **DOCK-02**: Doctor detects daemon.json "init: true" across 6+ location candidates
 - [x] **DOCK-03**: Doctor detects Docker installed via snap and warns about TMPDIR issues
-- [ ] **DOCK-04**: Doctor detects kubectl version skew and warns about incompatibility
-- [ ] **DOCK-05**: Doctor detects Docker socket permission denied and suggests fix
+- [x] **DOCK-04**: Doctor detects kubectl version skew and warns about incompatibility
+- [x] **DOCK-05**: Doctor detects Docker socket permission denied and suggests fix
 
 ### Kernel & Security
 
@@ -132,8 +132,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOCK-01 | Phase 39 | Complete |
 | DOCK-02 | Phase 39 | Complete |
 | DOCK-03 | Phase 39 | Complete |
-| DOCK-04 | Phase 39 | Pending |
-| DOCK-05 | Phase 39 | Pending |
+| DOCK-04 | Phase 39 | Complete |
+| DOCK-05 | Phase 39 | Complete |
 | KERN-01 | Phase 40 | Pending |
 | KERN-02 | Phase 40 | Pending |
 | KERN-03 | Phase 40 | Pending |
