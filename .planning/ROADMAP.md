@@ -76,7 +76,7 @@ Phases 35-37: GoReleaser Foundation, Homebrew Tap, NVIDIA GPU Addon.
 
 - [x] **Phase 38: Check Infrastructure and Interface** - Shared doctor package with Check interface, Result type, registry, mitigation tiers, and existing check migration (completed 2026-03-06)
 - [x] **Phase 39: Docker and Tool Configuration Checks** - Cross-platform checks for disk space, daemon.json, Docker snap, kubectl skew, and socket permissions (completed 2026-03-06)
-- [ ] **Phase 40: Kernel, Security, and Platform-Specific Checks** - Linux-only checks for inotify, AppArmor, SELinux, kernel version, firewalld, WSL2, and rootfs devices
+- [x] **Phase 40: Kernel, Security, and Platform-Specific Checks** - Linux-only checks for inotify, AppArmor, SELinux, kernel version, firewalld, WSL2, and rootfs devices (completed 2026-03-06)
 - [ ] **Phase 41: Network, Create-Flow Integration, and Website** - Subnet clash detection, ApplySafeMitigations wiring into create flow, and Known Issues documentation page
 
 ## Phase Details
