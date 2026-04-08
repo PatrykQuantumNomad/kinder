@@ -537,22 +537,19 @@ ASVS categories V2-V6 do not apply. No new attack surface is introduced.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Node naming in validation errors vs. provisioned names**
    - What we know: Internal `config.Node` has no Name field; names are assigned at provisioning time by `MakeNodeNamer`
-   - What's unclear: Should error messages use role+index (`worker[1]`) or anticipate the provisioned name (`<cluster>-worker2`)?
-   - Recommendation: Use role+index for config-time errors (e.g., `worker[1]`). At config-parse time, the cluster name may not be final. The user's CONTEXT.md example shows `worker-2` which is illustrative.
+   - RESOLVED: Use role+index for config-time errors (e.g., `worker[1]`). At config-parse time, the cluster name may not be final. The user's CONTEXT.md example shows `worker-2` which is illustrative. For doctor checks on running clusters, use the actual container name from `node.String()`.
 
 2. **STATUS column implementation for `get nodes`**
    - What we know: `nodes.Node` interface has no `Status()` method; STATUS requires either container inspect or kubelet API call
-   - What's unclear: Is STATUS column required for MVER-05 success criteria, or just VERSION?
-   - Recommendation: MVER-05 strictly requires "per-node Kubernetes version column." Add STATUS via direct container inspect (consistent with `Role()` pattern) since the example output in CONTEXT.md includes it. If too costly, omit STATUS and document it as optional.
+   - RESOLVED: Include STATUS column since CONTEXT.md example output shows it. Implement using a simple heuristic: if `KubeVersion()` succeeds (node responds to exec), status is "Ready"; if it fails, status is "NotReady". This avoids adding a new `Status()` method to the Node interface.
 
 3. **Doctor check cluster discovery**
    - What we know: Doctor checks are currently stateless (no provider context); the check needs to discover and list running clusters
-   - What's unclear: How should the cluster-skew check know which cluster to inspect?
-   - Recommendation: The check should auto-discover the default cluster (`kind` cluster name) using `cluster.NewProvider().ListNodes(cluster.DefaultName)`. If no default cluster exists, skip. This is the least-surprise behavior.
+   - RESOLVED: Auto-discover the default cluster (`kind` cluster name) using `cluster.NewProvider().ListNodes(cluster.DefaultName)`. If no default cluster exists, return skip result. Use dependency injection in the check struct for testability.
 
 ---
 
