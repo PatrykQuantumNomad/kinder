@@ -19,9 +19,11 @@ package doctor
 import (
 	"bytes"
 	"fmt"
+	osexec "os/exec"
 	"strings"
 	"text/tabwriter"
 
+	"sigs.k8s.io/kind/pkg/exec"
 	"sigs.k8s.io/kind/pkg/internal/version"
 )
 
@@ -52,14 +54,76 @@ func newClusterNodeSkewCheck() Check {
 }
 
 // realListNodes discovers nodes from the default kind cluster and collects
-// live version information.  Because this requires a running cluster and a
-// working container runtime it may return an empty slice (skip) rather than
-// an error if the cluster simply isn't running.
+// live version information using low-level container CLI commands.
+// It avoids importing the cluster package (which would create an import cycle
+// since cluster/internal/create imports doctor).
 func realListNodes() ([]nodeEntry, error) {
-	// Import lazily to avoid pulling in heavy cluster deps in unit tests.
-	// In tests the listNodes field is replaced with a fake.
-	// This function is only called in the real (non-test) path.
-	return nil, nil // signals "no cluster" → skip
+	// Detect container runtime binary.
+	var binaryName string
+	for _, rt := range []string{"docker", "podman", "nerdctl"} {
+		if _, err := osexec.LookPath(rt); err == nil {
+			binaryName = rt
+			break
+		}
+	}
+	if binaryName == "" {
+		return nil, nil // no runtime → skip
+	}
+
+	// List kind cluster containers by label.
+	// The format outputs "name|role|image" per container.
+	lines, err := exec.OutputLines(exec.Command(
+		binaryName, "ps",
+		"--filter", "label=io.x-k8s.kind.cluster=kind",
+		"--format", `{{.Names}}`,
+	))
+	if err != nil || len(lines) == 0 {
+		return nil, nil // no cluster running → skip
+	}
+
+	entries := make([]nodeEntry, 0, len(lines))
+	for _, name := range lines {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		// Get role and image via inspect.
+		var role, image string
+		inspectLines, inspectErr := exec.OutputLines(exec.Command(
+			binaryName, "inspect",
+			"--format", `{{ index .Config.Labels "io.x-k8s.kind.role" }}|{{.Config.Image}}`,
+			name,
+		))
+		if inspectErr == nil && len(inspectLines) > 0 {
+			parts := strings.SplitN(inspectLines[0], "|", 2)
+			if len(parts) == 2 {
+				role = parts[0]
+				image = parts[1]
+			}
+		}
+
+		// Get live Kubernetes version from /kind/version inside the container.
+		var ver string
+		var verErr error
+		verLines, execErr := exec.OutputLines(exec.Command(
+			binaryName, "exec", name, "cat", "/kind/version",
+		))
+		if execErr != nil {
+			verErr = execErr
+		} else if len(verLines) > 0 {
+			ver = strings.TrimSpace(verLines[0])
+		}
+
+		entries = append(entries, nodeEntry{
+			Name:       name,
+			Role:       role,
+			Version:    ver,
+			Image:      image,
+			VersionErr: verErr,
+		})
+	}
+	return entries, nil
 }
 
 func (c *clusterNodeSkewCheck) Name() string       { return "cluster-node-skew" }

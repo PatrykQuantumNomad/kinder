@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	osexec "os/exec"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -29,6 +31,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/exec"
 	"sigs.k8s.io/kind/pkg/log"
 
 	"sigs.k8s.io/kind/pkg/internal/cli"
@@ -168,6 +171,15 @@ func collectNodeInfos(allNodes []nodes.Node) []nodeInfo {
 		version string
 		image   string
 	}
+	// Detect container runtime for image inspect.
+	var binaryName string
+	for _, rt := range []string{"docker", "podman", "nerdctl"} {
+		if _, err := osexec.LookPath(rt); err == nil {
+			binaryName = rt
+			break
+		}
+	}
+
 	raws := make([]raw, 0, len(allNodes))
 	for _, n := range allNodes {
 		role, err := n.Role()
@@ -178,13 +190,23 @@ func collectNodeInfos(allNodes []nodes.Node) []nodeInfo {
 		if err != nil {
 			ver = "unknown"
 		}
-		// Image is not directly accessible via the nodes.Node interface without
-		// a container inspect; use a best-effort empty string for non-critical display.
+		// Get container image via runtime inspect.
+		var image string
+		if binaryName != "" {
+			lines, inspectErr := exec.OutputLines(exec.Command(
+				binaryName, "inspect",
+				"--format", "{{.Config.Image}}",
+				n.String(),
+			))
+			if inspectErr == nil && len(lines) > 0 {
+				image = strings.TrimSpace(lines[0])
+			}
+		}
 		raws = append(raws, raw{
 			name:    n.String(),
 			role:    role,
 			version: ver,
-			image:   "",
+			image:   image,
 		})
 	}
 
