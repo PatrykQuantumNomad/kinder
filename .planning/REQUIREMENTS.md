@@ -9,9 +9,9 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 
 ### Multi-Version Clusters
 
-- [ ] **MVER-01**: `--image` flag only overrides nodes without an explicit image in config (fix fixupOptions bug)
-- [ ] **MVER-02**: Config validation rejects invalid version-skew combinations before provisioning (control-plane same version, workers within 3-minor of control-plane)
-- [ ] **MVER-03**: Clear error messages surface version-skew violations at config parse time instead of cryptic kubeadm join failures
+- [x] **MVER-01**: `--image` flag only overrides nodes without an explicit image in config (fix fixupOptions bug)
+- [x] **MVER-02**: Config validation rejects invalid version-skew combinations before provisioning (control-plane same version, workers within 3-minor of control-plane)
+- [x] **MVER-03**: Clear error messages surface version-skew violations at config parse time instead of cryptic kubeadm join failures
 - [ ] **MVER-04**: `kinder doctor` detects version-skew issues in running clusters
 - [ ] **MVER-05**: `kinder get nodes` output includes per-node Kubernetes version column
 
@@ -80,9 +80,9 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MVER-01 | Phase 42 | Pending |
-| MVER-02 | Phase 42 | Pending |
-| MVER-03 | Phase 42 | Pending |
+| MVER-01 | Phase 42 | Complete |
+| MVER-02 | Phase 42 | Complete |
+| MVER-03 | Phase 42 | Complete |
 | MVER-04 | Phase 42 | Pending |
 | MVER-05 | Phase 42 | Pending |
 | AIRGAP-01 | Phase 43 | Pending |

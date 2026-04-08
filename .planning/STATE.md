@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
-status: active
-stopped_at: null
-last_updated: "2026-04-08"
-last_activity: "2026-04-08 — Roadmap created for v2.2 (phases 42-46)"
+status: planning
+stopped_at: Completed 42-01-PLAN.md
+last_updated: "2026-04-08T18:47:26.896Z"
+last_activity: 2026-04-08 — Roadmap created, 25 requirements mapped across 5 phases (42-46)
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -35,6 +35,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - v1.0: 12 plans, 8 phases, 1 day
 - v1.1: 8 plans, 6 phases, 2 days
 - v1.2: 4 phases, 1 day
@@ -57,6 +58,8 @@ Progress: [░░░░░░░░░░] 0%
 - v2.2 planning: Phase 43 must be stable before Phase 44 (air-gap image warning lists local-path images)
 - v2.2 planning: Phase 43 is a dependency of Phase 46 (load images supports the offline workflow)
 - v2.2 planning: Phases 43 and 46 flagged for `/gsd-research-phase` during planning (Provider interface change, Docker Desktop 27+ fallback)
+- [Phase 42]: Non-semver image tags (e.g. 'latest') skip version-skew validation to preserve backward compat with test/dev configs
+- [Phase 42]: ExplicitImage captured pre-defaults in encoding/convert.go — SetDefaultsCluster fills empty Image fields before Convertv1alpha4 runs, making post-defaults detection impossible
 
 ### Pending Todos
 
@@ -69,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-08
-Stopped at: Roadmap created — ready to plan Phase 42
+Last session: 2026-04-08T18:47:26.893Z
+Stopped at: Completed 42-01-PLAN.md
 Resume file: None
