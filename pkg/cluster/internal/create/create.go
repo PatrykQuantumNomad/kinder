@@ -375,13 +375,17 @@ func fixupOptions(opts *ClusterOptions) error {
 		opts.Config.Name = opts.NameOverride
 	}
 
-	// if NodeImage was set, override the image on all nodes
+	// if NodeImage was set, override the image on nodes that do not have an explicit image
 	if opts.NodeImage != "" {
-		// Apply image override to all the Nodes defined in Config
+		// Apply image override only to nodes without an explicit per-node image.
+		// Nodes with ExplicitImage=true had their image set in the config file and
+		// should not be overridden by the --image flag.
 		// TODO(fabrizio pandini): this should be reconsidered when implementing
 		//     https://github.com/kubernetes-sigs/kind/issues/133
 		for i := range opts.Config.Nodes {
-			opts.Config.Nodes[i].Image = opts.NodeImage
+			if !opts.Config.Nodes[i].ExplicitImage {
+				opts.Config.Nodes[i].Image = opts.NodeImage
+			}
 		}
 	}
 
