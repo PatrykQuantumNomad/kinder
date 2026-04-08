@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: Known Issues & Proactive Diagnostics
-status: shipped
+milestone: v2.2
+milestone_name: Cluster Capabilities
+status: active
 stopped_at: null
-last_updated: "2026-03-06"
-last_activity: "2026-03-06 — v2.1 milestone archived and tagged"
+last_updated: "2026-04-08"
+last_activity: "2026-04-08 — Milestone v2.2 started"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-06)
+See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Planning next milestone
+**Current focus:** v2.2 Cluster Capabilities — offline clusters, local storage, host mounts, multi-version nodes
 
 ## Current Position
 
-Phase: Milestone complete
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-06 — v2.1 milestone complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-08 — Milestone v2.2 started
 
-Progress: [##########] 100% (v2.1 shipped)
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -60,6 +60,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06
-Stopped at: v2.1 milestone archived. Ready for next milestone.
+Last session: 2026-04-08
+Stopped at: Defining v2.2 requirements
 Resume file: None

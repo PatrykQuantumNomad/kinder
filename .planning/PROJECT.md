@@ -63,7 +63,10 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(None — planning next milestone)
+- [ ] Offline/air-gapped cluster creation with pre-baked addon images and `kinder load images` for custom image caching
+- [ ] Local storage provider (local-path-provisioner) as a default addon with automatic PV provisioning
+- [ ] Host directory mounting through to pods (host → container → pod via hostPath) configurable in v1alpha4
+- [ ] Multi-version clusters with per-node Kubernetes version in v1alpha4 config for skew testing
 
 ### Out of Scope
 
@@ -154,4 +157,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Warn-and-continue mitigations | Mitigation errors never block cluster creation | Good |
 
 ---
-*Last updated: 2026-03-06 after v2.1 milestone*
+*Last updated: 2026-04-08 after v2.2 milestone start*
