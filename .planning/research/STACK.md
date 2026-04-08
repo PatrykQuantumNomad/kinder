@@ -1,647 +1,214 @@
 # Technology Stack
 
-**Project:** kinder -- Diagnostic checks and auto-mitigations for `kinder doctor`
-**Scope:** Go libraries and system APIs for 13 new diagnostic checks
-**Researched:** 2026-03-06
-**Overall confidence:** HIGH -- All 13 checks are implementable with Go stdlib + one already-present indirect dependency (`golang.org/x/sys`). No new external dependencies required.
+**Project:** kinder -- v2.2 Cluster Capabilities (offline clusters, local-path-provisioner, host-dir mounts, multi-version nodes)
+**Researched:** 2026-04-08
+**Overall confidence:** HIGH -- All four features use Go stdlib + already-present dependencies. No new external dependencies required.
 
 ---
 
 ## Executive Summary: What Actually Changes
 
-This milestone adds 13 diagnostic checks to the existing `kinder doctor` command. The existing command already has the result/checkResult pattern, JSON output, ok/warn/fail formatters, and structured exit codes (0/1/2). Each new check follows the same `func check*() result` or `func check*() []result` pattern.
+This milestone adds four capabilities to kinder. After thorough codebase analysis and dependency verification, the finding is the same as the previous milestone: **zero new go.mod dependencies are required**. Every feature integrates using packages already present in the codebase.
 
-**The critical finding: every check can be implemented using Go stdlib packages (`os`, `os/exec`, `encoding/json`, `net/netip`, `strings`, `strconv`, `runtime`) plus `golang.org/x/sys/unix` (already an indirect dependency in go.mod at v0.41.0). Zero new go.mod dependencies are needed.**
-
-The `opencontainers/selinux` library was evaluated and rejected -- shelling out to `getenforce` is simpler, avoids adding a dependency, and is consistent with the existing doctor pattern (which uses `exec.Command` for all checks).
+| Feature | Stack Impact |
+|---------|-------------|
+| Offline/air-gapped clusters (`kinder build bake-images` + `kinder load images`) | New subcommand using existing `exec`, `fs`, `errors` packages + existing `containerdImporter` pattern |
+| local-path-provisioner addon | New addon action using `//go:embed` + `kubectl apply` pattern (identical to MetalLB, cert-manager) |
+| Host-to-pod directory mounting via v1alpha4 | Zero new dependencies -- `ExtraMounts []Mount` already exists on `Node`; feature is a v1alpha4 config field + kinder doctor check |
+| Multi-version per-node Kubernetes | Zero new dependencies -- `Node.Image` already accepts any `kindest/node` image; feature is validation + UX in create command |
 
 ---
 
 ## Recommended Stack
 
-### Go Standard Library -- Core for All Checks
+### Existing Packages -- Reuse for All Four Features
 
-| Package | Purpose | Used By Checks | Why |
-|---------|---------|----------------|-----|
-| `os` | Read `/proc` files, `os.Stat` for socket permissions, `os.ReadFile` for config files | 1, 3, 4, 5, 7, 8, 10, 11 | Already used throughout codebase; `os.ReadFile` for procfs/config files is the idiomatic Go approach |
-| `os/exec` (via `sigs.k8s.io/kind/pkg/exec`) | Shell out to `docker`, `kubectl`, `getenforce`, `aa-status`, `ip route`, `uname` | 3, 4, 5, 6, 7, 8, 9, 12, 13 | Kinder already wraps `os/exec` in its own `exec.Command`/`exec.OutputLines` interface; all existing doctor checks use this pattern |
-| `encoding/json` | Parse `docker info --format`, `docker network inspect`, `kubectl version --client -o json`, `daemon.json` | 4, 12, 13 | Already imported in `doctor.go`; Docker and kubectl both produce JSON output |
-| `net/netip` | Parse CIDR prefixes, detect subnet overlaps with `Prefix.Overlaps()` | 13 | Go 1.18+ stdlib; provides `ParsePrefix` and `Overlaps()` -- purpose-built for subnet clash detection; no external dependency needed |
-| `strings` | Parse command output, detect "microsoft" in `/proc/version` for WSL2, detect "snap" in binary paths | 3, 6, 7, 8, 10, 11 | Already imported in `doctor.go` |
-| `strconv` | Parse numeric values from `/proc/sys/fs/inotify/*`, disk sizes | 1, 2 | Already used elsewhere in codebase |
-| `runtime` | `runtime.GOOS` for platform-gated checks (Linux-only) | 1, 2, 5, 6, 7, 8, 9, 10, 11 | Already used in `doctor.go` for NVIDIA GPU Linux gate |
-| `path/filepath` | Resolve symlinks for snap detection, construct procfs paths | 3, 5 | Stdlib; used for `filepath.EvalSymlinks` to resolve `/usr/bin/docker` -> `/snap/bin/docker` |
+| Package | Already In go.mod | Purpose in New Features |
+|---------|-------------------|------------------------|
+| `sigs.k8s.io/kind/pkg/exec` | YES | Shell out to `docker save`, `docker load`, `ctr images import` for image baking and `kinder load images` |
+| `sigs.k8s.io/kind/pkg/fs` | YES | `fs.TempDir` for staging image tarballs during `kinder load images` (same as existing `load docker-image`) |
+| `sigs.k8s.io/kind/pkg/errors` | YES | `errors.UntilErrorConcurrent` for parallel node image loading (same pattern as existing load subcommand) |
+| `sigs.k8s.io/kind/pkg/build/nodeimage` (internal) | YES | `containerdImporter` in `imageimporter.go` -- the exact mechanism for baking images into node images |
+| `sigs.k8s.io/kind/pkg/cluster/nodeutils` | YES | `LoadImageArchive` for `kinder load images` (already used by `load docker-image` and `load image-archive`) |
+| `sigs.k8s.io/kind/pkg/internal/version` | YES | `ParseSemantic`, `LessThan` for per-node version skew validation |
+| `encoding/json` (stdlib) | YES | Parse `docker image inspect` output for image ID extraction |
+| `os` (stdlib) | YES | File I/O for image tarballs |
+| `_ "embed"` (stdlib) | YES (used in 7 addons) | `//go:embed manifests/local-path-storage.yaml` for local-path-provisioner manifest |
 
-### Extended Standard Library -- `golang.org/x/sys/unix`
+### Feature 1: Offline/Air-Gapped Clusters
 
-| Package | Version | Purpose | Used By Checks | Why |
-|---------|---------|---------|----------------|-----|
-| `golang.org/x/sys/unix` | v0.41.0 | `unix.Statfs` for disk space, `unix.Uname` for kernel version | 2, 11 | **Already an indirect dependency in go.mod.** Preferred over deprecated `syscall.Statfs`. Provides `Statfs_t.Bavail` (available-to-user space) and `Utsname.Release` (kernel version string). Must be promoted from indirect to direct in go.mod (no version change). |
+**Approach:** Two-part implementation.
 
-### Existing Kinder Internal Packages -- Reuse
+**Part A -- `kinder build bake-images IMAGE [IMAGE...]` subcommand:**
+Pre-bakes additional images into a `kindest/node` base image using `docker run` + `ctr images import` + `docker commit`. This is the exact pattern already in `pkg/build/nodeimage/buildcontext.go` (`prePullImagesAndWriteManifests` + `containerdImporter`). The new command wraps that mechanism for ad-hoc image baking.
 
-| Package | Purpose | Used By Checks | Why |
-|---------|---------|----------------|-----|
-| `sigs.k8s.io/kind/pkg/exec` | `exec.Command`, `exec.OutputLines`, `exec.Output` wrappers | All command-based checks | The existing doctor command already uses this; maintains testability through the `Cmd` interface |
-| `sigs.k8s.io/kind/pkg/internal/version` | `ParseSemantic`, `AtLeast`, `LessThan` for version comparison | 12 | Already exists in codebase; forked from `k8s.io/apimachinery/pkg/util/version`; handles Kubernetes `v1.30.0` format correctly; no need for Masterminds/semver |
-| `sigs.k8s.io/kind/pkg/cmd` | `IOStreams` for output routing | Integration | Already used by `doctor.go` |
-| `sigs.k8s.io/kind/pkg/log` | Logger interface | Integration | Already used by `doctor.go` |
+Implementation path:
+1. New `pkg/cmd/kind/build/bakeimages/` package (sibling of existing `nodeimage/`)
+2. Uses `containerdImporter` from `pkg/build/nodeimage/imageimporter.go` (may need to be made exportable or replicated)
+3. Flow: `docker run <base-image>` → start containerd → `ctr import` each image tar → `docker commit` → output new image tag
 
----
+**Part B -- `kinder load images IMAGE [IMAGE...]` subcommand (runtime loading):**
+Loads images from host Docker daemon into running cluster nodes. This is identical to the existing `load docker-image` command in `pkg/cmd/kind/load/docker-image/`. The only addition is a convenience alias `kinder load images` that resolves multiple image names, calls `docker save`, then pipes to `nodeutils.LoadImageArchive` on each node.
 
-## Check-by-Check Implementation Details
+No new dependencies. The existing `load docker-image` code is the blueprint.
 
-### Check 1: inotify Limits (`/proc/sys/fs/inotify/*`)
+**Part C -- Containerd offline mode config:**
+For true air-gapped operation, containerd must be configured not to attempt pulls (`imagePullPolicy: Never` is pod-level, but containerd-level requires no additional code change -- it is enforced by the node image having all images pre-baked and Kubernetes `imagePullPolicy: IfNotPresent`). The existing `ContainerdConfigPatches` mechanism handles any required containerd registry mirror configuration.
 
-**Platform:** Linux only
-**API:** `os.ReadFile` + `strconv.Atoi`
-**Files read:**
-- `/proc/sys/fs/inotify/max_user_watches` (should be >= 524288)
-- `/proc/sys/fs/inotify/max_user_instances` (should be >= 512)
+**Part D -- `kinder doctor` checks for offline readiness:**
+Uses existing `exec` + `crictl`/`ctr` pattern from `pkg/cluster/nodeutils/util.go` to verify that required images are present on nodes before cluster creation.
 
-**Implementation:**
-```go
-func checkInotifyLimits() []result {
-    // Skip on non-Linux
-    if runtime.GOOS != "linux" {
-        return nil
-    }
-    data, err := os.ReadFile("/proc/sys/fs/inotify/max_user_watches")
-    if err != nil {
-        return []result{{name: "inotify-watches", status: "warn", message: "could not read inotify limits"}}
-    }
-    val, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-    if val < 524288 {
-        return []result{{name: "inotify-watches", status: "warn",
-            message: fmt.Sprintf("max_user_watches=%d (< 524288) -- run: sudo sysctl fs.inotify.max_user_watches=524288")}}
-    }
-    // ... similar for max_user_instances
-}
-```
+### Feature 2: local-path-provisioner Addon
 
-**External dependencies:** None. Procfs is a virtual filesystem readable with standard file I/O.
-**Confidence:** HIGH -- this is the documented kind fix for "too many open files" (kind known issues page).
+**Important codebase finding:** The `kindest/node` base image already ships a `local-path-provisioner` variant as its storage driver. `pkg/build/nodeimage/const_storage.go` defines `docker.io/kindest/local-path-provisioner:v20260213-ea8e5717` and `docker.io/kindest/local-path-helper:v20260131-7181c60a`. The existing `installstorage` action in `create.go` applies this at cluster creation from the manifest baked into the node image.
 
-### Check 2: Available Disk Space
+**What the new addon adds:** An opt-in `LocalPathProvisioner` addon backed by upstream `rancher/local-path-provisioner:v0.0.35`, as opposed to the kindest-flavored version baked into the node image. This is useful when the user wants the canonical Rancher distribution on a cluster that was not built with `kinder build node-image`.
 
-**Platform:** Linux and macOS (not Windows)
-**API:** `golang.org/x/sys/unix.Statfs`
-**Why `unix.Statfs` not `syscall.Statfs`:** The `syscall` package is frozen/deprecated per Go team policy. `golang.org/x/sys/unix` is the maintained replacement and is already in go.mod as an indirect dependency.
+Implementation:
+1. New `pkg/cluster/internal/create/actions/installlocalpath/` package
+2. `//go:embed manifests/local-path-storage.yaml` embedding the upstream manifest
+3. Manifest sources `rancher/local-path-provisioner:v0.0.35` and `busybox` as helper
+4. Follows identical pattern to `installcertmanager`, `installmetallb`: `kubectl apply -f -` via `controlPlane.Command`
+5. Add `LocalPathProvisioner *bool` to `v1alpha4.Addons` struct (default opt-in: `true` using `boolVal`)
+6. Add `LocalPathProvisioner bool` to internal `config.Addons`
+7. Wire into wave 1 in `create.go` (independent of other addons -- no dependency)
 
-**Implementation:**
-```go
-func checkDiskSpace() result {
-    var stat unix.Statfs_t
-    if err := unix.Statfs("/var/lib/docker", &stat); err != nil {
-        // Fall back to checking "/"
-        if err := unix.Statfs("/", &stat); err != nil {
-            return result{name: "disk-space", status: "warn", message: "could not check disk space"}
-        }
-    }
-    availableBytes := stat.Bavail * uint64(stat.Bsize)
-    availableGB := availableBytes / (1024 * 1024 * 1024)
-    if availableGB < 10 {
-        return result{name: "disk-space", status: "warn",
-            message: fmt.Sprintf("%d GB available -- recommend at least 10 GB; run: docker system prune", availableGB)}
-    }
-    return result{name: "disk-space", status: "ok", message: fmt.Sprintf("%d GB available", availableGB)}
-}
-```
+**Manifest version:** `rancher/local-path-provisioner:v0.0.35` (released 2026-03-10). This is the latest upstream release and includes the fix for CVE-2025-62878.
 
-**Cross-platform:** `unix.Statfs` works on Linux and macOS (darwin). For macOS, check the Docker VM's disk via `docker system df --format '{{json .}}'` as an alternative since macOS Docker runs in a VM.
-**Confidence:** HIGH -- `Bavail` (not `Bfree`) is the correct field (matches `df` behavior for non-root users).
+**No new external dependencies.** The manifest is `//go:embed` static content. `kubectl apply` is called inside the node container via `controlPlane.Command`, same as every other addon.
 
-### Check 3: Docker Installed via Snap
+### Feature 3: Host-to-Pod Directory Mounting via v1alpha4
 
-**Platform:** Linux only
-**API:** `os/exec.LookPath` + `filepath.EvalSymlinks`
-**Detection method:** Resolve the Docker binary path and check if it contains `/snap/`:
+**Codebase finding:** This feature is already partially implemented. The `v1alpha4.Node.ExtraMounts []Mount` field exists, is fully parsed, and is wired through `docker create` args via `common.GenerateMountBindings`. The `Mount` struct has `HostPath`, `ContainerPath`, `Readonly`, `SelinuxRelabel`, `Propagation` fields. The docker provider already calls `filepath.Abs` to resolve relative host paths.
 
-```go
-func checkDockerSnap() result {
-    if runtime.GOOS != "linux" {
-        return result{} // skip
-    }
-    dockerPath, err := osexec.LookPath("docker")
-    if err != nil {
-        return result{} // no docker found -- other check handles this
-    }
-    resolved, err := filepath.EvalSymlinks(dockerPath)
-    if err != nil {
-        resolved = dockerPath
-    }
-    if strings.Contains(resolved, "/snap/") {
-        return result{name: "docker-snap", status: "warn",
-            message: "Docker installed via snap -- kind may fail due to snap confinement. Set TMPDIR=$HOME/tmp or install Docker via apt/dnf."}
-    }
-    return result{name: "docker-snap", status: "ok"}
-}
-```
+**What is NOT yet present:** The `ExtraMounts` field is on the Node (i.e., it mounts into the Docker container that IS the node). To mount a host directory into a pod running INSIDE the node, the user must:
+1. Mount the host path into the node container via `Node.ExtraMounts` (already works)
+2. Define a `hostPath` PersistentVolume or pod `volumes.hostPath` that references the container path
 
-**Why not `snap list docker`:** Shelling out to `snap` adds a dependency on the `snap` binary being on PATH. Checking the resolved binary path is simpler and works even when snap is not on PATH.
-**Confidence:** HIGH -- kind's known issues page documents this exact problem.
+**Stack impact:** No new packages needed. The implementation is:
+1. Documentation and examples showing the two-step pattern (existing `ExtraMounts` on node + pod `hostPath` volume referencing the container path)
+2. Optionally: a new `v1alpha4.Cluster.HostMounts []HostMount` field at the cluster level that auto-propagates a mount to ALL nodes (for the common case where the user wants the same directory accessible from any pod). This uses the same `Mount` struct and same docker args generation.
+3. A `kinder doctor` check validating that `ExtraMounts.HostPath` paths exist on the host (uses `os.Stat` -- stdlib only)
 
-### Check 4: Docker daemon.json Parsing
+**No new dependencies.** Pure struct field additions + existing path handling.
 
-**Platform:** All (but path differs)
-**API:** `os.ReadFile` + `encoding/json`
-**Location:** `/etc/docker/daemon.json` (Linux), `~/.docker/daemon.json` (macOS user config)
-**What to check:**
-- `"init": true` causes kind startup failures (documented known issue)
-- `"default-address-pools"` -- informational, relevant to check 13
+### Feature 4: Multi-Version Per-Node Kubernetes
 
-```go
-type daemonConfig struct {
-    Init                bool            `json:"init"`
-    DefaultAddressPools json.RawMessage `json:"default-address-pools,omitempty"`
-    StorageDriver       string          `json:"storage-driver,omitempty"`
-}
+**Codebase finding:** This feature is already supported at the data model level. `v1alpha4.Node.Image` accepts any image string, and different nodes can have different `kindest/node` images at different versions. The `fixupOptions` function in `create.go` only overrides all node images when `--image` flag is set globally; per-node images in config are preserved.
 
-func checkDaemonJSON() result {
-    data, err := os.ReadFile("/etc/docker/daemon.json")
-    if err != nil {
-        return result{name: "daemon-json", status: "ok", message: "no daemon.json found (using defaults)"}
-    }
-    var cfg daemonConfig
-    if err := json.Unmarshal(data, &cfg); err != nil {
-        return result{name: "daemon-json", status: "warn", message: "daemon.json exists but is not valid JSON"}
-    }
-    if cfg.Init {
-        return result{name: "daemon-json", status: "fail",
-            message: `"init": true in daemon.json causes kind startup failures -- remove or set to false`}
-    }
-    return result{name: "daemon-json", status: "ok"}
-}
-```
+**What is NOT yet present:**
+1. Validation that warns when nodes have different Kubernetes versions (currently silent)
+2. UX helper to resolve `kindest/node:vX.Y.Z` to the SHA-pinned digest for a given version
+3. `kinder doctor` check that validates version skew between control plane and worker nodes does not exceed +/- 2 minor versions (Kubernetes version skew policy)
 
-**External dependencies:** None. `encoding/json` handles this entirely.
-**Confidence:** HIGH -- `"init": true` is a documented kind known issue.
+**Stack impact:**
+- Version comparison uses existing `pkg/internal/version.ParseSemantic` + `LessThan` / `AtLeast` -- no new dependency
+- SHA digest resolution uses `exec.Command("docker", "image", "inspect", "-f", "{{.RepoDigests}}", image)` -- no new dependency
+- A `--image` flag per-node CLI override is additive to existing cobra command structure
 
-### Check 5: Docker Socket Permissions
-
-**Platform:** Linux and macOS
-**API:** `os.Stat` + `os.Getgroups` + `os.Getuid`
-**Socket path:** `/var/run/docker.sock` (standard), `/run/docker.sock` (some distros)
-
-```go
-func checkDockerSocket() result {
-    socketPath := "/var/run/docker.sock"
-    info, err := os.Stat(socketPath)
-    if err != nil {
-        return result{name: "docker-socket", status: "warn", message: "Docker socket not found at " + socketPath}
-    }
-    // Check if current user can access it
-    if os.Getuid() == 0 {
-        return result{name: "docker-socket", status: "ok", message: "running as root"}
-    }
-    // Try to actually open the socket to test access (most reliable)
-    if _, err := net.DialTimeout("unix", socketPath, time.Second); err != nil {
-        return result{name: "docker-socket", status: "fail",
-            message: "cannot connect to Docker socket -- add user to docker group: sudo usermod -aG docker $USER"}
-    }
-    return result{name: "docker-socket", status: "ok"}
-}
-```
-
-**Why test actual connectivity:** Checking `FileMode.Perm()` and group membership is unreliable (ACLs, Docker Desktop socket proxy, rootless Docker). Actually dialing the socket is the definitive test. The existing `checkBinary("docker")` already runs `docker version` which would catch this, but this check provides a more specific error message.
-**Confidence:** HIGH -- `net.DialTimeout("unix", ...)` is stdlib.
-
-### Check 6: Firewalld Backend (iptables vs nftables)
-
-**Platform:** Linux only
-**API:** `os.ReadFile` (config file) + `exec.Command` (fallback)
-**Detection method:** Read `/etc/firewalld/firewalld.conf` and look for `FirewallBackend=`:
-
-```go
-func checkFirewalldBackend() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    data, err := os.ReadFile("/etc/firewalld/firewalld.conf")
-    if err != nil {
-        return result{name: "firewalld", status: "ok", message: "firewalld not installed"}
-    }
-    for _, line := range strings.Split(string(data), "\n") {
-        line = strings.TrimSpace(line)
-        if strings.HasPrefix(line, "FirewallBackend=") {
-            backend := strings.TrimPrefix(line, "FirewallBackend=")
-            if backend == "nftables" {
-                return result{name: "firewalld", status: "warn",
-                    message: "firewalld uses nftables backend which can break kind networking. " +
-                        "Edit /etc/firewalld/firewalld.conf: FirewallBackend=iptables, then: sudo systemctl restart firewalld"}
-            }
-            return result{name: "firewalld", status: "ok", message: "firewalld backend: " + backend}
-        }
-    }
-    // No explicit backend found -- default depends on version
-    // firewalld 0.6.0+ defaults to nftables
-    return result{name: "firewalld", status: "warn",
-        message: "firewalld detected but backend not explicit in config -- may default to nftables. Verify with: firewall-cmd --version"}
-}
-```
-
-**Why not use `google/nftables` or `coreos/go-iptables`:** Those libraries are for managing firewall rules, not detecting the firewalld backend. Reading the config file is simpler and has zero dependencies.
-**Confidence:** HIGH -- `/etc/firewalld/firewalld.conf` with `FirewallBackend=` is the documented configuration mechanism.
-
-### Check 7: SELinux Enforcing Mode
-
-**Platform:** Linux only
-**API:** `exec.Command("getenforce")` output parsing
-**Why not `opencontainers/selinux`:** That library adds a dependency with 19 imports of its own. The existing doctor pattern shells out to binaries (nvidia-smi, docker, kubectl). Shelling out to `getenforce` is consistent and the output is trivially parseable (literally "Enforcing", "Permissive", or "Disabled").
-
-```go
-func checkSELinux() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    lines, err := exec.OutputLines(exec.Command("getenforce"))
-    if err != nil || len(lines) == 0 {
-        return result{name: "selinux", status: "ok", message: "SELinux not detected"}
-    }
-    mode := strings.TrimSpace(lines[0])
-    if mode == "Enforcing" {
-        return result{name: "selinux", status: "warn",
-            message: "SELinux enforcing -- may cause kind permission errors on Fedora 33+. Temporary fix: sudo setenforce 0"}
-    }
-    return result{name: "selinux", status: "ok", message: "SELinux mode: " + mode}
-}
-```
-
-**Confidence:** HIGH -- kind's known issues page documents this for Fedora.
-
-### Check 8: AppArmor Status
-
-**Platform:** Linux only
-**API:** `os.ReadFile("/sys/module/apparmor/parameters/enabled")` for detection, optional `exec.Command("aa-status")` for profile details
-**Why not `aa-status` as primary:** `aa-status` requires root. Reading `/sys/module/apparmor/parameters/enabled` works without root and returns "Y" or "N".
-
-```go
-func checkAppArmor() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    data, err := os.ReadFile("/sys/module/apparmor/parameters/enabled")
-    if err != nil {
-        return result{name: "apparmor", status: "ok", message: "AppArmor not loaded"}
-    }
-    if strings.TrimSpace(string(data)) == "Y" {
-        // AppArmor is enabled -- this is informational, not a problem in most cases
-        // Check if docker-default profile exists
-        if _, err := os.Stat("/etc/apparmor.d/docker"); err == nil {
-            return result{name: "apparmor", status: "ok", message: "AppArmor enabled with docker profile"}
-        }
-        return result{name: "apparmor", status: "ok", message: "AppArmor enabled"}
-    }
-    return result{name: "apparmor", status: "ok", message: "AppArmor disabled"}
-}
-```
-
-**Confidence:** HIGH -- `/sys/module/apparmor/parameters/enabled` is the kernel-level check; no root required.
-
-### Check 9: Device Node Access for Rootfs
-
-**Platform:** Linux only
-**API:** `exec.Command("docker", "info", "-f", "{{.Driver}}")` to get storage driver, then check device availability
-**Integration:** The existing `mountDevMapper()` function in `pkg/cluster/internal/providers/docker/util.go` already detects btrfs/zfs/devicemapper storage drivers. This check extends that pattern.
-
-```go
-func checkDeviceNodeAccess() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    lines, err := exec.OutputLines(exec.Command("docker", "info", "-f", "{{.Driver}}"))
-    if err != nil || len(lines) == 0 {
-        return result{name: "rootfs-device", status: "warn", message: "could not query Docker storage driver"}
-    }
-    driver := strings.TrimSpace(strings.ToLower(lines[0]))
-    if driver == "btrfs" || driver == "zfs" || driver == "devicemapper" {
-        return result{name: "rootfs-device", status: "warn",
-            message: fmt.Sprintf("Docker uses %s storage driver -- kind may need extraMounts for device nodes in cluster config", driver)}
-    }
-    return result{name: "rootfs-device", status: "ok", message: "storage driver: " + driver}
-}
-```
-
-**External dependencies:** None -- reuses the same `docker info` approach as existing code.
-**Confidence:** HIGH -- kind's known issues page documents rootfs device access concerns.
-
-### Check 10: WSL2 Environment and Cgroup Configuration
-
-**Platform:** Linux only (specifically WSL2 Linux userspace)
-**API:** `os.ReadFile("/proc/version")` + `os.ReadFile("/proc/sys/fs/cgroup")`
-**WSL2 detection:** Check if `/proc/version` contains "microsoft" (case-insensitive).
-
-```go
-func checkWSL2() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    data, err := os.ReadFile("/proc/version")
-    if err != nil {
-        return result{}
-    }
-    version := strings.ToLower(string(data))
-    if !strings.Contains(version, "microsoft") {
-        return result{} // Not WSL2
-    }
-    // We're in WSL2 -- check cgroup configuration
-    // stat /sys/fs/cgroup to check cgroup version
-    var cgroupVersion string
-    if data, err := os.ReadFile("/proc/filesystems"); err == nil {
-        if strings.Contains(string(data), "cgroup2") {
-            cgroupVersion = "v2"
-        } else {
-            cgroupVersion = "v1"
-        }
-    }
-    // Check if systemd is running (needed for cgroupv2 in WSL2)
-    if _, err := os.Stat("/run/systemd/system"); os.IsNotExist(err) {
-        return result{name: "wsl2", status: "warn",
-            message: "WSL2 detected without systemd -- cgroup v2 may not work. Enable systemd in /etc/wsl.conf: [boot] systemd=true"}
-    }
-    return result{name: "wsl2", status: "ok", message: "WSL2 detected with systemd, cgroup " + cgroupVersion}
-}
-```
-
-**External dependencies:** None -- pure procfs reads.
-**Confidence:** HIGH -- `/proc/version` containing "microsoft" is the universally documented WSL2 detection method.
-
-### Check 11: Kernel Version and Cgroup Namespace Support
-
-**Platform:** Linux only
-**API:** `golang.org/x/sys/unix.Uname` for kernel version, `os.Stat("/proc/self/ns/cgroup")` for cgroup namespace support
-**Why `unix.Uname` not `exec.Command("uname")`:** `unix.Uname` is a direct syscall -- no fork/exec overhead, no PATH dependency. However, `exec.Command("uname", "-r")` also works and is more consistent with the existing doctor pattern. Either is acceptable.
-
-```go
-func checkKernelVersion() result {
-    if runtime.GOOS != "linux" {
-        return result{}
-    }
-    var uname unix.Utsname
-    if err := unix.Uname(&uname); err != nil {
-        return result{name: "kernel", status: "warn", message: "could not determine kernel version"}
-    }
-    release := unix.ByteSliceToString(uname.Release[:])
-    ver, err := version.ParseGeneric(release)
-    if err != nil {
-        return result{name: "kernel", status: "warn", message: "could not parse kernel version: " + release}
-    }
-    // kind v0.20+ requires cgroup namespaces, which need kernel 4.6+
-    minKernel := version.MustParseGeneric("4.6")
-    if ver.LessThan(minKernel) {
-        return result{name: "kernel", status: "fail",
-            message: fmt.Sprintf("kernel %s is too old -- kind requires 4.6+ for cgroup namespaces", release)}
-    }
-    // Also check for cgroup namespace support directly
-    if _, err := os.Stat("/proc/self/ns/cgroup"); os.IsNotExist(err) {
-        return result{name: "kernel", status: "fail",
-            message: "kernel does not support cgroup namespaces -- upgrade to kernel 4.6+ or a supported distribution"}
-    }
-    return result{name: "kernel", status: "ok", message: "kernel " + release}
-}
-```
-
-**Reuse:** Uses the existing `sigs.k8s.io/kind/pkg/internal/version.ParseGeneric` for version comparison -- no external semver library needed.
-**Confidence:** HIGH -- kind v0.20+ requires cgroup namespaces; kernel 4.6 is the documented minimum.
-
-### Check 12: kubectl Version Skew
-
-**Platform:** All
-**API:** `exec.Command("kubectl", "version", "--client", "-o", "json")` + `encoding/json` + `version.ParseSemantic`
-**Kubernetes version skew policy:** kubectl must be within +/-1 minor version of the API server.
-
-```go
-type kubectlVersionOutput struct {
-    ClientVersion struct {
-        GitVersion string `json:"gitVersion"`
-    } `json:"clientVersion"`
-}
-
-func checkKubectlVersionSkew() result {
-    lines, err := exec.OutputLines(exec.Command("kubectl", "version", "--client", "-o", "json"))
-    if err != nil || len(lines) == 0 {
-        return result{} // kubectl not found -- handled by existing check
-    }
-    var vOut kubectlVersionOutput
-    if err := json.Unmarshal([]byte(strings.Join(lines, "")), &vOut); err != nil {
-        return result{name: "kubectl-version", status: "warn", message: "could not parse kubectl version JSON"}
-    }
-    clientVer, err := version.ParseSemantic(vOut.ClientVersion.GitVersion)
-    if err != nil {
-        return result{name: "kubectl-version", status: "warn", message: "could not parse kubectl version: " + vOut.ClientVersion.GitVersion}
-    }
-    // Report the version; actual skew check needs a running cluster (server version)
-    return result{name: "kubectl-version", status: "ok",
-        message: fmt.Sprintf("kubectl %s (skew check requires running cluster)", clientVer.String())}
-}
-```
-
-**Note:** Full version skew validation requires both client AND server versions. Without a running cluster, the doctor check can only report the client version and warn if it's very old. Consider adding `--cluster` flag to doctor to enable server-side checks.
-**Reuse:** Uses existing `sigs.k8s.io/kind/pkg/internal/version.ParseSemantic`.
-**Confidence:** HIGH -- `kubectl version --client -o json` output format is stable Kubernetes API.
-
-### Check 13: Docker Network Subnet Clashes
-
-**Platform:** All
-**API:** `exec.Command("docker", "network", "inspect", "kind")` + `exec.Command("ip", "route")` (Linux) or `exec.Command("netstat", "-rn")` (macOS) + `net/netip.ParsePrefix` + `Prefix.Overlaps`
-**Integration:** The existing `network.go` in the docker provider already handles network inspection and CIDR generation. This check adds a pre-creation diagnostic.
-
-```go
-func checkNetworkSubnetClash() result {
-    // Get kind network subnets
-    inspectOut, err := exec.Output(exec.Command("docker", "network", "inspect", "kind", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}"))
-    if err != nil {
-        return result{name: "network-subnet", status: "ok", message: "kind network not created yet"}
-    }
-    var kindSubnets []netip.Prefix
-    for _, s := range strings.Fields(strings.TrimSpace(string(inspectOut))) {
-        if prefix, err := netip.ParsePrefix(s); err == nil {
-            kindSubnets = append(kindSubnets, prefix)
-        }
-    }
-    // Get host routes
-    var routeLines []string
-    if runtime.GOOS == "linux" {
-        routeLines, _ = exec.OutputLines(exec.Command("ip", "route"))
-    } else {
-        routeLines, _ = exec.OutputLines(exec.Command("netstat", "-rn"))
-    }
-    for _, line := range routeLines {
-        fields := strings.Fields(line)
-        for _, field := range fields {
-            if hostPrefix, err := netip.ParsePrefix(field); err == nil {
-                for _, kindPrefix := range kindSubnets {
-                    if hostPrefix.Overlaps(kindPrefix) {
-                        return result{name: "network-subnet", status: "warn",
-                            message: fmt.Sprintf("kind network %s overlaps host route %s -- this may cause connectivity issues", kindPrefix, hostPrefix)}
-                    }
-                }
-            }
-        }
-    }
-    return result{name: "network-subnet", status: "ok"}
-}
-```
-
-**Why `net/netip` not `net.ParseCIDR`:** `net/netip.Prefix` has the built-in `Overlaps()` method which is exactly what this check needs. `net.IPNet` would require manual overlap computation. `net/netip` has been in stdlib since Go 1.18 (kinder requires Go 1.24+).
-**Confidence:** HIGH -- `Overlaps()` is purpose-built for this; `docker network inspect` format is stable.
+**No new dependencies.** The feature is validation logic + UX over what already works in the data model.
 
 ---
 
-## Dependency Impact Summary
+## go.mod Changes Required
 
-### go.mod Changes Required
+**None.** All four features are implementable with the current dependency set.
 
 ```
-# Promote from indirect to direct (no version change):
-golang.org/x/sys v0.41.0  # currently indirect; used for unix.Statfs (check 2) and unix.Uname (check 11)
+# No changes to go.mod required for this milestone.
+# All packages used are already present:
+# - golang.org/x/sync v0.19.0  (errgroup for parallel node loading)
+# - sigs.k8s.io/yaml v1.4.0    (config parsing)
+# - github.com/spf13/cobra v1.8.0 (new subcommands)
+# - github.com/pelletier/go-toml v1.9.5 (already used in nodeutils.go)
+# - go:embed (stdlib, Go 1.16+; already used in 7 addon actions)
 ```
 
-**That is the only go.mod change.** No new dependencies. The dependency is already downloaded and in the module cache.
+---
 
-### No New Dependencies Needed
+## Rejected Dependencies
 
 | Evaluated | Decision | Reason |
 |-----------|----------|--------|
-| `github.com/opencontainers/selinux/go-selinux` | REJECTED | `getenforce` shell-out is simpler, consistent with existing doctor pattern, avoids 19 transitive imports |
-| `github.com/google/nftables` | REJECTED | We only need to read a config file, not manage nftables rules |
-| `github.com/coreos/go-iptables` | REJECTED | Same reason -- detection, not management |
-| `github.com/Masterminds/semver` | REJECTED | Kinder already has `pkg/internal/version` with `ParseSemantic` and comparison methods |
-| `github.com/shirou/gopsutil` | REJECTED | Would provide disk/system info but is a large dependency; `unix.Statfs` and procfs reads are sufficient |
-| `github.com/yl2chen/cidranger` | REJECTED | `net/netip.Prefix.Overlaps()` handles the subnet clash check without external deps |
+| `github.com/rancher/local-path-provisioner` (as a Go library) | REJECTED | Only need the YAML manifest, not the Go API. `//go:embed` the static manifest. |
+| `github.com/opencontainers/image-spec` | REJECTED | `docker/buildx/internal/container/docker/archive.go` already handles OCI tar parsing via stdlib `archive/tar`; existing pattern in `GetArchiveTags` is sufficient |
+| `github.com/google/go-containerregistry` | REJECTED | Needed if pulling from registries without Docker CLI. All offline operations go through `docker save`/`ctr import`, both of which are shelled out. No need for a Go OCI library. |
+| `github.com/Masterminds/semver` | REJECTED | `pkg/internal/version.ParseSemantic` + `LessThan` handles all version comparison needs for per-node version skew validation |
+| Any OCI registry client library | REJECTED | Offline feature explicitly avoids registry interactions; `ctr content fetch` is the containerd CLI path used during node image build only |
 
 ---
 
-## Platform Compatibility Matrix
+## Integration Points with Existing Architecture
 
-| Check | Linux | macOS | Windows | Notes |
-|-------|-------|-------|---------|-------|
-| 1. inotify limits | YES | skip | skip | procfs is Linux-only |
-| 2. disk space | YES | YES | skip | `unix.Statfs` works on both; on macOS check Docker Desktop VM disk |
-| 3. snap docker | YES | skip | skip | Snap is Linux-only |
-| 4. daemon.json | YES | YES | YES | Path differs: `/etc/docker/daemon.json` (Linux), `~/.docker/daemon.json` (macOS/Windows) |
-| 5. docker socket | YES | YES | skip | Unix socket; Windows uses named pipe |
-| 6. firewalld | YES | skip | skip | firewalld is Linux-only |
-| 7. SELinux | YES | skip | skip | SELinux is Linux-only |
-| 8. AppArmor | YES | skip | skip | AppArmor is Linux-only |
-| 9. rootfs devices | YES | skip | skip | Storage driver concerns are Linux-specific |
-| 10. WSL2 | YES | skip | skip | Runs inside WSL2 Linux userspace |
-| 11. kernel version | YES | skip | skip | Kernel version relevant only for Linux |
-| 12. kubectl version | YES | YES | YES | Cross-platform |
-| 13. network clashes | YES | YES | skip | `ip route` (Linux), `netstat -rn` (macOS) |
+### 1. `kinder build bake-images` integrates with `pkg/build/nodeimage/`
 
-**Pattern:** Use `runtime.GOOS == "linux"` guard (already used for NVIDIA checks in doctor.go). Return `nil` or empty result to skip silently on unsupported platforms.
+The `containerdImporter` in `imageimporter.go` (lines 26-93) is the exact mechanism needed:
+- `Prepare()` -- starts containerd in build container
+- `Pull(image, platform)` -- pulls via `ctr content fetch`
+- `LoadCommand()` -- pipes tar via `ctr images import`
+- `Tag(src, target)` -- retags via `ctr images tag`
+
+The bake-images command wraps this: spin up a `docker run` container from the base node image, call `containerdImporter`, then `docker commit`.
+
+### 2. `kinder load images` integrates with `pkg/cmd/kind/load/`
+
+`nodeutils.LoadImageArchive(node, reader)` is already the bottleneck function. The new `kinder load images` command is a thin wrapper: collect image names, `docker save` into a tempdir tar, open the file, call `LoadImageArchive` on each selected node concurrently via `errors.UntilErrorConcurrent`. This is identical to what `load docker-image` does (lines 173-193 in `docker-image.go`).
+
+### 3. local-path-provisioner addon integrates with wave 1 in `create.go`
+
+New `AddonEntry{"Local Path Provisioner", opts.Config.Addons.LocalPathProvisioner, installlocalpath.NewAction()}` is added to `wave1` slice. No wave dependency -- local-path-provisioner is independent of MetalLB, Envoy, cert-manager.
+
+Coordination note: The `installstorage` action already installs a storage class from the node image manifest. The new addon either replaces this (if `LocalPathProvisioner: true`) or coexists. Recommended: make the new addon replace `installstorage` when enabled, to avoid duplicate `standard` StorageClass. This requires a config check in `installstorage` -- no new package.
+
+### 4. Host mounts extend `v1alpha4.Cluster` without touching the docker provider
+
+A new `HostMounts []Mount` field at `Cluster` level (not `Node` level) is auto-propagated in `fixupOptions` or `Convertv1alpha4`:
+```go
+// In convertv1alpha4Node, after existing ExtraMounts conversion:
+out.ExtraMounts = append(out.ExtraMounts, clusterLevelHostMounts...)
+```
+The docker provider's existing `runArgsForNode` → `common.GenerateMountBindings` handles the rest. Zero provider code changes.
+
+### 5. Multi-version validation fits in `config.Validate()` or `fixupOptions()`
+
+The internal `config.Cluster` already has `Nodes[]Node` with `Node.Image`. A new `validateNodeVersionSkew()` function calls `nodeutils.KubeVersion` semantics (parses `kindest/node:vX.Y.Z` tag) and checks skew. Uses `version.ParseSemantic` already in use throughout. No structural changes to the create flow.
 
 ---
 
-## Integration Architecture
+## Platform Compatibility
 
-### Existing Pattern (to follow exactly)
-
-Each check is a Go function returning `result` or `[]result`:
-
-```go
-// In doctor.go runE():
-if runtime.GOOS == "linux" {
-    results = append(results, checkInotifyLimits()...)
-    results = append(results, checkFirewalldBackend())
-    results = append(results, checkSELinux())
-    results = append(results, checkAppArmor())
-    results = append(results, checkKernelVersion())
-    results = append(results, checkWSL2())
-    results = append(results, checkDeviceNodeAccess())
-}
-results = append(results, checkDiskSpace())
-results = append(results, checkDaemonJSON())
-results = append(results, checkDockerSocket())
-results = append(results, checkDockerSnap())
-results = append(results, checkKubectlVersionSkew())
-results = append(results, checkNetworkSubnetClash())
-```
-
-### File Organization
-
-All check functions should go in `pkg/cmd/kind/doctor/` alongside `doctor.go`. Options:
-
-1. **Single file** (recommended for <500 LOC): Add all checks to `doctor.go`
-2. **Separate files by platform**: `checks_linux.go` (build-tagged), `checks_all.go` (cross-platform checks)
-
-**Recommendation:** Use build-tagged files. Put Linux-only checks in `checks_linux.go` with `//go:build linux` and cross-platform checks in `checks.go`. This follows Go convention and avoids runtime `if runtime.GOOS` for platform-specific system calls like `unix.Statfs`/`unix.Uname`.
-
-### Testing Pattern
-
-The existing codebase does NOT have unit tests for `doctor.go`. For the new checks, testability comes from:
-
-1. **Extract file paths and command names as package-level vars** for test overriding
-2. **Use `exec.Cmd` interface** -- the existing FakeNode/FakeCmd infrastructure could be extended
-3. **Table-driven tests** with mock procfs content (write temp files, override paths)
-
-```go
-// Example test setup
-func TestCheckInotifyLimits(t *testing.T) {
-    tmpDir := t.TempDir()
-    watchesFile := filepath.Join(tmpDir, "max_user_watches")
-    os.WriteFile(watchesFile, []byte("8192\n"), 0644)
-    // Override the file path for testing
-    origPath := inotifyWatchesPath
-    inotifyWatchesPath = watchesFile
-    defer func() { inotifyWatchesPath = origPath }()
-
-    results := checkInotifyLimits()
-    if results[0].status != "warn" {
-        t.Errorf("expected warn for 8192, got %s", results[0].status)
-    }
-}
-```
+| Feature | Linux | macOS | Windows | Notes |
+|---------|-------|-------|---------|-------|
+| `kinder build bake-images` | YES | YES | NO | Requires `docker run` + `ctr`; Windows has no containerd in build container |
+| `kinder load images` | YES | YES | YES | Pure Docker CLI + node exec; same as existing `load docker-image` |
+| Host-to-pod directory mounts | YES | LIMITED | NO | macOS requires host path in Docker Desktop file sharing; Windows named pipes differ |
+| Multi-version per-node | YES | YES | YES | Data model only; cross-platform |
+| local-path-provisioner addon | YES | YES | YES | kubectl apply inside node; cross-platform |
 
 ---
 
-## Auto-Mitigation Integration Points
+## Manifest Version for local-path-provisioner
 
-For auto-mitigations during cluster creation, the same check functions can be called from the create flow:
+| Component | Version | Image | Source |
+|-----------|---------|-------|--------|
+| local-path-provisioner | v0.0.35 | `rancher/local-path-provisioner:v0.0.35` | [GitHub release 2026-03-10](https://github.com/rancher/local-path-provisioner/releases/tag/v0.0.35) |
+| helper pod | latest | `busybox` (no pinned tag in upstream manifest) | Embedded in manifest |
 
-```go
-// In cluster creation code, before provisioning:
-if results := checkInotifyLimits(); hasFailOrWarn(results) {
-    logger.Warnf("inotify limits too low; attempting to fix...")
-    // Auto-mitigation: write sysctl values
-    os.WriteFile("/proc/sys/fs/inotify/max_user_watches", []byte("524288"), 0644)
-}
-```
+**Note on pinning busybox:** The upstream manifest uses unpinned `busybox`. For kinder's embedded manifest, pin to `busybox:1.37.0` or use `docker.io/library/busybox:musl` to avoid latest-tag surprises. This is a manifest edit, not a Go dependency change.
 
-**Which checks support auto-mitigation:**
-
-| Check | Auto-Mitigatable | How |
-|-------|-------------------|-----|
-| 1. inotify | YES (if root) | Write to `/proc/sys/fs/inotify/*` |
-| 2. disk space | NO | Cannot free space automatically |
-| 3. snap docker | NO | Cannot reinstall Docker |
-| 4. daemon.json | NO | Should not modify user's Docker config |
-| 5. socket perms | NO | Should not modify system permissions |
-| 6. firewalld | NO | Requires config change + service restart |
-| 7. SELinux | MAYBE | `setenforce 0` is dangerous; warn only |
-| 8. AppArmor | NO | Should not disable security modules |
-| 9. rootfs device | YES | Add `extraMounts` to kind config automatically |
-| 10. WSL2 | NO | Requires WSL config change |
-| 11. kernel | NO | Cannot upgrade kernel |
-| 12. kubectl | NO | Cannot install/upgrade kubectl |
-| 13. network | YES | Choose non-clashing subnet in network creation |
+**Note on CVE-2025-62878:** This path traversal vulnerability was fixed in v0.0.34. Using v0.0.35 (latest, released after the CVE fix) is the correct choice.
 
 ---
 
 ## Sources
 
-- `golang.org/x/sys/unix` package docs: https://pkg.go.dev/golang.org/x/sys/unix -- v0.41.0, published 2026-02-08 (HIGH confidence -- official Go extended stdlib)
-- `net/netip` package docs: https://pkg.go.dev/net/netip -- `ParsePrefix`, `Overlaps` methods confirmed (HIGH confidence -- Go stdlib since 1.18)
-- Kind known issues: https://kind.sigs.k8s.io/docs/user/known-issues/ -- inotify, snap Docker, daemon.json `init:true`, firewalld nftables, SELinux Fedora 33+, cgroup namespaces, rootfs devices (HIGH confidence -- official kind docs)
-- Firewalld nftables backend: https://firewalld.org/2018/07/nftables-backend -- `/etc/firewalld/firewalld.conf` `FirewallBackend=` setting (HIGH confidence -- official firewalld docs)
-- `opencontainers/selinux` Go package: https://pkg.go.dev/github.com/opencontainers/selinux/go-selinux -- v1.13.1, evaluated and rejected (HIGH confidence)
-- Kubernetes inotify issue: https://github.com/kubernetes/kubernetes/issues/46230 -- recommended values 524288/512 (HIGH confidence)
-- Docker daemon.json location: https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file -- `/etc/docker/daemon.json` (HIGH confidence -- official Docker docs)
-- AppArmor kernel parameter: `/sys/module/apparmor/parameters/enabled` returns "Y"/"N" (HIGH confidence -- kernel documentation)
-- WSL2 detection via `/proc/version`: https://gist.github.com/s0kil/336a246cc2bc8608e645c69876c17466 -- "microsoft" marker (MEDIUM confidence -- community pattern, universally used)
-- Kinder codebase: direct reads of `doctor.go`, `go.mod`, `network.go`, `util.go`, `cgroups.go`, `version.go`, `exec/` package (HIGH confidence -- primary source)
+- Kinder codebase direct reads: `pkg/build/nodeimage/imageimporter.go`, `buildcontext.go`, `const_storage.go`, `pkg/cmd/kind/load/docker-image/docker-image.go`, `pkg/cluster/nodeutils/util.go`, `pkg/cluster/internal/create/create.go`, `pkg/apis/config/v1alpha4/types.go`, `pkg/internal/apis/config/convert_v1alpha4.go` (HIGH confidence -- primary source)
+- Kind offline docs: https://kind.sigs.k8s.io/docs/user/working-offline/ -- confirmed pre-built node image + `kind load` approach (HIGH confidence -- official kind docs)
+- Kind configuration docs: https://kind.sigs.k8s.io/docs/user/configuration/ -- confirmed `Node.Image` per-node field + `ExtraMounts` (HIGH confidence -- official kind docs)
+- local-path-provisioner v0.0.35 release: https://github.com/rancher/local-path-provisioner/releases/tag/v0.0.35 -- released 2026-03-10 (HIGH confidence -- official GitHub release)
+- CVE-2025-62878 advisory: https://orca.security/resources/blog/cve-2025-62878-rancher-local-path-provisioner/ -- fixed in v0.0.34 (MEDIUM confidence -- third-party security report)
+- go.mod current state: confirmed `github.com/pelletier/go-toml v1.9.5` (TOML parsing, used in `nodeutils.go`), `golang.org/x/sync v0.19.0` (errgroup), `github.com/spf13/cobra v1.8.0` (subcommands) -- all present (HIGH confidence -- direct file read)
 
 ---
-*Stack research for: kinder -- diagnostic checks and auto-mitigations for `kinder doctor`*
-*Researched: 2026-03-06*
+*Stack research for: kinder v2.2 -- offline clusters, local-path-provisioner, host mounts, multi-version nodes*
+*Researched: 2026-04-08*

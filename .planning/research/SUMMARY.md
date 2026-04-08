@@ -1,173 +1,220 @@
 # Project Research Summary
 
-**Project:** kinder -- Diagnostic checks and auto-mitigations for `kinder doctor`
-**Domain:** System-level diagnostic tooling for Kubernetes-in-Docker cluster management (Go CLI)
-**Researched:** 2026-03-06
-**Confidence:** HIGH
+**Project:** kinder — v2.2 Cluster Capabilities (offline clusters, local-path-provisioner, host-dir mounts, multi-version nodes)
+**Domain:** Kubernetes local development tooling — kind fork with extended cluster management capabilities
+**Researched:** 2026-04-08
+**Confidence:** HIGH — all four features grounded in direct codebase analysis plus official kind, Kubernetes, and Rancher documentation
 
 ## Executive Summary
 
-This milestone adds 13 diagnostic checks to the existing `kinder doctor` command and introduces automatic mitigations during `kinder create cluster`. The research confirms that every check is implementable using Go standard library packages plus one already-present indirect dependency (`golang.org/x/sys/unix` v0.41.0). Zero new go.mod dependencies are needed. Six external libraries were evaluated and rejected. The existing doctor infrastructure -- result/checkResult pattern, JSON output, ok/warn/fail formatters, structured exit codes (0/1/2) -- provides a solid foundation, but the current inline-function approach does not scale to 19+ checks. A lightweight `Check` interface with an explicit registry slice and a shared `pkg/internal/doctor/` package is the recommended architecture.
+Kinder v2.2 adds four cluster capabilities to an existing kind fork: offline/air-gapped cluster creation, local-path-provisioner dynamic storage, host-to-pod directory mounting, and multi-version per-node Kubernetes. The central research finding is that **zero new Go module dependencies are required** — every feature integrates using packages already present in the codebase. The data models for three of the four features are already partially or fully implemented in the type system; the work is validation logic, new actions, targeted bug fixes, and documentation rather than greenfield infrastructure.
 
-The recommended approach is to first build the check infrastructure (interface, registry, platform filtering, "skip" status, mitigation tier system), then implement checks in three waves: Docker/tool configuration checks (cross-platform, highest user value), system resource and kernel checks (Linux-only, catches silent failures), and platform-specific/network checks (WSL2, SELinux, AppArmor, subnet clashes). Auto-mitigations must be strictly tiered: only environment variables and cluster config adjustments are safe for automatic application; sysctl changes should be suggested but never auto-applied; system configuration files should be documented but never modified by kinder. The doctor command must remain read-only and safe to run at any time.
+The recommended build order prioritizes low-risk, isolated changes first. Multi-version node validation is the least risky starting point (a single new function in `validate.go`). Local-path-provisioner and host-directory mounting are medium-complexity but well-contained within the established addon action pattern. Offline/air-gapped is the most complex feature — it touches all three container runtime providers, requires auditing every addon manifest for image pull policies, and demands a clearly designed two-mode loading workflow (pre-create bake vs. post-create load) — and should be treated as a focused sub-milestone rather than bundled with the other three.
 
-The primary risks are: (1) `/proc` filesystem reads crashing on non-Linux platforms if checks lack proper gating, (2) daemon.json location varying across six different Docker install methods causing silent false negatives, (3) WSL2 detection producing false positives on Azure VMs, and (4) auto-mitigations modifying system state beyond the cluster lifecycle. All are preventable with the architecture and testing patterns documented in the research. The mitigation tier system must be defined in Phase 1 before any individual checks are implemented.
+The dominant risk across all four features is the interaction surface between them: offline mode amplifies every image-dependency, the local-path-provisioner busybox helper creates a hidden two-image dependency for offline use, the `--image` flag has a confirmed bug that destroys per-node version configs, and two default StorageClasses will coexist silently if the `installstorage` gate is not wired correctly. Each pitfall has a clear, low-cost prevention strategy, but they must be addressed before rather than after integration testing.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-Every check uses Go stdlib (`os`, `os/exec`, `encoding/json`, `net/netip`, `strings`, `strconv`, `runtime`) plus the existing kinder exec wrappers (`sigs.k8s.io/kind/pkg/exec`). The only go.mod change is promoting `golang.org/x/sys` from indirect to direct dependency (same version, v0.41.0). Six external libraries were evaluated and rejected: `opencontainers/selinux` (shelling out to `getenforce` is simpler), `google/nftables` and `coreos/go-iptables` (only need to read config files), `Masterminds/semver` (kinder has `pkg/internal/version`), `shirou/gopsutil` (overkill for what `unix.Statfs` provides), and `yl2chen/cidranger` (`net/netip.Prefix.Overlaps()` is purpose-built).
+No new dependencies are required. Every feature uses packages already in `go.mod`: `sigs.k8s.io/kind/pkg/exec` for shelling out to containerd/docker, `pkg/cluster/nodeutils` for `LoadImageArchive`, `pkg/internal/version` for semver parsing, `encoding/json` for docker inspect output, `_ "embed"` for the local-path-provisioner manifest (pattern already used in 7 addons), and the existing `cobra` command structure for new subcommands. The one rejected pattern that recurs is pulling in Go libraries for OCI operations — all image operations go through the Docker/containerd CLI, which is already the project's established pattern.
 
-**Core technologies:**
-- `os.ReadFile` + `strconv`: procfs/sysfs reads for inotify, kernel, AppArmor, WSL2 -- standard Go approach for Linux system inspection
-- `os/exec` via `sigs.k8s.io/kind/pkg/exec`: shell-outs to `docker`, `kubectl`, `getenforce`, `ip route` -- consistent with existing doctor pattern
-- `encoding/json`: parse `docker info`, `docker network inspect`, `kubectl version`, `daemon.json` -- already imported in doctor.go
-- `net/netip.ParsePrefix` + `Overlaps()`: subnet clash detection -- stdlib since Go 1.18, purpose-built for CIDR overlap
-- `golang.org/x/sys/unix.Statfs` + `unix.Uname`: disk space and kernel version -- already in go.mod, replaces deprecated `syscall` package
-- `sigs.k8s.io/kind/pkg/internal/version.ParseSemantic`: kubectl version skew comparison -- existing codebase, no external semver library needed
+**Core technologies (all pre-existing in go.mod):**
+- `sigs.k8s.io/kind/pkg/exec` — shell out to `docker save`, `ctr images import`, `docker commit` for offline image operations; same pattern as existing load commands
+- `sigs.k8s.io/kind/pkg/cluster/nodeutils.LoadImageArchive` — pre-existing bottleneck function for loading images into nodes; `kinder load images` is a thin wrapper
+- `sigs.k8s.io/kind/pkg/internal/version.ParseSemantic` + `LessThan` — version skew validation for multi-version nodes; no external semver library needed
+- `_ "embed"` (stdlib) — `//go:embed manifests/local-path-storage.yaml` for the local-path-provisioner manifest, identical to cert-manager and MetalLB patterns
+- `rancher/local-path-provisioner:v0.0.35` — latest upstream release (2026-03-10); includes fix for CVE-2025-62878 (CVSS 10.0 path traversal, fixed in v0.0.34); embed as YAML manifest, not as a Go dependency
+
+**Critical manifest note:** Pin the embedded busybox helper to `busybox:1.37.0` and patch `imagePullPolicy: IfNotPresent` in the ConfigMap before embedding. The upstream manifest uses unpinned `busybox:latest` with `imagePullPolicy: Always` — the primary failure mode for offline storage provisioning.
 
 ### Expected Features
 
 **Must have (table stakes):**
-- Disk space check -- #1 silent failure mode; warn at <5GB, fail at <2GB
-- Docker daemon.json `"init": true` detection -- causes the most cryptic kind error message
-- Kubectl version skew detection -- most common user confusion after Docker Desktop updates
-- Docker socket permission check -- #1 new-user issue on Linux; enhancement to existing container-runtime check
-- Inotify limits check -- top-5 kind debugging question on Linux; recommend >=524288 watches, >=512 instances
-- Docker subnet clash detection -- extremely common in enterprise/VPN environments
+- `--air-gapped` flag on `kinder create cluster` that errors immediately on missing images instead of retrying pulls — without explicit opt-in there is no way to distinguish intentional offline from network failure
+- Per-node `image:` field in v1alpha4 config that is NOT overridden by the global `--image` flag — confirmed bug in `fixupOptions()` that destroys multi-version cluster configs today
+- Version-skew validation before provisioning — without it, invalid configurations surface as cryptic `kubeadm join` failures after node containers are already provisioned
+- `local-path` as the default StorageClass replacing the legacy non-dynamic `standard` StorageClass — dynamic PVC provisioning is the expected behavior for any stateful workload
+- `ExtraMounts` host-path existence validation pre-flight — missing host directory gives an obscure Docker container creation error rather than a clear kinder message
 
-**Should have (differentiators -- no Kind-based tool provides these):**
-- Docker snap installation detection -- prevents TMPDIR debugging; simple path check
-- AppArmor interference detection -- Linux desktop users frequently hit this
-- Rootfs device node access check -- BTRFS/NVMe users need advance warning
-- Firewalld nftables backend detection -- Fedora 32+ users need this detected early
-- SELinux enforcing mode detection -- Fedora 33 specific, simple getenforce check
-- Old kernel / cgroup namespace check -- hard blocker for RHEL 7 (kernel <4.6)
-- WSL2 cgroup misconfiguration detection -- Windows developers using WSL2 need this
+**Should have (differentiators):**
+- `kinder doctor` offline readiness check — lists which required images are missing before a multi-minute cluster create fails
+- `kinder doctor` CVE-2025-62878 check — warns if local-path-provisioner version in a running cluster is below v0.0.34
+- Platform warning when `propagation: HostToContainer` or `Bidirectional` is specified on macOS/Windows — silently broken on Docker Desktop; emit an explicit warning and default to `propagation: None`
+- `kinder get nodes` output extended with per-node K8s version column — makes multi-version cluster topology visible at a glance
+- `--node-image role=image` per-node CLI flag for ad-hoc multi-version without a config file
 
-**Defer (v2+):**
-- `kinder doctor --check <name>` -- run specific check subsets
-- `kinder doctor --fix` -- apply safe auto-fixes with user confirmation
-- Check result caching for repeated runs
-- Post-creation health checks (pod scheduling, DNS, CoreDNS)
-- Plugin-based check system for custom user checks
-- CI mode with JUnit XML output
+**Defer to v2.3+:**
+- `kinder images pull/load` commands (enumerate and pull all addon images in one shot) — high value but scope-creep for v2.2; per-addon `kinder load docker-image` is sufficient for initial release
+- `--profile upgrade-test` preset — useful after core multi-version works and is stable
+- Offline profile preset (`--profile offline`) — depends on offline feature being complete and well-tested first
+- Auto-PV creation from `extraMounts.createPV` — the documentation-plus-doctor approach is sufficient for v2.2; auto-PV adds type system complexity for limited immediate gain
+
+**Anti-features (explicitly excluded):**
+- Bundling addon images into the kinder binary — binary would become multi-GB and break Homebrew distribution
+- Auto-detecting internet availability and switching modes silently — unreliable on VPNs/proxies and causes confusing silent behavior
+- Auto-rolling upgrades via multi-version clusters — out of scope; kubeadm covers this already
+- Allowing HA control-plane version skew > 1 minor version — kubeadm refuses it; kinder must validate and reject upfront
 
 ### Architecture Approach
 
-The architecture centers on a `Check` interface with `Name()`, `Category()`, `Platforms()`, and `Run()` methods, registered in an explicit `AllChecks()` slice in a shared `pkg/internal/doctor/` package. This package is importable by both the doctor CLI command (`pkg/cmd/kind/doctor/`) and the create flow (`pkg/cluster/internal/create/`), maintaining correct dependency direction. Checks are organized by category (runtime, kernel, network, resources, gpu) in separate source files but execute as a flat ordered list. A new `"skip"` status is added to the result type for platform-inapplicable checks, treated as equivalent to `"ok"` for exit code purposes. Each check uses a deps struct pattern for injectable dependencies, enabling full parallel test execution without global state mutation.
+All four features follow the established config pipeline pattern: a 5-location change set (v1alpha4 types, defaults, deepcopy, internal types, conversion) followed by behavior gating in `create.go`. New addon actions live in dedicated packages under `pkg/cluster/internal/create/actions/` and use `//go:embed` for manifests plus `kubectl apply` via the control plane node's command runner — identical to MetalLB, Metrics Server, and cert-manager. The air-gapped feature is the architectural outlier: it introduces a `ProvisionOptions` struct on the `Provider` interface to carry a runtime-only flag without polluting the serialized cluster config YAML (same precedent as `--retain`, `--wait`).
 
-**Major components:**
-1. **Check interface + Result type + AllChecks registry** (`pkg/internal/doctor/check.go`) -- contract for all checks, explicit ordered registry, exported Result struct with Category field
-2. **Category-organized check implementations** (`pkg/internal/doctor/runtime.go`, `kernel.go`, `network.go`, `resources.go`, `gpu.go`) -- each check uses deps struct for injectable testing
-3. **Mitigations module** (`pkg/internal/doctor/mitigations.go`) -- `SafeMitigation` struct with `NeedsFix`/`Apply`/`NeedsRoot` fields; `ApplySafeMitigations()` entry point called by create flow
-4. **Refactored doctor CLI** (`pkg/cmd/kind/doctor/doctor.go`) -- uses `AllChecks()` loop with centralized platform filtering, category-grouped human output, backward-compatible JSON with `category` field
-5. **Create flow integration** (`pkg/cluster/internal/create/create.go`) -- calls `doctor.ApplySafeMitigations(logger)` after `validateProvider()` and before `p.Provision()`
+**Major components and integration points:**
+1. **`pkg/cluster/internal/providers/*/images.go` (3 files)** — air-gapped gate added to `ensureNodeImages()`; changes from retry-pull to fail-fast-with-clear-error when `AirGapped=true`; uses new `ProvisionOptions` struct on `provider.go` interface
+2. **`pkg/cluster/internal/create/actions/installlocalpath/`** (new package) — local-path-provisioner addon action following `installmetricsserver` template exactly; `//go:embed manifests/local-path-storage.yaml` with patched `imagePullPolicy: IfNotPresent` and pinned busybox
+3. **`pkg/cluster/internal/create/create.go`** — `installstorage` gated out when `LocalPath=true`; `installlocalpath` added to wave1; `AirGapped` flag threaded to provider via `ProvisionOptions`; `installhostmounts` added to sequential pipeline after `waitforready` (deferred to v2.3 if auto-PV is out of scope)
+4. **`pkg/internal/apis/config/validate.go`** — new `validateNodeVersionSkew()` function; parses Kubernetes version from node image tags; validates all control-plane nodes at same version; workers within 3-minor-version skew of control-plane
+5. **`fixupOptions()` in `create.go`** — targeted one-line bug fix: only override `node.Image` when the field is empty, preserving explicit per-node image specifications when `--image` flag is set globally
+
+**5-location config pipeline checklist (required for every new config field):**
+Every new field must atomically touch: `v1alpha4/types.go` → `v1alpha4/default.go` → `v1alpha4/zz_generated.deepcopy.go` → `internal/apis/config/types.go` → `internal/apis/config/convert_v1alpha4.go`. Partial state is a runtime bug. The `Addons.LocalPath *bool` field is the only new config field in v2.2 scope (auto-PV `Mount.CreatePV` deferred to v2.3).
 
 ### Critical Pitfalls
 
-1. **`/proc` reads crash on non-Linux** -- Every check reading `/proc` or `/sys` must be gated by the Check interface's `Platforms()` method with centralized filtering in the main loop. Use `//go:build linux` for helper functions calling Linux-only syscalls; keep check registration cross-platform to emit "skip" status on macOS/Windows.
+1. **busybox helper image not pre-loaded breaks all PVC operations in offline clusters** — the local-path-provisioner uses a busybox helper pod at PVC create/delete time; the upstream manifest uses `imagePullPolicy: Always` for `busybox:latest`. The provisioner pod shows `Running` but PVCs never bind. Patch the embedded manifest to `IfNotPresent` and pin to `busybox:1.37.0` before the `go:embed`. This must happen in the manifest file; it cannot be patched at runtime.
 
-2. **daemon.json location varies across 6+ install methods** -- Must implement `daemonJSONPaths()` returning prioritized candidate paths based on `runtime.GOOS` and env vars. Native Linux (`/etc/docker/daemon.json`), Docker Desktop macOS (`~/.docker/daemon.json`), rootless Docker (`$XDG_CONFIG_HOME/docker/daemon.json`), Snap Docker (`/var/snap/docker/current/config/daemon.json`), Rancher Desktop (`~/.rd/docker/daemon.json`). Hardcoding a single path is never acceptable.
+2. **`ctr images import --all-platforms` fails on Docker Desktop 27+ with the containerd image store enabled** — Docker Desktop 27+ exports multi-platform manifests with attestation layers; `ctr import` rejects them with `content digest: not found`. Implement a fallback: attempt `--local` mode (containerd 2.x) or drop `--all-platforms` in favour of the current host platform only. Do not ship `kinder load images` without this fallback tested against Docker Desktop 27+.
 
-3. **Auto-mitigation modifying system state is dangerous** -- Never auto-apply sysctl changes, never call `sudo` from kinder, never modify system config files. Tier the strategy: Tier 1 (auto-apply: env vars, cluster config adjustments), Tier 2 (suggest only: `sysctl -w`), Tier 3 (document only: editing sysctl.conf, disabling firewalld/SELinux).
+3. **Two default StorageClasses if `installstorage` is not gated out** — `installstorage` installs `standard` (annotated as default) unconditionally. `local-path-provisioner` also installs a default-annotated StorageClass. On Kubernetes 1.26+ the admission webhook blocks the second default; on older versions both exist and PVC binding is non-deterministic. Fix: add a conditional in `create.go` that skips `installstorage` when `LocalPath=true`. Define this ownership model before writing the addon action.
 
-4. **WSL2 detection false positives on Azure VMs** -- `/proc/version` containing "microsoft" alone is insufficient. Require multi-signal detection: `/proc/version` + (`$WSL_DISTRO_NAME` OR `/proc/sys/fs/binfmt_misc/WSLInterop`). Never auto-mitigate based on WSL2 detection alone.
+4. **`--image` flag overrides per-node images, destroying multi-version configs** — `fixupOptions()` currently iterates all nodes and sets every node's image to the flag value. Fix: only override nodes where `node.Image == ""`. This is a one-line targeted fix but must land before any multi-version testing begins.
 
-5. **SELinux and AppArmor can coexist since kernel 5.1** -- LSMs can stack. Check both independently, report both, indicate which is the active enforcing MAC. Do not use if/else pattern assuming mutual exclusivity.
+5. **Mount propagation silently broken on macOS/Windows** — Docker Desktop uses virtioFS/gRPC FUSE and cannot propagate kernel mount events across the VM boundary. `propagation: HostToContainer` and `Bidirectional` are silently dropped with no error. Default to `propagation: None`; emit an explicit platform warning (check `runtime.GOOS`) when a non-None propagation is requested on non-Linux hosts.
+
+---
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on research, the four features decompose into a five-phase build that respects dependencies, isolates risk, and addresses critical pitfalls at the correct layer.
 
-### Phase 1: Check Infrastructure and Interface
+### Phase 1: Multi-Version Node Validation
 
-**Rationale:** All 13 checks and the create-flow integration depend on the Check interface, Result type with "skip" status, AllChecks registry, category-grouped output, and mitigation tier system. This is the foundation -- nothing else can proceed without it.
-**Delivers:** `pkg/internal/doctor/` package with Check interface, Result type (ok/warn/fail/skip), AllChecks() registry, category-grouped human output, backward-compatible JSON output with category field, mitigation tier constants, SafeMitigation struct, and ApplySafeMitigations entry point skeleton. Migrate existing checks (container runtime, kubectl, NVIDIA GPU) to the new interface.
-**Addresses:** Check registration pattern, platform filtering, "skip" status, exit code contract preservation (0/1/2), deps struct testability pattern
-**Avoids:** Pitfall 1 (/proc crash on non-Linux by establishing platform filtering), Pitfall 5 (auto-mitigation safety by defining tiers), Pitfall F2 (import layering by establishing pkg/internal/doctor/), Pitfall F3 (exit code contract by adding "skip" status)
+**Rationale:** Lowest code risk of any feature in this milestone. Isolated to a single new function in `validate.go` with no new files and no full config pipeline changes. Also fixes the confirmed `--image` flag override bug which is a prerequisite for any multi-version testing or accurate CI use. Delivers immediate, standalone value.
 
-### Phase 2: Docker and Tool Configuration Checks
+**Delivers:** Version-skew validation at config parse time with clear error messages instead of cryptic kubeadm join failures; `--image` flag bug fix preserving per-node image specifications; optional `kinder doctor` version-skew check; optional `kinder get nodes` K8s version column extension.
 
-**Rationale:** Docker configuration checks (daemon.json, snap, socket permissions) and tool version checks (kubectl skew) are cross-platform or near-cross-platform, have the highest user value, and are the simplest to implement (file reads and command output parsing). They depend on the Phase 1 infrastructure but not on platform-specific kernel APIs. Also includes disk space check which works cross-platform via `unix.Statfs`.
-**Delivers:** Checks 1 (kubectl version skew), 2 (Docker snap), 3 (disk space), 4 (daemon.json init:true), 5 (Docker socket permissions). Five of six table-stakes features.
-**Uses:** `os.ReadFile`, `encoding/json`, `path/filepath.EvalSymlinks`, `golang.org/x/sys/unix.Statfs`, `pkg/internal/version.ParseSemantic`
-**Avoids:** Pitfall 3 (daemon.json multi-path resolution implemented from day one)
+**Addresses:** FEATURES.md table-stakes — per-node image support working correctly, version-skew validation, clear preflight error surface. FEATURES.md differentiators — `kinder doctor` skew check, extended node output.
 
-### Phase 3: Kernel, Security, and Platform-Specific Checks
+**Avoids:** Pitfall 9 (version skew surfaces at kubeadm join — caught at validation instead); Pitfall 6 (document KubeletConfiguration patch limitation for workers — upstream kubeadm design, not a kinder bug); Pitfall 7 (add warning for v1beta3/v1beta4 boundary if node versions span Kubernetes 1.31+).
 
-**Rationale:** Linux-only checks (inotify, kernel version, SELinux, AppArmor, firewalld, WSL2, rootfs device) share the pattern of reading `/proc`/`/sys` or shelling out to Linux-specific commands. Grouping them ensures consistent platform gating and testing. WSL2 detection requires multi-signal approach. SELinux+AppArmor require independent checking.
-**Delivers:** Checks 6 (inotify limits), 7 (AppArmor), 8 (rootfs device node), 9 (firewalld nftables), 10 (SELinux), 11 (kernel version), 12 (WSL2 cgroups). All seven differentiator features.
-**Uses:** `os.ReadFile` for procfs/sysfs, `exec.Command` for `getenforce`/`aa-status`, `golang.org/x/sys/unix.Uname`
-**Avoids:** Pitfall 4 (WSL2 false positives with multi-signal detection), Pitfall 7 (SELinux+AppArmor coexistence with independent checks)
+**Research flag:** Standard patterns; skip `/gsd-research-phase`. Semver parsing uses `pkg/internal/version` already in use throughout the codebase; validation logic is straightforward.
 
-### Phase 4: Network Checks, Create-Flow Integration, and Polish
+### Phase 2: Air-Gapped Cluster Creation
 
-**Rationale:** Subnet clash detection (Check 13) requires cross-platform route table parsing which is the most complex single check. Create-flow integration (`ApplySafeMitigations` call in `create.go`) should come last so all checks and mitigations are available. Performance optimization rounds out the milestone.
-**Delivers:** Check 13 (Docker subnet clash), create-flow pre-flight integration, performance optimization (batch `docker info` call, consider parallel check groups), comprehensive end-to-end testing.
-**Uses:** `net/netip.ParsePrefix` + `Overlaps()`, platform-specific route parsers (`ip route` on Linux, `netstat -rn` on macOS), `docker network inspect`
-**Avoids:** Pitfall 6 (cross-platform route enumeration with platform-separated implementations), performance traps (sequential execution of 19+ checks)
+**Rationale:** Second because it touches the widest surface (all three provider implementations) and must be stable before local-path-provisioner references it for its offline image warning. The `ProvisionOptions` struct introduced here establishes the correct architecture for runtime-only provider flags.
+
+**Delivers:** `--air-gapped` CLI flag on `kinder create cluster`; fail-fast behavior in all three providers when required images are absent; addon image warning output listing all images that need pre-loading before creation; `kinder doctor` offline readiness check; documented two-mode design (pre-create bake via privileged container commit vs. post-create load via `kinder load docker-image`).
+
+**Addresses:** FEATURES.md table-stakes — explicit offline opt-in, clear error surfacing. FEATURES.md anti-features — no bundled images, no auto-detection.
+
+**Avoids:** Pitfall 8 (addon manifests reference images not present — warn with full image list at creation time); Pitfall 5 (image pre-baking requires privileged container commit, not Dockerfile — design this decision explicitly before implementation); Integration Pitfall 1 (two-phase image dependency — document pre-create vs. post-create load modes before writing any code).
+
+**Research flag:** Needs `/gsd-research-phase` during planning. The `Provider` interface change (`ProvisionOptions`) must be reviewed for backward compatibility with test infrastructure that mocks `Provider`. The two-mode image loading architectural decision must be documented and agreed before code is written.
+
+### Phase 3: Local-Path-Provisioner Addon
+
+**Rationale:** Third because the air-gapped warning in phase 2 will include busybox and the provisioner image — making the interaction explicit before the addon is written. The addon itself follows a known pattern but the StorageClass ownership decision must be made upfront to avoid the collision pitfall.
+
+**Delivers:** `installlocalpath` addon action package; patched manifest with `imagePullPolicy: IfNotPresent` and pinned `busybox:1.37.0`; `installstorage` gate in `create.go` skipped when `LocalPath=true`; `local-path` as the default StorageClass; full 5-location config pipeline for `Addons.LocalPath *bool`; `kinder doctor` CVE-2025-62878 check; documentation of `/opt/local-path-provisioner` as reserved path and PV orphan behavior on cluster delete.
+
+**Addresses:** FEATURES.md table-stakes — dynamic PVC provisioning, `local-path` as default StorageClass, predictable node storage path, single and multi-node topology support. FEATURES.md differentiators — configurable base path via config, doctor CVE check.
+
+**Avoids:** Pitfall 1 (busybox helper image — patch before `go:embed`, not at runtime); Pitfall 3 (StorageClass collision — gate out `installstorage`, define ownership model first); Integration Pitfall 3 (document `/opt/local-path-provisioner` as reserved; validate user mounts do not shadow it).
+
+**Research flag:** Standard patterns; skip `/gsd-research-phase`. The addon action pattern is identical to existing addons. The StorageClass ownership model is answered by research: `local-path-provisioner` replaces `installstorage` when enabled.
+
+### Phase 4: Host-Directory Mounting
+
+**Rationale:** Fourth because the ExtraMounts type system already works end-to-end; the remaining work is pre-flight validation, doctor checks, platform warnings, and documentation. Benefits from local-path-provisioner being installed (phase 3) since the most powerful mounting pattern is: host dir → node extraMount → local-path-provisioner configurable `nodePath` as PV backing.
+
+**Delivers:** Pre-flight `hostPath` existence validation before node provisioning; platform warning for non-None propagation modes on macOS/Windows; two `kinder doctor` checks (path exists, Docker Desktop file sharing on macOS); documentation and example YAML for the two-hop mount pattern (host → node extraMount → pod hostPath PV).
+
+**Addresses:** FEATURES.md table-stakes — end-to-end ExtraMounts working with clear errors, two-layer pattern documented. FEATURES.md differentiators — doctor path/sharing checks, propagation mode guidance.
+
+**Avoids:** Pitfall 4 (propagation silent on macOS/Windows — platform warning via `runtime.GOOS` check + default to `propagation: None`); Pitfall 12 (missing host directory obscure error — pre-flight `os.Stat` validation with clear message).
+
+**Research flag:** Standard patterns; skip `/gsd-research-phase`. ExtraMounts infrastructure is complete; work is validation and documentation. Auto-PV (`CreatePV` field on `Mount`) is explicitly deferred to v2.3 to keep scope contained and avoid adding complexity to the `Mount` type in this milestone.
+
+### Phase 5: kinder load images Command
+
+**Rationale:** Last because it is the utility that supports offline and multi-version workflows. Building it last means the consumer features (offline in phase 2, local-path in phase 3) are stable and their image requirements are known. The multi-platform Docker Desktop containerd store pitfall is the hardest technical problem in this milestone and should not block the four primary features.
+
+**Delivers:** `kinder load images` subcommand; provider-abstracted image saving (no hardcoded `docker save`; uses `runtime.GetDefault()` provider); fallback import strategy for Docker Desktop 27+ containerd image store (`--local` flag or drop `--all-platforms`); documentation of expected load times for multi-node clusters.
+
+**Addresses:** FEATURES.md differentiators — `kinder images load` wrapping the per-image loop; supports offline workflow completion; supports multi-node cluster image pre-seeding.
+
+**Avoids:** Pitfall 2 (multi-platform ctr import failure on Docker Desktop 27+ — implement and test `--local` fallback before declaring complete); Pitfall 11 (slow load for multi-node — leverage existing smart-load that skips already-present images; document expected times); Pitfall 13 (hardcoded `docker save` breaking podman/nerdctl — use provider abstraction from the start).
+
+**Research flag:** Needs `/gsd-research-phase` during planning. The containerd 2.x `--local` flag availability and exact version requirements need verification against the Docker Desktop 27+ version matrix before implementation begins. The exact `getSnapshotter()` version-awareness strategy in `pkg/cluster/nodeutils/util.go` needs review for extension.
 
 ### Phase Ordering Rationale
 
-- **Phase 1 first:** Every other phase depends on the Check interface and registry. The mitigation tier system prevents dangerous auto-fix patterns from creeping into later phases.
-- **Phase 2 before Phase 3:** Cross-platform checks have wider user impact and simpler implementation. Docker/tool checks work on macOS where most kinder development happens, enabling faster iteration and feedback.
-- **Phase 3 before Phase 4:** Linux-specific checks are independent of each other and can be implemented in parallel. They must be complete before create-flow integration so all mitigations are available.
-- **Phase 4 last:** Subnet clash detection is the most complex single check. Create-flow integration is a final wiring step that benefits from all checks being available. Performance optimization is polish.
+- Phase 1 first: fixes a confirmed regression bug (`--image` override) and adds pure validation with zero risk of breaking existing clusters. The fix is a prerequisite for any multi-version testing in all later phases.
+- Phase 2 before phase 3: the air-gapped image warning list in `create.go` must enumerate addon images including those from local-path-provisioner. Writing that warning while the addon is being built in the same phase creates merge risk and ordering ambiguity.
+- Phase 3 before phase 4: the most powerful host-mounting use case (host dir as PV backing via configurable `nodePath`) depends on local-path-provisioner being installed and its storage path being settable.
+- Phase 5 last: it is a support utility; all consumer features work without it (using raw `kinder load docker-image` per image) and the Docker Desktop 27+ compatibility problem is the most uncertain technical challenge in the milestone.
+- Phases 3 and 4 could be merged if schedule pressure exists; their config pipeline changes touch different structs (`Addons` vs `Mount`) and have no code conflicts.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 3:** WSL2 detection requires testing on actual WSL2 and Azure VM environments to validate multi-signal approach. SELinux+AppArmor coexistence needs testing on LSM-stacking distros. Rootfs device node detection for BTRFS/NVMe has high complexity and may produce false positives.
-- **Phase 4:** Cross-platform route table parsing needs real output samples from various Linux distros and macOS versions. Docker Desktop network isolation behavior needs validation for subnet clash detection.
+Phases needing deeper research during planning:
+- **Phase 2 (Air-Gapped):** The `ProvisionOptions`/`Provider` interface change is a breaking change to the internal provider interface. Needs review of all three provider implementations and test infrastructure that mocks `Provider`. Also: the pre-create bake vs. post-create load architectural decision must be documented before any code is written.
+- **Phase 5 (kinder load images):** The Docker Desktop 27+ containerd image store compatibility problem (Pitfall 2) needs a test matrix. The exact `--local` flag availability in the installed containerd 2.x version must be verified before implementation.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1:** Check interface pattern, registry slice, Result type -- all derived from direct codebase analysis. Well-documented Go patterns with clear precedent in the existing codebase.
-- **Phase 2:** File reads, JSON parsing, version comparison, `Statfs` -- all use Go stdlib with well-documented APIs. Daemon.json paths documented in Docker's official docs.
+- **Phase 1 (Multi-Version Validation):** `validate.go` pattern is established; `pkg/internal/version` semver utilities are documented and in active use.
+- **Phase 3 (Local-Path-Provisioner):** Addon action pattern is identical to `installmetricsserver`; 5-location config pipeline is documented and mechanical.
+- **Phase 4 (Host-Directory Mounting):** ExtraMounts infrastructure is complete; doctor check pattern is established. Only new work is validation logic and documentation.
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; all APIs verified against Go stdlib docs and existing go.mod. `golang.org/x/sys/unix` already present at v0.41.0. |
-| Features | HIGH | All 13 checks map directly to kind's documented Known Issues page. Thresholds and detection methods verified against official docs and kind issue tracker. |
-| Architecture | HIGH | Based entirely on direct codebase analysis. Package layering, import direction, test patterns, and dependency struct approach all verified against existing code conventions. |
-| Pitfalls | HIGH/MEDIUM | HIGH for /proc gating, daemon.json paths, test isolation, permission, exit code, and firewalld pitfalls. MEDIUM for WSL2 detection (heuristic-based, needs empirical validation) and SELinux+AppArmor coexistence (kernel 5.1+ LSM stacking is documented but rare in practice). |
+| Stack | HIGH | Direct `go.mod` verification; confirmed zero new dependencies; all packages in active use in the codebase |
+| Features | HIGH | Verified against kind official docs, K8s version-skew policy, Rancher release notes; MEDIUM for offline UX tradeoffs (multiple sources but some community-only) |
+| Architecture | HIGH | Direct codebase analysis of all relevant files; config pipeline pattern confirmed across 5+ existing fields; provider pattern confirmed in all three providers |
+| Pitfalls | HIGH | Critical pitfalls 1-4 verified against kind issue tracker and official docs; MEDIUM for Pitfall 7 (v1beta4 removal timeline — single source, exact Kubernetes version TBD) |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **WSL2 multi-signal detection validation:** The recommended two-signal approach has not been tested on actual Azure VMs to confirm false-positive prevention. Validate during Phase 3 implementation with real WSL2 and Azure VM environments.
-- **Docker Desktop inotify remediation:** On macOS/Windows, inotify limits are inside Docker's Linux VM. The correct remediation path (Docker Desktop settings vs. `wsl -d docker-desktop sysctl`) needs platform-specific validation during Phase 3.
-- **Rootfs device node detection specificity:** The BTRFS/NVMe issue only affects certain configurations. The check may produce false positives on BTRFS setups that work fine with kind. Needs empirical testing during Phase 3.
-- **Performance budget:** The 2-second target for all checks assumes some parallelization. The actual latency of `docker info`, `docker network inspect`, and other shell-outs needs measurement during Phase 4 to determine if parallel execution is required.
-- **Existing check migration scope:** Migrating existing checks (container runtime, kubectl, NVIDIA) to the new Check interface is included in Phase 1 but could be deferred. Trade-off between clean migration vs. incremental adoption needs a decision during Phase 1 planning.
-- **kubectl version skew without running cluster:** Full skew validation requires both client and server versions. Without a running cluster, doctor can only report client version and flag very old versions. Consider adding `--cluster` flag support as a v2 enhancement.
+- **kubeadm v1beta3/v1beta4 removal timeline (Pitfall 7):** Research identifies that v1beta3 support will be removed "in Kubernetes 1.34 or later." The exact version is not confirmed. During Phase 1 planning, add a validation warning for node version combinations that include a node at Kubernetes 1.31+ but treat this as a soft warning rather than a hard error until the upstream removal version is confirmed.
+- **Docker Desktop 27+ containerd store `--local` flag availability:** Research confirms the failure mode (Pitfall 2) and proposes `--local` as the fix, but the exact flag name and the minimum containerd 2.x minor version that supports it need verification against a live Docker Desktop 27+ environment before Phase 5 implementation begins.
+- **`installstorage` StorageClass name assumption:** `installstorage` reads from `/kind/manifests/default-storage.yaml` inside the node image (falls back to a hardcoded StorageClass). If a custom node image ships a different StorageClass name, the gate logic in `create.go` may skip `installstorage` but leave a ghost StorageClass. During Phase 3, validate the StorageClass name against the current default node image before relying on it in the gate.
+- **busybox helper image location in local-path-provisioner manifest:** Research confirms the helper image is in the `local-path-config` ConfigMap's `config.json` key, not the Deployment spec. The pinned `busybox:1.37.0` substitution must be applied to the ConfigMap key. Verify the exact ConfigMap structure against the v0.0.35 manifest before writing the embedded manifest patch.
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Kind Known Issues page: https://kind.sigs.k8s.io/docs/user/known-issues/ -- specification for all 13 checks
-- Docker daemon configuration docs: https://docs.docker.com/engine/daemon/ -- daemon.json locations and options
-- Go `net/netip` package: https://pkg.go.dev/net/netip -- `ParsePrefix`, `Overlaps` for subnet clash detection
-- Go `golang.org/x/sys/unix` package: https://pkg.go.dev/golang.org/x/sys/unix -- v0.41.0, `Statfs`, `Uname`
-- Kubernetes Version Skew Policy: https://kubernetes.io/releases/version-skew-policy/ -- kubectl +/-1 minor version
-- Firewalld nftables backend docs: https://firewalld.org/2018/07/nftables-backend -- `FirewallBackend=` configuration
-- Kubernetes inotify issue #46230: https://github.com/kubernetes/kubernetes/issues/46230 -- recommended thresholds
-- Kinder codebase: `doctor.go`, `create.go`, `go.mod`, `network.go`, `nvidiagpu.go`, `exec/types.go`, `version.go` -- architecture patterns and conventions
+- Kinder codebase direct reads: `pkg/build/nodeimage/imageimporter.go`, `buildcontext.go`, `const_storage.go`, `pkg/cmd/kind/load/docker-image/docker-image.go`, `pkg/cluster/nodeutils/util.go`, `pkg/cluster/internal/create/create.go`, `pkg/apis/config/v1alpha4/types.go`, `pkg/internal/apis/config/convert_v1alpha4.go`, `pkg/cluster/internal/providers/docker/images.go`, `pkg/cluster/internal/create/actions/installstorage/storage.go` — direct source of truth for all architecture findings
+- [Kind Working Offline docs](https://kind.sigs.k8s.io/docs/user/working-offline/) — confirmed pre-built node image + `kind load` approach
+- [Kind Configuration docs](https://kind.sigs.k8s.io/docs/user/configuration/) — confirmed `Node.Image` per-node field + `ExtraMounts`
+- [Kind Local Registry](https://kind.sigs.k8s.io/docs/user/local-registry/) — registry mirror pattern
+- [Kind known issues](https://kind.sigs.k8s.io/docs/user/known-issues/) — mount propagation macOS limitation
+- [Kubernetes Version Skew Policy](https://kubernetes.io/releases/version-skew-policy/) — kubelet up to 3 minor versions older than kube-apiserver (since K8s 1.28)
+- [rancher/local-path-provisioner v0.0.35 release](https://github.com/rancher/local-path-provisioner/releases/tag/v0.0.35) — latest release 2026-03-10, CVE-2025-62878 fix confirmed
+- Kind issue tracker: #3795, #3996, #2402 (image loading failures); #2576, #2400, #2700 (mount propagation macOS); #2697, #3191 (local-path-provisioner); #1424 (per-node kubeadm patches — upstream limitation)
 
 ### Secondary (MEDIUM confidence)
-- WSL2 /proc/version detection: https://gist.github.com/s0kil/336a246cc2bc8608e645c69876c17466 -- community pattern, universally used
-- Microsoft WSL detection issue #4071: https://github.com/microsoft/WSL/issues/4071 -- documents false positive/negative cases
-- WSL2 cgroupsv2 fix guide: https://github.com/spurin/wsl-cgroupsv2 -- community solution for cgroup misconfiguration
-- SELinux vs AppArmor LSM stacking analysis: https://securitylabs.datadoghq.com/articles/container-security-fundamentals-part-5/
-- Inotify in containers behavior: https://william-yeh.net/post/2019/06/inotify-in-containers/
+- [CVE-2025-62878 advisory — Orca Security](https://orca.security/resources/blog/cve-2025-62878-rancher-local-path-provisioner/) — CVSS 10.0, path traversal fixed in v0.0.34; third-party source but consistent with upstream release notes
+- [iximiuz.com — KIND: How I Wasted a Day Loading Local Docker Images](https://iximiuz.com/en/posts/kubernetes-kind-load-docker-image/) — imagePullPolicy pitfall; single source but consistent with kind docs
+- [maelvls.dev — Pull-through Docker registry on Kind clusters](https://maelvls.dev/docker-proxy-registry-kind/) — registry mirror pattern for offline use
+- [DEV.to — Addressing Limitations of Local Path Provisioner](https://dev.to/frosnerd/addressing-the-limitations-of-local-path-provisioner-in-kubernetes-3g12) — PV orphan and node-local storage limitations
+- [blog.andygol.co.ua — Getting access to host filesystem for PV in Kind](https://blog.andygol.co.ua/en/2025/04/05/host-fs-to-backup-pv-in-kind/) — two-layer mount pattern
+- k3s-io/k3s#1908, k3s-io/k3s#2391 — busybox helper air-gap failure in local-path-provisioner (behavior consistent with official docs)
+- [minikube local-path-provisioner tutorial](https://minikube.sigs.k8s.io/docs/tutorials/local_path_provisioner/) — provisioner behavior in a similar local K8s tool
 
 ### Tertiary (LOW confidence)
-- None -- all findings corroborated by at least two sources
+- [Kubernetes 1.31 blog — kubeadm v1beta4](https://kubernetes.io/blog/2024/08/23/kubernetes-1-31-kubeadm-v1beta4/) — v1beta3 removal timeline stated as "1.34 or later"; exact version unconfirmed, needs monitoring against upstream kind releases
 
 ---
-*Research completed: 2026-03-06*
+*Research completed: 2026-04-08*
 *Ready for roadmap: yes*

@@ -1,652 +1,637 @@
-# Architecture Patterns: Doctor Check Integration
+# Architecture Patterns: v2.2 Cluster Capabilities
 
-**Domain:** Diagnostic check integration into existing kinder doctor command
-**Researched:** 2026-03-06
-**Overall confidence:** HIGH (based on direct codebase analysis, no external dependencies)
+**Domain:** Offline/air-gapped clusters, local-path-provisioner addon, host-to-pod directory mounting, multi-version per-node Kubernetes
+**Researched:** 2026-04-08
+**Overall confidence:** HIGH (direct codebase analysis + verified against official kind/rancher docs)
 
-## Recommended Architecture
+---
 
-### Decision 1: Check Registration Pattern -- Lightweight Check Interface with Registry Slice
+## Scope
 
-**Recommendation:** Introduce a `Check` interface and a registry slice in a shared internal package. Do NOT use a plugin/auto-registration pattern.
+This document answers: how do the four new v2.2 features integrate with kinder's existing architecture? For each feature it identifies:
+- Which existing files require modification
+- What new files/packages are needed
+- Exact data flow through the config pipeline
+- Component boundaries
 
-**Rationale:** The existing code uses direct function calls (`checkBinary`, `checkKubectl`, `checkNvidiaDriver`, etc.) with results appended inline. This works for 6 checks but becomes unmaintainable at 19+. However, kinder's codebase favors simplicity over abstraction (e.g., the action system uses a flat `[]actions.Action` slice in `create.go`, not a plugin registry). A lightweight interface with an explicit slice preserves this philosophy while making checks composable and testable.
+---
+
+## Feature 1: Offline / Air-Gapped Clusters
+
+### What it means
+
+Air-gapped cluster creation skips all network image pulls. The user is responsible for having node images already loaded into the local container runtime (via `docker load`, `kinder load image-archive`, etc.). During `kinder create cluster`, the `ensureNodeImages` step in each provider's `Provision()` must be skipped or converted to a presence-check-only operation.
+
+### Where image pulling happens (current)
+
+Every provider's `Provision()` calls `ensureNodeImages()` before creating containers:
+
+```
+pkg/cluster/internal/providers/docker/images.go   → ensureNodeImages() → pullIfNotPresent()
+pkg/cluster/internal/providers/podman/images.go   → ensureNodeImages() → pullIfNotPresent()
+pkg/cluster/internal/providers/nerdctl/images.go  → ensureNodeImages() → pullIfNotPresent()
+```
+
+`pullIfNotPresent()` calls `docker inspect --type=image` first. If the image IS already present locally, it returns without pulling. This means air-gapped works today IF images are pre-loaded — the issue is that if an image is missing, the function tries to pull it (and retries 4 times) instead of returning a clear error.
+
+### Required architecture change
+
+Add an `AirGapped bool` field to `ClusterOptions` in `pkg/cluster/internal/create/create.go`. When `AirGapped = true`, each provider's `ensureNodeImages()` must verify that all required images are present locally and return an error immediately if any is missing, without attempting to pull.
+
+### Config pipeline touch points
+
+Since air-gapped is a creation-time behavioral flag (not a persistent cluster property), it does NOT need to flow through the v1alpha4 config YAML. It is a CLI flag only, matching the precedent of `--retain`, `--wait`, `--image`.
+
+**Approach A (recommended):** Add `AirGapped bool` to `ClusterOptions` struct only. Pass it into the provider via a modified `Provision()` signature or a new `ProvisionOptions` struct.
+
+The current `Provider` interface in `pkg/cluster/internal/providers/provider.go` defines:
+```go
+Provision(status *cli.Status, cfg *config.Cluster) error
+```
+
+The cleanest extension is to add a `ProvisionOptions` struct that wraps the existing arguments and carries the flag:
 
 ```go
-// Check represents a single diagnostic check.
-type Check interface {
-    // Name returns the display name for this check (e.g., "ip-forwarding").
-    Name() string
-    // Category returns the category grouping (e.g., "kernel", "docker", "network").
-    Category() string
-    // Platforms returns the set of GOOS values this check applies to.
-    // An empty slice means "all platforms".
-    Platforms() []string
-    // Run executes the check and returns one or more results.
-    Run() []Result
+// pkg/cluster/internal/providers/provider.go
+type ProvisionOptions struct {
+    AirGapped bool
 }
+
+// Provider interface gains ProvisionWithOptions or Provision gains a third param.
+// Preferred: new method to avoid breaking existing call sites:
+ProvisionWithOptions(status *cli.Status, cfg *config.Cluster, opts ProvisionOptions) error
 ```
 
-**Why not individual functions:** The existing pattern of `checkNvidiaDriver() []result` provides no metadata (name, category, platform). Each check is called manually, so adding 13 more would require 13 new conditional blocks in `runE`. An interface lets the main loop handle platform filtering, categorized output, and JSON serialization generically.
+Alternatively, since all three providers already implement the same `ensureNodeImages()` pattern, a simpler approach is to gate the pull in each provider's `Provision()` using a field checked from `cfg` — but that would pollute the cluster config with a runtime flag. The `ProvisionOptions` approach is cleaner.
 
-**Why not auto-registration (init):** The action system in `create.go` explicitly lists addons in `wave1` and `wave2` slices. Kinder does not use init()-based registration anywhere. An explicit slice keeps check ordering deterministic and discoverable -- you read the slice, you know what runs.
+**Files modified:**
+- `pkg/cluster/internal/providers/provider.go` — add `ProvisionOptions` struct, extend Provider interface
+- `pkg/cluster/internal/providers/docker/images.go` — `ensureNodeImages()` gains `airGapped bool` param; skip pull and error if image absent
+- `pkg/cluster/internal/providers/podman/images.go` — same
+- `pkg/cluster/internal/providers/nerdctl/images.go` — same
+- `pkg/cluster/internal/providers/docker/provider.go` — `Provision()` passes flag to `ensureNodeImages()`
+- `pkg/cluster/internal/providers/podman/provider.go` — same
+- `pkg/cluster/internal/providers/nerdctl/provider.go` — same
+- `pkg/cluster/internal/create/create.go` — `ClusterOptions` gains `AirGapped bool`; passes to `p.Provision()`
+- `pkg/cluster/createoption.go` — add `CreateWithAirGapped(bool)` option function
+- `pkg/cmd/kind/create/cluster/createcluster.go` — add `--air-gapped` flag to cobra command
 
-**Explicit registry:**
+### Interaction with addon images
+
+When `AirGapped = true`, addon manifests that reference images from public registries (MetalLB, Metrics Server, Cert Manager, etc.) will fail to pull those images at pod startup time. The addon actions themselves just apply YAML — they do not pull images. The user must pre-load addon images into the cluster nodes using `kinder load docker-image` or `kinder load image-archive` before or immediately after cluster creation.
+
+Recommended UX: when `AirGapped = true`, print a warning listing all addon images that will need to be pre-loaded. No action system changes needed; the warning lives in `create.go` after the addon profile is resolved.
+
+### Existing `load` commands are already correct
+
+`pkg/cmd/kind/load/docker-image/docker-image.go` and `pkg/cmd/kind/load/image-archive/image-archive.go` both use `nodeutils.LoadImageArchive()` which runs `ctr --namespace=k8s.io images import` inside the node container. This is exactly the right mechanism for pre-baking images. No modifications needed to the load commands for the air-gapped feature.
+
+---
+
+## Feature 2: Local-Path-Provisioner Addon
+
+### What it does
+
+[rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner) installs a StorageClass named `local-path` that dynamically provisions `hostPath`-backed PersistentVolumes on the node where the pod is scheduled. The provisioner uses a helper pod running `busybox` to set up/tear down directories.
+
+**Images required:**
+- `rancher/local-path-provisioner:v0.0.35` (or current release) — the provisioner deployment
+- `busybox` — the helper pod (referenced in the `local-path-config` ConfigMap)
+
+**Namespace:** `local-path-storage`
+
+**Default storage path on nodes:** `/opt/local-path-provisioner`
+
+### Integration pattern
+
+This is a pure addon action following the exact same pattern as MetalLB, Metrics Server, and Dashboard. No new infrastructure is needed.
+
+**New package:**
+```
+pkg/cluster/internal/create/actions/installlocalpath/
+    localpathprovisioner.go
+    localpathprovisioner_test.go
+    manifests/
+        local-path-storage.yaml   (embedded via go:embed)
+```
+
+The `Execute()` method:
+1. Gets control plane node via `nodeutils.ControlPlaneNodes()`
+2. Applies `local-path-storage.yaml` via `kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f -`
+3. Waits for `deployment/local-path-provisioner` in `local-path-storage` namespace
+4. Optionally patches to set `local-path` as the default StorageClass (replaces the existing `standard` from `installstorage`)
+
+### StorageClass conflict
+
+The existing `installstorage` action installs a `StorageClass` named `standard` (annotated as default). Local-path-provisioner installs `local-path`. If both run, two default StorageClasses exist, which Kubernetes does not reject but which creates ambiguous PVC binding behavior.
+
+**Resolution:** `LocalPath` addon is mutually exclusive with `installstorage`. When `LocalPath = true`:
+- Skip `installstorage.NewAction()` in `create.go`'s sequential action list
+- Set `local-path` as the default StorageClass in the manifest or via a post-apply patch
+
+The existing `installstorage` action is invoked unconditionally in the sequential pipeline at line `installstorage.NewAction()` in `create.go`. Add a conditional:
 
 ```go
-// allChecks returns the ordered list of all doctor checks.
-// This is the single source of truth for which checks exist and their order.
-func AllChecks() []Check {
-    return []Check{
-        // Category: Runtime
-        newContainerRuntimeCheck(),
-        newKubectlCheck(),
-        newDockerCgroupDriverCheck(),
-        newDockerStorageDriverCheck(),
-        // Category: Kernel
-        newIPForwardingCheck(),
-        newBridgeNFCallCheck(),
-        newConntrackCheck(),
-        newSwapCheck(),
-        // Category: Network
-        newPortAvailabilityCheck(),
-        newDNSResolutionCheck(),
-        newProxyEnvCheck(),
-        // Category: Resources
-        newDiskSpaceCheck(),
-        newMemoryCheck(),
-        newCPUCheck(),
-        newInotifyCheck(),
-        // Category: GPU (Linux only)
-        newNvidiaDriverCheck(),
-        newNvidiaContainerToolkitCheck(),
-        newNvidiaDockerRuntimeCheck(),
-    }
+// In create.go sequential actions:
+if !opts.Config.Addons.LocalPath {
+    actionsToRun = append(actionsToRun, installstorage.NewAction())
 }
 ```
 
-### Decision 2: Platform-Specific Checks -- Explicit "skip" Status with Reason
+### Config pipeline touch points (5 locations)
 
-**Recommendation:** Add a `"skip"` status to the result type. Checks that do not apply to the current platform return `status: "skip"` with a message like `"Linux only"`.
+**1. `pkg/apis/config/v1alpha4/types.go`** — add to `Addons` struct:
+```go
+LocalPath *bool `yaml:"localPath,omitempty" json:"localPath,omitempty"`
+```
 
-**Rationale:** Silent skipping hides information from the user. The user running `kinder doctor` on macOS should see that kernel checks exist but are not applicable, so they know what would be checked on the target Linux host. JSON consumers need this too -- an absent check vs. a skipped check have different semantics.
+**2. `pkg/apis/config/v1alpha4/default.go`** — default to enabled (consistent with other addons):
+```go
+boolPtrTrue(&obj.Addons.LocalPath)
+```
+
+**3. `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go`** — add nil-check copy for `LocalPath *bool` (same pattern as existing `MetalLB`, `NvidiaGPU`, etc.)
+
+**4. `pkg/internal/apis/config/types.go`** — add to internal `Addons` struct:
+```go
+LocalPath bool
+```
+
+**5. `pkg/internal/apis/config/convert_v1alpha4.go`** — add to `Convertv1alpha4()`:
+```go
+LocalPath: boolVal(in.Addons.LocalPath),
+```
+
+**6. `pkg/cluster/internal/create/create.go`** — add to wave1 addons and gate `installstorage`:
+```go
+wave1 := []AddonEntry{
+    ...
+    {"Local Path Provisioner", opts.Config.Addons.LocalPath, installlocalpath.NewAction()},
+}
+// and conditionally skip installstorage (see above)
+```
+
+### Air-gapped interaction
+
+For air-gapped clusters, `busybox` and `rancher/local-path-provisioner` must be pre-loaded into each node. The addon action itself does not need modification; the air-gapped warning in `create.go` should include these images when `LocalPath = true`.
+
+---
+
+## Feature 3: Host-to-Pod Directory Mounting
+
+### What this means
+
+Users want to mount a directory from the Docker host machine (macOS/Linux running kinder) into pods running inside the cluster. This is a two-hop mount:
+
+```
+Host machine directory
+    → ExtraMount into node container (Docker bind mount)
+    → hostPath PersistentVolume referencing the mounted path inside the node
+    → Pod volume mount
+```
+
+### Existing support (what already works)
+
+The config API already fully supports the node-container side:
+
+- `v1alpha4.Node.ExtraMounts []Mount` is already defined in `pkg/apis/config/v1alpha4/types.go`
+- `common.GenerateMountBindings()` in `pkg/cluster/internal/providers/common/provision.go` converts `[]Mount` to Docker bind mount flags
+- `planCreation()` in each provider's `create.go` calls `GenerateMountBindings(node.ExtraMounts...)` and appends to container args
+
+A user can today write:
+```yaml
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: /home/user/data
+    containerPath: /data
+    propagation: HostToContainer
+```
+
+This mounts `/home/user/data` from the Docker host into the node container at `/data`. Inside the node, that path is visible to kubelet.
+
+### What is missing
+
+There is no automatic wiring between an `extraMount` and a Kubernetes PersistentVolume/PersistentVolumeClaim. The user must manually create a PV referencing the `containerPath` after cluster creation.
+
+**Feature request is likely:** auto-create PVs for each `extraMount` that has `createPV: true` (or similar annotation), so the host path is immediately usable by pods without manual PV YAML.
+
+### Recommended architecture: new config field + post-init action
+
+Add an optional `CreatePV` boolean to the `Mount` type:
+
+**`pkg/apis/config/v1alpha4/types.go`:**
+```go
+type Mount struct {
+    ContainerPath string           `yaml:"containerPath,omitempty"`
+    HostPath      string           `yaml:"hostPath,omitempty"`
+    Readonly      bool             `yaml:"readOnly,omitempty"`
+    SelinuxRelabel bool            `yaml:"selinuxRelabel,omitempty"`
+    Propagation   MountPropagation `yaml:"propagation,omitempty"`
+    // CreatePV, if true, automatically creates a hostPath PersistentVolume
+    // backed by this mount's containerPath, accessible cluster-wide.
+    // +optional (default: false)
+    CreatePV bool `yaml:"createPV,omitempty" json:"createPV,omitempty"`
+    // PVName is the name for the auto-created PersistentVolume.
+    // Defaults to "kinder-pv-<sanitized-containerPath>".
+    // +optional
+    PVName string `yaml:"pvName,omitempty" json:"pvName,omitempty"`
+    // PVCapacity is the storage capacity for the auto-created PV, e.g. "10Gi".
+    // Defaults to "10Gi".
+    // +optional
+    PVCapacity string `yaml:"pvCapacity,omitempty" json:"pvCapacity,omitempty"`
+}
+```
+
+### New action: installhostmounts
+
+```
+pkg/cluster/internal/create/actions/installhostmounts/
+    hostmounts.go
+    hostmounts_test.go
+```
+
+`Execute()` iterates over `ctx.Config.Nodes`, finds all `ExtraMounts` with `CreatePV = true`, and creates PersistentVolume manifests via kubectl. The PV uses `hostPath` pointing to `mount.ContainerPath` (the path inside the node container, which kubelet can access). The PV is not tied to a specific node name — it uses a `nodeAffinity` matching the node where the mount exists.
+
+**Node-to-PV mapping:** The action must correlate the `config.Node` entry to the actual running container name. The existing pattern in `config/config.go` uses `common.MakeNodeNamer("")` and suffix matching — use the same approach.
+
+### Data flow for this feature
+
+```
+User config YAML
+    extraMounts[i].createPV = true
+         |
+         v
+v1alpha4.Mount.CreatePV parsed
+         |
+         v
+Convertv1alpha4: internal Mount gains CreatePV, PVName, PVCapacity fields
+         |
+         v
+provider.Provision() → container created with bind mount (existing, unchanged)
+         |
+         v
+installhostmounts.Execute() [NEW action in sequential pipeline]
+    → for each node with extraMounts[i].CreatePV=true:
+        → generate PV YAML with hostPath=mount.ContainerPath, nodeAffinity targeting this node
+        → kubectl apply -f - on control plane node
+```
+
+**Position in action pipeline:** After `installstorage` (or `installlocalpath`) and before `kubeadmjoin`. The PVs reference node hostPaths that exist once the node containers are running, but before Kubernetes has finished joining workers. Actually, PVs can be created anytime after kubeadm init — place this action after `waitforready` to ensure the API server is accepting resources.
+
+**Files modified:**
+- `pkg/apis/config/v1alpha4/types.go` — add `CreatePV`, `PVName`, `PVCapacity` to `Mount`
+- `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go` — regenerate (string fields, no pointer complexity)
+- `pkg/internal/apis/config/types.go` — add same fields to internal `Mount`
+- `pkg/internal/apis/config/convert_v1alpha4.go` — `convertv1alpha4Mount()` copies new fields
+- `pkg/cluster/internal/create/create.go` — add `installhostmounts.NewAction()` to sequential pipeline (after `waitforready`)
+
+**Files created:**
+- `pkg/cluster/internal/create/actions/installhostmounts/hostmounts.go`
+- `pkg/cluster/internal/create/actions/installhostmounts/hostmounts_test.go`
+
+### Alternative (simpler) approach
+
+If the auto-PV feature is out of scope for this milestone, the existing `extraMounts` support is sufficient. Document the two-hop mount pattern and provide example YAML showing the PV creation that users must do manually. No code changes needed for this simpler variant.
+
+---
+
+## Feature 4: Multi-Version Per-Node Kubernetes Clusters
+
+### What this means
+
+Each node in the cluster can run a different Kubernetes version by specifying a different node image. Example:
+
+```yaml
+nodes:
+- role: control-plane
+  image: kindest/node:v1.30.0@sha256:...
+- role: worker
+  image: kindest/node:v1.29.0@sha256:...  # one minor version behind
+```
+
+### Existing support (what already works)
+
+Per-node image specification is **already fully supported** by the existing config API and provider layer:
+
+1. `v1alpha4.Node.Image string` — each node has its own image field
+2. `planCreation()` in each provider iterates `cfg.Nodes` and uses `node.Image` directly as the container image
+3. `common.RequiredNodeImages(cfg)` collects all unique images for the pre-pull step
+4. `SetDefaultsNode()` assigns the default image only when `node.Image == ""`
+
+The `--image` CLI flag overrides ALL nodes globally (via `fixupOptions` in `create.go`), but the config file supports per-node images natively.
+
+### What is missing
+
+**Kubeadm version skew enforcement.** When nodes have different Kubernetes versions, kubeadm enforces version skew policy:
+- Workers can be at most 3 minor versions behind the control plane
+- All control planes must be at the same version (kubeadm does not support mixed-version control planes)
+
+Currently `kubeadminit/init.go` reads the Kubernetes version from the bootstrap control plane node's `/kind/version` file and uses it for all kubeadm operations. For worker nodes with different versions, `kubeadmjoin/join.go` generates join config using the same control plane's version — this is correct behavior (the join config references the control plane's version, not the worker's).
+
+**The actual gap:** Validation. The `Cluster.Validate()` in `pkg/internal/apis/config/validate.go` does not check for version skew compatibility across nodes. A user could accidentally configure an invalid version combination and get a cryptic kubeadm error.
+
+### Recommended architecture change: version skew validation
+
+Add version skew validation in `Cluster.Validate()` after all node images are set:
 
 ```go
-type Result struct {
-    Name     string
-    Status   string // "ok", "warn", "fail", "skip"
-    Message  string
-    Category string
+// In pkg/internal/apis/config/validate.go, Cluster.Validate():
+if err := validateNodeVersionSkew(c.Nodes); err != nil {
+    errs = append(errs, err)
 }
 ```
 
-**Human-readable output:**
-```
-[ OK ] docker
-[ OK ] kubectl
-[SKIP] ip-forwarding: Linux only
-[SKIP] bridge-nf-call: Linux only
-[ OK ] disk-space: 45.2 GB available
-```
+`validateNodeVersionSkew()` would:
+1. Find all control plane nodes — all must have the same image (same version)
+2. Find all worker nodes — their images must be at most 3 minor versions behind the control plane version
 
-**JSON output:**
-```json
-[
-  {"name": "docker", "status": "ok", "category": "runtime"},
-  {"name": "ip-forwarding", "status": "skip", "message": "Linux only", "category": "kernel"}
-]
-```
+**Challenge:** The image string (e.g., `kindest/node:v1.30.0@sha256:abc`) must be parsed for the version. The version is embedded in the tag. The validation should be best-effort: if the image is a non-standard image (e.g., a custom build), skip version skew validation with a warning rather than failing.
 
-**Platform filtering in the main loop** (not in each check):
+**Files modified:**
+- `pkg/internal/apis/config/validate.go` — add `validateNodeVersionSkew()` function
+- `pkg/internal/version/` — possibly extend the existing version parsing utilities to handle node image tag formats
 
-```go
-for _, check := range checks.AllChecks() {
-    platforms := check.Platforms()
-    if len(platforms) > 0 && !contains(platforms, runtime.GOOS) {
-        results = append(results, checks.Result{
-            Name:     check.Name(),
-            Status:   "skip",
-            Message:  fmt.Sprintf("%s only", strings.Join(platforms, "/")),
-            Category: check.Category(),
-        })
-        continue
-    }
-    results = append(results, check.Run()...)
-}
-```
+### Config action change for per-node versions
 
-This keeps platform logic out of individual check implementations. The `Platforms()` method on the interface is pure metadata; the filtering decision is centralized.
+`config/config.go`'s `getKubeadmConfig()` already reads the Kubernetes version from each individual node via `nodeutils.KubeVersion(node)`. This means each node generates its own kubeadm config using its own version. This is already correct.
 
-### Decision 3: Auto-Mitigations -- Shared Package, Doctor Reports, Create Applies
+The `kubeadm.ConfigData.KubernetesVersion` is set per-node in the loop at the bottom of `getKubeadmConfig()`. No changes needed here.
 
-**Recommendation:** Create check implementations AND their associated mitigation functions in a shared `pkg/internal/doctor/` package. Doctor reports mitigations as suggestions. The create flow calls mitigations automatically before provisioning.
-
-**Why `pkg/internal/doctor/` (not `pkg/cmd/kind/doctor/checks/`):** The create flow in `pkg/cluster/internal/create/create.go` needs to import mitigation functions. It already imports from `pkg/internal/` (e.g., `pkg/internal/apis/config/`, `pkg/internal/cli/`). The `pkg/cmd/` layer is CLI-specific and should NOT be imported by cluster internals -- that would invert the dependency direction.
-
-**Package structure:**
+### Data flow for multi-version
 
 ```
-pkg/internal/doctor/
-    check.go           -- Check interface, Result type, AllChecks() registry
-    runtime.go         -- Container runtime checks
-    runtime_test.go
-    kernel.go          -- Kernel parameter checks (ip_forward, bridge-nf-call, etc.)
-    kernel_test.go
-    network.go         -- Network checks (ports, DNS, proxy env)
-    network_test.go
-    resources.go       -- Resource checks (disk, memory, CPU, inotify)
-    resources_test.go
-    gpu.go             -- NVIDIA GPU checks (migrated from doctor.go)
-    gpu_test.go
-    mitigations.go     -- Mitigation functions (sysctl, etc.)
-    mitigations_test.go
-
-pkg/cmd/kind/doctor/
-    doctor.go          -- CLI command, imports pkg/internal/doctor/
-
-pkg/cluster/internal/create/
-    create.go          -- Imports pkg/internal/doctor/ for pre-flight mitigations
+User config YAML
+    nodes[0].image = "kindest/node:v1.30.0"   # control plane
+    nodes[1].image = "kindest/node:v1.29.0"   # worker
+         |
+         v
+Cluster.Validate() → validateNodeVersionSkew() [NEW]
+    → parse versions from image tags
+    → assert all control planes same version
+    → assert workers within 3-minor-version skew
+         |
+         v
+provider.Provision()
+    → ensureNodeImages() pulls both images (or verifies locally if air-gapped)
+    → planCreation() creates node[0] container with v1.30 image, node[1] with v1.29 image
+         |
+         v
+configaction.Execute()
+    → for each node: nodeutils.KubeVersion(node) reads /kind/version from THAT node's container
+    → generates kubeadm config with that node's own K8s version
+         |
+         v
+kubeadminit.Execute()
+    → reads version from bootstrap control plane (v1.30)
+    → runs kubeadm init with v1.30 config
+         |
+         v
+kubeadmjoin.Execute()
+    → worker node runs kubeadm join
+    → worker uses its own kubelet binary (v1.29 from its image)
+    → control plane API is v1.30 — within allowed skew
 ```
 
-**Doctor behavior (report only):**
-```
-[FAIL] ip-forwarding: net.ipv4.ip_forward is 0
-       Fix: sudo sysctl -w net.ipv4.ip_forward=1
-[WARN] bridge-nf-call: bridge-nf-call-iptables is 0
-       Fix: sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
-```
+### New CLI flag: --node-image
 
-**Create behavior (auto-apply non-destructive mitigations):**
-
-The create flow should auto-apply non-destructive, idempotent mitigations (like setting sysctl values) before provisioning. This matches the existing `validateProvider()` pattern in `create.go` -- pre-flight checks that block creation. The distinction:
-
-| Mitigation Type | Doctor | Create |
-|----------------|--------|--------|
-| Non-destructive sysctl (ip_forward=1) | Report with fix command | Auto-apply silently |
-| Destructive (swapoff) | Report with fix command | Warn but do NOT auto-apply |
-| Missing binary (nvidia-smi) | Report install instructions | Fail with error |
-| Configuration (Docker cgroup driver) | Report fix steps | Warn, do NOT auto-apply |
-
-```go
-// In create.go, before p.Provision():
-if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
-    for _, err := range errs {
-        logger.Warnf("Pre-flight mitigation: %v", err)
-    }
-}
-```
-
-### Decision 4: Check Organization -- By Category with Flat Execution
-
-**Recommendation:** Organize check source files by category (runtime, kernel, network, resources, gpu) but execute them as a flat ordered list. Category is metadata on each check, used for grouped output display.
-
-**Rationale:** The existing doctor output is a flat list. Users benefit from visual grouping but do not need nested command structure. Categories appear in output formatting only.
-
-**Human-readable grouped output:**
-```
-Runtime:
-  [ OK ] docker: Docker 24.0.7
-  [ OK ] kubectl: v1.29.0
-
-Kernel:
-  [ OK ] ip-forwarding
-  [ OK ] bridge-nf-call-iptables
-  [WARN] conntrack-max: 65536 (recommend 131072+ for multi-node)
-
-Network:
-  [ OK ] port-6443: available
-  [ OK ] dns-resolution
-  [SKIP] proxy-env: no HTTP_PROXY set
-
-Resources:
-  [ OK ] disk-space: 45.2 GB available
-  [ OK ] memory: 16 GB available
-  [WARN] inotify-watches: 8192 (recommend 524288+)
-```
-
-**JSON output preserves category for filtering:**
-```json
-[
-  {"name": "docker", "status": "ok", "category": "runtime", "message": "Docker 24.0.7"},
-  {"name": "ip-forwarding", "status": "ok", "category": "kernel"}
-]
-```
-
-### Decision 5: Root/Sudo Checks -- Check Without Root, Report Fix With Sudo
-
-**Recommendation:** Doctor checks should NEVER require root to run. They read system state (files in /proc, /sys, etc.) which is world-readable. Mitigations that require root include `sudo` in the reported fix command. Auto-mitigations in the create flow should detect if running as root and apply directly, or skip with a warning if not root.
-
-**Design:**
-
-```go
-// checkIPForwarding reads /proc/sys/net/ipv4/ip_forward (world-readable).
-// No root required to CHECK.
-func (c *ipForwardingCheck) Run() []Result {
-    val, err := c.readSysctl("net.ipv4.ip_forward")
-    if err != nil {
-        return []Result{{Name: c.Name(), Status: "warn", Category: c.Category(),
-            Message: "could not read ip_forward: " + err.Error()}}
-    }
-    if val == "1" {
-        return []Result{{Name: c.Name(), Status: "ok", Category: c.Category()}}
-    }
-    return []Result{{
-        Name:     c.Name(),
-        Status:   "fail",
-        Category: c.Category(),
-        Message:  "net.ipv4.ip_forward is 0\n       Fix: sudo sysctl -w net.ipv4.ip_forward=1",
-    }}
-}
-
-// MitigateIPForwarding sets ip_forward=1. Requires root.
-func MitigateIPForwarding() error {
-    if os.Geteuid() != 0 {
-        return errors.New("ip_forward mitigation requires root -- run with sudo or set manually")
-    }
-    return os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0644)
-}
-```
-
-**Key principle:** Reading /proc/sys is always safe without root. Writing to /proc/sys requires root. Doctor reads. Create's pre-flight mitigation writes (if root) or warns (if not root).
-
-### Decision 6: Testability -- Deps Struct Over Package-Level Vars
-
-**Recommendation:** Use a deps struct on each check type for injectable dependencies, rather than package-level function variables. This is an improvement over the existing `currentOS`/`checkPrerequisites` pattern from the NVIDIA GPU addon.
-
-**Rationale:** The NVIDIA GPU addon uses package-level vars:
-
-```go
-// Existing pattern (installnvidiagpu/nvidiagpu.go):
-var currentOS = runtime.GOOS
-var checkPrerequisites = checkHostPrerequisites
-```
-
-Tests that modify these are explicitly NOT parallel (`TestExecute_NonLinuxSkips` saves/restores `currentOS`). With 13+ checks, this approach creates 20+ package-level vars and forces many tests to be sequential. The deps struct approach scales better:
-
-```go
-type ipForwardingCheck struct {
-    readSysctl func(string) (string, error)
-}
-
-func newIPForwardingCheck() Check {
-    return &ipForwardingCheck{
-        readSysctl: readSysctlFromProc,
-    }
-}
-```
-
-Tests inject dependencies at construction time, enabling full parallel execution:
-
-```go
-func TestIPForwardingCheck(t *testing.T) {
-    t.Parallel()
-    tests := []struct {
-        name       string
-        sysctlVal  string
-        sysctlErr  error
-        wantStatus string
-    }{
-        {"enabled", "1", nil, "ok"},
-        {"disabled", "0", nil, "fail"},
-        {"read error", "", errors.New("no such file"), "warn"},
-    }
-    for _, tc := range tests {
-        tc := tc
-        t.Run(tc.name, func(t *testing.T) {
-            t.Parallel()
-            check := &ipForwardingCheck{
-                readSysctl: func(_ string) (string, error) {
-                    return tc.sysctlVal, tc.sysctlErr
-                },
-            }
-            results := check.Run()
-            if results[0].Status != tc.wantStatus {
-                t.Errorf("got status %q, want %q", results[0].Status, tc.wantStatus)
-            }
-        })
-    }
-}
-```
-
-**Key advantage:** No global state mutation, no save/restore, full parallel test execution. The `newIPForwardingCheck()` constructor wires real dependencies; tests construct with fakes directly.
-
-**For checks using exec.Command (docker, kubectl):** Use the same FakeCmd infrastructure from `testutil/fake.go`:
-
-```go
-type containerRuntimeCheck struct {
-    lookPath func(string) (string, error)
-    execCmd  func(name string, args ...string) exec.Cmd
-}
-
-func newContainerRuntimeCheck() Check {
-    return &containerRuntimeCheck{
-        lookPath: osexec.LookPath,
-        execCmd:  exec.Command,
-    }
-}
-```
-
-Tests inject `lookPath` that returns/errors and `execCmd` that returns `*testutil.FakeCmd`.
-
-### Decision 7: Where Auto-Mitigation Code Lives and Integration Points
-
-**Recommendation:** Mitigations live in `pkg/internal/doctor/mitigations.go`. The create flow imports and calls them via a single entry point.
-
-**Integration point in create.go:**
-
-```go
-// In pkg/cluster/internal/create/create.go, Cluster() function,
-// AFTER validateProvider() and BEFORE p.Provision():
-
-import "sigs.k8s.io/kind/pkg/internal/doctor"
-
-// Pre-flight mitigations (best-effort, warn-and-continue).
-if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
-    for _, err := range errs {
-        logger.Warnf("Pre-flight mitigation: %v", err)
-    }
-}
-```
-
-**Why this location:** The `Cluster()` function in `create.go` already has a pre-flight section (`validateProvider`, `fixupOptions`, `alreadyExists`). Adding `ApplySafeMitigations` fits naturally in this sequence -- it is a pre-condition check with auto-fix capability.
-
-**Mitigation design:**
-
-```go
-// mitigations.go
-
-// SafeMitigation represents an idempotent, non-destructive fix.
-type SafeMitigation struct {
-    Name      string
-    NeedsFix  func() bool
-    Apply     func() error
-    NeedsRoot bool
-}
-
-// SafeMitigations returns the list of mitigations safe for auto-apply.
-func SafeMitigations() []SafeMitigation {
-    return []SafeMitigation{
-        {
-            Name:      "ip-forwarding",
-            NeedsFix:  func() bool { v, _ := readSysctlFromProc("net.ipv4.ip_forward"); return v != "1" },
-            Apply:     func() error { return writeSysctl("net.ipv4.ip_forward", "1") },
-            NeedsRoot: true,
-        },
-        {
-            Name:      "bridge-nf-call-iptables",
-            NeedsFix:  func() bool { v, _ := readSysctlFromProc("net.bridge.bridge-nf-call-iptables"); return v != "1" },
-            Apply:     func() error { return writeSysctl("net.bridge.bridge-nf-call-iptables", "1") },
-            NeedsRoot: true,
-        },
-    }
-}
-
-// ApplySafeMitigations runs all safe mitigations, logging results.
-// Returns errors for mitigations that failed to apply (informational, not fatal).
-func ApplySafeMitigations(logger log.Logger) []error {
-    if runtime.GOOS != "linux" {
-        return nil
-    }
-    var errs []error
-    for _, m := range SafeMitigations() {
-        if !m.NeedsFix() {
-            continue
-        }
-        if m.NeedsRoot && os.Geteuid() != 0 {
-            logger.Warnf("Skipping %s mitigation (requires root)", m.Name)
-            continue
-        }
-        if err := m.Apply(); err != nil {
-            errs = append(errs, fmt.Errorf("%s: %w", m.Name, err))
-        } else {
-            logger.V(0).Infof("Applied mitigation: %s", m.Name)
-        }
-    }
-    return errs
-}
-```
-
-**Import direction (verified clean):**
-```
-pkg/cluster/internal/create/create.go
-    imports -> pkg/internal/doctor/           (for ApplySafeMitigations)
-    imports -> pkg/cluster/internal/create/actions/  (for addon actions)
-
-pkg/cmd/kind/doctor/doctor.go
-    imports -> pkg/internal/doctor/           (for AllChecks, Result)
-```
-
-Both consumers import from `pkg/internal/` which is the correct shared-logic layer. No circular dependencies. No CLI-to-internals imports.
-
-## Component Boundaries
-
-| Component | Responsibility | Location | New/Modified |
-|-----------|---------------|----------|-------------|
-| Check interface | Defines the contract for all checks | `pkg/internal/doctor/check.go` | **NEW** |
-| Result type | Exported result struct with category | `pkg/internal/doctor/check.go` | **NEW** |
-| AllChecks registry | Ordered slice of all checks | `pkg/internal/doctor/check.go` | **NEW** |
-| Runtime checks | Docker/podman/nerdctl, kubectl, cgroup driver, storage driver | `pkg/internal/doctor/runtime.go` | **NEW** |
-| Kernel checks | ip_forward, bridge-nf-call, conntrack, swap | `pkg/internal/doctor/kernel.go` | **NEW** |
-| Network checks | Port availability, DNS, proxy env | `pkg/internal/doctor/network.go` | **NEW** |
-| Resource checks | Disk, memory, CPU, inotify | `pkg/internal/doctor/resources.go` | **NEW** |
-| GPU checks | NVIDIA driver, toolkit, runtime | `pkg/internal/doctor/gpu.go` | **NEW** (migrated from doctor.go) |
-| Mitigations | Safe auto-fix functions + ApplySafeMitigations | `pkg/internal/doctor/mitigations.go` | **NEW** |
-| Doctor command | CLI entry point, output formatting, uses Check interface | `pkg/cmd/kind/doctor/doctor.go` | **MODIFIED** |
-| Create flow | Pre-flight mitigations call before provisioning | `pkg/cluster/internal/create/create.go` | **MODIFIED** |
-| checkResult JSON struct | Add Category field (backward-compatible) | `pkg/cmd/kind/doctor/doctor.go` | **MODIFIED** |
-
-## Data Flow
-
-### Doctor Command Flow
+Consider adding a `--node-image role=image` flag for ad-hoc per-node image override without a config file:
 
 ```
-User runs: kinder doctor [--output json]
-    |
-    v
-doctor.runE()
-    |
-    +-- doctor.AllChecks() returns []Check
-    |
-    +-- for each check:
-    |     +-- check.Platforms() -> platform filter (centralized in runE)
-    |     +-- if skip: append Result{Status: "skip"}
-    |     +-- if applicable: check.Run() -> append Results
-    |
-    +-- compute exit code from results
-    |     (skip does NOT trigger warning exit code 2)
-    |
-    +-- if --output json:
-    |     +-- json.NewEncoder -> stdout (with category field)
-    |     +-- os.Exit(code)
-    |
-    +-- else (human-readable):
-          +-- group by category for display
-          +-- format [STATUS] name: message
-          +-- os.Exit(code)
+kinder create cluster --node-image control-plane=kindest/node:v1.30.0 --node-image worker=kindest/node:v1.29.0
 ```
 
-### Create Command Flow (with mitigations)
+This is additive to the existing `--image` (global override). Implementation in `createcluster.go` + `createoption.go`. Medium complexity, reasonable scope for the milestone.
+
+---
+
+## Component Boundary Summary
+
+| Component | File | New / Modified | Feature |
+|-----------|------|----------------|---------|
+| `ProvisionOptions` struct | `pkg/cluster/internal/providers/provider.go` | MODIFIED (new struct) | Air-gapped |
+| `ensureNodeImages()` air-gap gate | `pkg/cluster/internal/providers/docker/images.go` | MODIFIED | Air-gapped |
+| `ensureNodeImages()` air-gap gate | `pkg/cluster/internal/providers/podman/images.go` | MODIFIED | Air-gapped |
+| `ensureNodeImages()` air-gap gate | `pkg/cluster/internal/providers/nerdctl/images.go` | MODIFIED | Air-gapped |
+| `ClusterOptions.AirGapped` | `pkg/cluster/internal/create/create.go` | MODIFIED | Air-gapped |
+| `CreateWithAirGapped()` | `pkg/cluster/createoption.go` | MODIFIED (new func) | Air-gapped |
+| `--air-gapped` CLI flag | `pkg/cmd/kind/create/cluster/createcluster.go` | MODIFIED | Air-gapped |
+| `installlocalpath` package | `pkg/cluster/internal/create/actions/installlocalpath/` | NEW | Local-path-provisioner |
+| `Addons.LocalPath` (v1alpha4) | `pkg/apis/config/v1alpha4/types.go` | MODIFIED | Local-path-provisioner |
+| `Addons.LocalPath` default | `pkg/apis/config/v1alpha4/default.go` | MODIFIED | Local-path-provisioner |
+| `Addons.LocalPath` deepcopy | `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go` | MODIFIED | Local-path-provisioner |
+| `Addons.LocalPath` (internal) | `pkg/internal/apis/config/types.go` | MODIFIED | Local-path-provisioner |
+| `Addons.LocalPath` conversion | `pkg/internal/apis/config/convert_v1alpha4.go` | MODIFIED | Local-path-provisioner |
+| `installstorage` gate in pipeline | `pkg/cluster/internal/create/create.go` | MODIFIED | Local-path-provisioner |
+| `installlocalpath` in wave1 | `pkg/cluster/internal/create/create.go` | MODIFIED | Local-path-provisioner |
+| `Mount.CreatePV` fields (v1alpha4) | `pkg/apis/config/v1alpha4/types.go` | MODIFIED | Host-to-pod mounts |
+| `Mount.CreatePV` deepcopy | `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go` | MODIFIED | Host-to-pod mounts |
+| `Mount.CreatePV` fields (internal) | `pkg/internal/apis/config/types.go` | MODIFIED | Host-to-pod mounts |
+| `convertv1alpha4Mount()` | `pkg/internal/apis/config/convert_v1alpha4.go` | MODIFIED | Host-to-pod mounts |
+| `installhostmounts` package | `pkg/cluster/internal/create/actions/installhostmounts/` | NEW | Host-to-pod mounts |
+| `installhostmounts` in pipeline | `pkg/cluster/internal/create/create.go` | MODIFIED | Host-to-pod mounts |
+| `validateNodeVersionSkew()` | `pkg/internal/apis/config/validate.go` | MODIFIED (new func) | Multi-version nodes |
+
+---
+
+## Data Flow: Config Pipeline for New Fields
+
+Every new config field touches 5 locations. The pattern, established by all existing fields:
 
 ```
-User runs: kinder create cluster
-    |
-    v
-create.Cluster()
-    |
-    +-- validateProvider()                      (existing)
-    +-- fixupOptions()                          (existing)
-    +-- alreadyExists()                         (existing)
-    +-- doctor.ApplySafeMitigations(logger)     <-- NEW
-    |     +-- runtime.GOOS != "linux"? return nil
-    |     +-- for each SafeMitigation:
-    |           +-- NeedsFix()? -> check current state
-    |           +-- NeedsRoot && !root? -> warn, skip
-    |           +-- Apply() -> write sysctl / fix
-    |
-    +-- p.Provision()                           (existing)
-    +-- [sequential actions: loadbalancer, kubeadm, CNI, ...]  (existing)
-    +-- [addon waves 1 and 2]                   (existing)
+User writes YAML
+    → v1alpha4/types.go (external API struct)
+    → v1alpha4/default.go (SetDefaultsCluster / SetDefaultsNode)
+    → v1alpha4/zz_generated.deepcopy.go (DeepCopy for the pointer/field)
+    → internal/apis/config/types.go (internal struct, no serialization tags)
+    → internal/apis/config/convert_v1alpha4.go (Convertv1alpha4 + convertv1alpha4Node/Mount)
 ```
+
+The 6th location is `create.go` where the config field gates or drives behavior.
+
+---
+
+## Suggested Build Order
+
+Dependencies between the 4 features determine build order:
+
+**Phase 1: Multi-version per-node validation (no dependencies)**
+- Touches only `validate.go` (new function, no new files needed)
+- Prerequisite for: air-gapped (need to validate per-node images exist)
+- Config pipeline: validation only, no new fields
+- Risk: LOW — isolated to one function in validate.go
+
+**Phase 2: Air-gapped clusters**
+- Depends on: provider layer familiarity (same files as phase 1 context)
+- Touches: all three provider `images.go` files, `provider.go` interface, `create.go`, `createoption.go`, CLI
+- Risk: MEDIUM — touches all three providers, must not break existing image pull behavior
+
+**Phase 3: Local-path-provisioner addon**
+- Depends on: none (standalone addon, but benefits from air-gapped being done so the busybox image warning can be included)
+- Touches: full 5-location config pipeline + new action package + `create.go` wave1 + `installstorage` gate
+- Risk: LOW for the action itself; MEDIUM for the `installstorage` mutual exclusion logic
+
+**Phase 4: Host-to-pod directory mounting (auto-PV)**
+- Depends on: local-path-provisioner (provides the StorageClass that PVs will use)
+- Touches: `Mount` type in both v1alpha4 and internal config + new action package
+- Risk: MEDIUM — `Mount` is used in the provider layer; adding fields must not break existing mount binding
+
+---
 
 ## Patterns to Follow
 
-### Pattern 1: Check Implementation with Deps Struct
+### Pattern 1: New Addon Action (local-path-provisioner)
 
-**What:** Each check type embeds function dependencies for injectable testing.
-**When:** All new check implementations.
+Follows the `installmetricsserver` template exactly:
 
 ```go
-type ipForwardingCheck struct {
-    readSysctl func(string) (string, error)
-}
+package installlocalpath
 
-func newIPForwardingCheck() Check {
-    return &ipForwardingCheck{
-        readSysctl: readSysctlFromProc,
-    }
-}
+import (
+    _ "embed"
+    "strings"
 
-func (c *ipForwardingCheck) Name() string        { return "ip-forwarding" }
-func (c *ipForwardingCheck) Category() string     { return "kernel" }
-func (c *ipForwardingCheck) Platforms() []string  { return []string{"linux"} }
+    "sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
+    "sigs.k8s.io/kind/pkg/cluster/nodeutils"
+    "sigs.k8s.io/kind/pkg/errors"
+)
 
-func (c *ipForwardingCheck) Run() []Result {
-    val, err := c.readSysctl("net.ipv4.ip_forward")
+//go:embed manifests/local-path-storage.yaml
+var localPathManifest string
+
+type action struct{}
+
+func NewAction() actions.Action { return &action{} }
+
+func (a *action) Execute(ctx *actions.ActionContext) error {
+    ctx.Status.Start("Installing Local Path Provisioner")
+    defer ctx.Status.End(false)
+
+    allNodes, err := ctx.Nodes()
     if err != nil {
-        return []Result{{Name: c.Name(), Status: "warn", Category: c.Category(),
-            Message: "could not read ip_forward: " + err.Error()}}
+        return errors.Wrap(err, "failed to list cluster nodes")
     }
-    if val == "1" {
-        return []Result{{Name: c.Name(), Status: "ok", Category: c.Category()}}
+    controlPlanes, err := nodeutils.ControlPlaneNodes(allNodes)
+    if err != nil {
+        return errors.Wrap(err, "failed to find control plane nodes")
     }
-    return []Result{{Name: c.Name(), Status: "fail", Category: c.Category(),
-        Message: "net.ipv4.ip_forward is 0\n       Fix: sudo sysctl -w net.ipv4.ip_forward=1"}}
+    node := controlPlanes[0]
+
+    if err := node.CommandContext(ctx.Context,
+        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "-",
+    ).SetStdin(strings.NewReader(localPathManifest)).Run(); err != nil {
+        return errors.Wrap(err, "failed to apply local-path-provisioner manifest")
+    }
+
+    if err := node.CommandContext(ctx.Context,
+        "kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
+        "wait", "--namespace=local-path-storage",
+        "--for=condition=Available", "deployment/local-path-provisioner",
+        "--timeout=120s",
+    ).Run(); err != nil {
+        return errors.Wrap(err, "local-path-provisioner did not become available")
+    }
+
+    ctx.Status.End(true)
+    return nil
 }
 ```
 
-### Pattern 2: Table-Driven Sysctl Checks (Reduce Boilerplate)
+### Pattern 2: Provider-Level Feature Flag via ProvisionOptions
 
-**What:** Many kernel checks follow the same pattern: read a sysctl value, compare to expected. A generic struct handles this.
-**When:** ip_forward, bridge-nf-call-iptables, bridge-nf-call-ip6tables, nf_conntrack_max.
+Rather than adding fields to `config.Cluster` for runtime-only flags:
 
 ```go
-type sysctlCheck struct {
-    checkName  string
-    key        string
-    expected   string
-    comparator string // "eq", "gte"
-    severity   string // "fail" or "warn"
-    fixCmd     string
-    readSysctl func(string) (string, error)
+// provider.go
+type ProvisionOptions struct {
+    AirGapped bool
 }
 
-func newSysctlCheck(name, key, expected, comparator, severity, fixCmd string) Check {
-    return &sysctlCheck{
-        checkName:  name,
-        key:        key,
-        expected:   expected,
-        comparator: comparator,
-        severity:   severity,
-        fixCmd:     fixCmd,
-        readSysctl: readSysctlFromProc,
-    }
-}
-
-func (c *sysctlCheck) Name() string        { return c.checkName }
-func (c *sysctlCheck) Category() string     { return "kernel" }
-func (c *sysctlCheck) Platforms() []string  { return []string{"linux"} }
+// Usage in create.go:
+opts := providers.ProvisionOptions{AirGapped: clusterOpts.AirGapped}
+if err := p.ProvisionWithOptions(status, opts.Config, opts); err != nil { ... }
 ```
 
-This reduces boilerplate: 4 kernel sysctl checks become 4 calls to `newSysctlCheck()` in the registry.
+Each provider's `ensureNodeImages()` receives this flag:
 
-### Pattern 3: Mitigation as Paired Function
+```go
+func ensureNodeImages(logger log.Logger, status *cli.Status, cfg *config.Cluster, airGapped bool) error {
+    for _, image := range common.RequiredNodeImages(cfg).List() {
+        friendlyImageName, image := sanitizeImage(image)
+        cmd := exec.Command("docker", "inspect", "--type=image", image)
+        if err := cmd.Run(); err == nil {
+            continue // image present, skip
+        }
+        if airGapped {
+            return errors.Errorf("air-gapped mode: image %q not present locally; pre-load with: kinder load docker-image %s", friendlyImageName, image)
+        }
+        // existing pull logic
+        status.Start(fmt.Sprintf("Ensuring node image (%s)", friendlyImageName))
+        if _, err := pullIfNotPresent(logger, image, 4); err != nil {
+            status.End(false)
+            return err
+        }
+    }
+    return nil
+}
+```
 
-**What:** Each mitigation is a standalone function paired with a check by naming convention.
-**When:** For all mitigations that the create flow should auto-apply.
+### Pattern 3: Config Pipeline Extension (5-location checklist)
 
-The pairing is explicit in `SafeMitigations()` -- each entry references the check logic (NeedsFix) and the fix logic (Apply). This is not a formal interface relationship; it is a convention that keeps checks and mitigations co-located in the same package.
+Every new config field must touch all 5 locations atomically in the same commit to avoid partial-state breakage. Checklist:
+
+- [ ] `pkg/apis/config/v1alpha4/types.go` — external struct field with yaml/json tags
+- [ ] `pkg/apis/config/v1alpha4/default.go` — default value (or omit if zero-value is correct default)
+- [ ] `pkg/apis/config/v1alpha4/zz_generated.deepcopy.go` — deepcopy for pointer fields
+- [ ] `pkg/internal/apis/config/types.go` — internal struct field (no tags)
+- [ ] `pkg/internal/apis/config/convert_v1alpha4.go` — conversion function
+
+---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Check Registration via init()
+### Anti-Pattern 1: Putting Air-Gapped in the Cluster Config YAML
 
-**What:** Using `func init() { RegisterCheck(myCheck) }` in each check file.
-**Why bad:** Kinder does not use init-registration anywhere. It makes check ordering non-deterministic (depends on file compilation order within a package). It makes it impossible to read which checks run by looking at one place.
-**Instead:** Explicit slice in `AllChecks()` function.
+Air-gapped is a creation-time flag, not a persistent cluster property. Adding it to `v1alpha4.Cluster` would mean cluster configs are non-portable (a config with `airGapped: true` would fail on a machine that hasn't pre-loaded images). Keep it as a CLI flag only, like `--retain`.
 
-### Anti-Pattern 2: Checks That Modify System State
+### Anti-Pattern 2: Modifying kubeadm config generation for multi-version
 
-**What:** Having a check function that "fixes" things while checking them.
-**Why bad:** `kinder doctor` should be safe to run at any time, even by non-root users, even on production hosts. A check that modifies state could break things unexpectedly.
-**Instead:** Checks are pure readers. Mitigations are separate functions called only from the create flow.
+The `config/config.go` action already reads each node's version from its own `/kind/version` file and generates per-node kubeadm configs. Do not add version inference or override logic at this layer — it already works correctly.
 
-### Anti-Pattern 3: Global Package-Level Vars for Every Dependency
+### Anti-Pattern 3: Installing both `standard` and `local-path` StorageClasses as default
 
-**What:** Following the NVIDIA GPU addon pattern of `var readSysctl = readSysctlFromProc` at package level for every injectable dependency.
-**Why bad:** With 13+ checks, you would have 20+ package-level vars. Tests that modify these cannot run in parallel. The NVIDIA addon had a single check; this approach does not scale to many checks.
-**Instead:** Deps struct on each check type. Package-level vars only for backward compatibility with existing NVIDIA code (which can be migrated later).
+Two default StorageClasses cause ambiguous PVC binding. The `installstorage` action must be skipped when `LocalPath` addon is enabled. Do not attempt to "merge" them or use annotation patching to manage default/non-default status post-install.
 
-### Anti-Pattern 4: Putting Check Logic in pkg/cmd/kind/doctor/
+### Anti-Pattern 4: Hardcoding busybox image in installlocalpath
 
-**What:** Implementing diagnostic check logic directly in the CLI command package.
-**Why bad:** The create flow needs access to the same check/mitigation logic. If it lives in `pkg/cmd/`, the cluster internals (`pkg/cluster/internal/create/`) would need to import from the CLI layer, violating the dependency direction. The existing codebase is strict about this: `pkg/cluster/internal/` imports from `pkg/internal/`, never from `pkg/cmd/`.
-**Instead:** Shared `pkg/internal/doctor/` package importable by both the CLI and the create flow.
+The `local-path-config` ConfigMap in the manifest controls the helper pod image. For air-gapped compatibility, the manifest should reference the image with `imagePullPolicy: IfNotPresent` (the default in the official manifest). Do not hardcode a different image or add image-override logic in the action — let the user handle it by pre-loading busybox before creation.
 
-### Anti-Pattern 5: Adding --auto-fix Flag to Doctor
+### Anti-Pattern 5: Creating PVs before cluster is fully ready
 
-**What:** Having `kinder doctor --auto-fix` that both diagnoses and remediates.
-**Why bad:** Conflates two concerns. Doctor is a diagnostic tool that should be safe and read-only. Auto-fix belongs in the create flow where the user has already consented to system changes by running `kinder create cluster`.
-**Instead:** Doctor reports. Create auto-mitigates (for safe, idempotent fixes only).
+The `installhostmounts` action must run after `waitforready`. The Kubernetes API server must be accepting resources. Placing this action in the sequential pipeline before `waitforready` risks `kubectl apply` failures during control plane startup.
 
-## Migration Path for Existing Checks
-
-The current `doctor.go` has inline check functions (`checkBinary`, `checkKubectl`, `checkNvidiaDriver`, etc.). These should be migrated to the new Check interface:
-
-1. **Step 1:** Create `pkg/internal/doctor/` with Check interface, Result type, and AllChecks() registry
-2. **Step 2:** Implement new checks (kernel, network, resources) in the new package
-3. **Step 3:** Migrate existing checks (container runtime, kubectl, NVIDIA) to Check implementations
-4. **Step 4:** Refactor `doctor.go` to use `AllChecks()` loop instead of inline calls
-5. **Step 5:** Add mitigations and integrate with create flow
-6. **Step 6:** Add category-grouped output formatting
-
-**The existing `checkResult` JSON struct gains a `Category` field.** This is backward-compatible for JSON consumers (new field with `omitempty`, existing fields unchanged).
-
-```go
-type checkResult struct {
-    Name     string `json:"name"`
-    Status   string `json:"status"`
-    Message  string `json:"message,omitempty"`
-    Category string `json:"category,omitempty"` // NEW: backward-compatible
-}
-```
-
-## Exit Code Semantics
-
-The existing exit codes remain unchanged:
-- **0:** All checks pass (ok or skip)
-- **1:** At least one check failed
-- **2:** No failures, but at least one warning
-
-The new `"skip"` status does NOT trigger exit code 2 (it is informational, not a warning).
+---
 
 ## Scalability Considerations
 
-| Concern | At 19 checks (current goal) | At 50+ checks (future) |
-|---------|---------------------------|----------------------|
-| Execution time | Run sequentially, under 2s total | Add `--check` flag to run subset |
-| Output verbosity | Grouped by category | Add `--category` filter flag |
-| Test isolation | Deps struct per check, full parallel | Same approach scales |
-| Package organization | Single `pkg/internal/doctor/` | Split into sub-packages by category if needed |
+| Concern | Impact | Notes |
+|---------|--------|-------|
+| Air-gapped + many addon images | User burden | Provide `kinder get addon-images` subcommand in a future milestone to list all images that need pre-loading |
+| local-path-provisioner on multi-node clusters | Works correctly | The provisioner schedules on the node where the PVC is bound; no cluster-wide storage distribution |
+| Multi-version + air-gapped | Both flags active simultaneously | Must pre-load multiple different `kindest/node` images; warning should list each image by node role |
+| ExtraMounts on workers + auto-PV | Correct, needs care | PV must have `nodeAffinity` matching the specific worker node; otherwise a pod on a different node will fail to mount |
+
+---
 
 ## Sources
 
-- Direct codebase analysis of `pkg/cmd/kind/doctor/doctor.go` (current doctor implementation) -- HIGH confidence
-- Direct codebase analysis of `pkg/cluster/internal/create/create.go` (create flow, action system, wave pattern) -- HIGH confidence
-- Direct codebase analysis of `pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu.go` (existing package-level var test injection pattern) -- HIGH confidence
-- Direct codebase analysis of `pkg/cluster/internal/create/actions/installnvidiagpu/nvidiagpu_test.go` (test patterns: init override, save/restore, non-parallel) -- HIGH confidence
-- Direct codebase analysis of `pkg/cluster/internal/create/actions/testutil/fake.go` (FakeCmd/FakeNode/FakeProvider test infrastructure) -- HIGH confidence
-- Direct codebase analysis of `pkg/exec/types.go` (Cmd interface) -- HIGH confidence
-- Direct codebase analysis of `pkg/cluster/internal/providers/provider.go` (Provider interface, layering) -- HIGH confidence
-- Direct codebase analysis of `.planning/codebase/ARCHITECTURE.md` (layer boundaries and conventions) -- HIGH confidence
-- Direct codebase analysis of `.planning/codebase/TESTING.md` (test patterns, parallel, table-driven) -- HIGH confidence
-- Direct codebase analysis of `.planning/codebase/CONVENTIONS.md` (naming, imports, error handling) -- HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/create.go` (action pipeline, wave structure, ClusterOptions) — HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/providers/docker/images.go`, `podman/images.go`, `nerdctl/images.go` (pullIfNotPresent pattern) — HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/providers/common/provision.go` (GenerateMountBindings, ExtraMounts) — HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/actions/` (all existing addon actions for pattern reference) — HIGH confidence
+- Direct codebase analysis of `pkg/apis/config/v1alpha4/types.go`, `default.go`, `pkg/internal/apis/config/convert_v1alpha4.go` (config pipeline) — HIGH confidence
+- Direct codebase analysis of `pkg/cluster/internal/create/actions/config/config.go` (per-node version reading via KubeVersion) — HIGH confidence
+- [kind offline docs](https://kind.sigs.k8s.io/docs/user/working-offline/) — image pre-loading mechanism — HIGH confidence
+- [kind configuration docs](https://kind.sigs.k8s.io/docs/user/configuration/) — per-node image and extraMounts support confirmed — HIGH confidence
+- [rancher/local-path-provisioner README](https://github.com/rancher/local-path-provisioner) — images, namespace, ConfigMap structure — HIGH confidence (verified via official repo)
+- [k3s air-gap + local-path busybox issue](https://github.com/k3s-io/k3s/issues/1908) — confirms busybox is a required pre-load for air-gapped local-path-provisioner — MEDIUM confidence (community issue, behavior consistent with official docs)
