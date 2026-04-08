@@ -8,10 +8,10 @@ last_updated: "2026-04-08T19:00:00.000Z"
 last_activity: 2026-04-08 — Completed plan 42-02: cluster-node-skew doctor check and extended get nodes
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
   completed_plans: 2
-  percent: 100
+  percent: 20
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.2 Cluster Capabilities — Phase 42: Multi-Version Node Validation
+**Current focus:** v2.2 Cluster Capabilities — Phase 42 complete, ready for Phase 43
 
 ## Current Position
 
-Phase: 42 of 46 (Multi-Version Node Validation)
-Plan: 02 of 02 (complete)
-Status: Phase 42 complete
-Last activity: 2026-04-08 — Completed plan 42-02: cluster-node-skew doctor check and extended get nodes
+Phase: 42 of 46 (Multi-Version Node Validation) — COMPLETE
+Plan: 2/2 complete, verified 5/5
+Status: Phase 42 verified and complete
+Last activity: 2026-04-08 — Phase 42 verified (5/5 success criteria), gap fixed (realListNodes + IMAGE column)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -62,7 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 42]: ExplicitImage captured pre-defaults in encoding/convert.go — SetDefaultsCluster fills empty Image fields before Convertv1alpha4 runs, making post-defaults detection impossible
 - [Phase 42 plan 02]: ComputeSkew always shows cross+delta for any non-zero difference; ok=false only when >3 behind or any ahead of CP
 - [Phase 42 plan 02]: nodeEntry.VersionErr field enables test injection of read-failures without real container runtime
-- [Phase 42 plan 02]: IMAGE column always blank in live output — nodes.Node interface lacks image accessor; column present per spec, population deferred
+- [Phase 42]: IMAGE column populated via container inspect CLI (avoids import cycle with cluster package); doctor check realListNodes uses same low-level CLI approach
 
 ### Pending Todos
 
