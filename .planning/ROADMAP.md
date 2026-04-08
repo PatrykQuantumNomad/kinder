@@ -98,10 +98,10 @@ Phases 38-41: Check Infrastructure, Docker & Tool Checks, Kernel & Platform Chec
   3. A config with HA control-plane nodes at different versions is rejected at config validation time with a clear explanation
   4. `kinder doctor` run against a running multi-version cluster reports a warning when version-skew policy is violated
   5. `kinder get nodes` output includes a column showing the Kubernetes version installed on each node
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 42-01-PLAN.md — ExplicitImage sentinel, fixupOptions fix, version-skew config validation
-- [ ] 42-02-PLAN.md — Doctor cluster-skew check, get nodes VERSION/IMAGE/SKEW columns
+- [x] 42-02-PLAN.md — Doctor cluster-skew check, get nodes VERSION/IMAGE/SKEW columns
 
 ### Phase 43: Air-Gapped Cluster Creation
 **Goal**: Users can create a fully functional cluster without internet access by passing `--air-gapped`, and kinder fails immediately with a complete list of missing images rather than hanging on failed pulls
@@ -166,7 +166,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 30-34. v1.5 phases | v1.5 | 7/7 | Complete | 2026-03-04 |
 | 35-37. v2.0 phases | v2.0 | 7/7 | Complete | 2026-03-05 |
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
-| 42. Multi-Version Node Validation | v2.2 | 1/2 | In Progress|  |
+| 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
 | 43. Air-Gapped Cluster Creation | v2.2 | 0/TBD | Not started | - |
 | 44. Local-Path-Provisioner Addon | v2.2 | 0/TBD | Not started | - |
 | 45. Host-Directory Mounting | v2.2 | 0/TBD | Not started | - |

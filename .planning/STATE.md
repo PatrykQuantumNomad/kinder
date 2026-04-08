@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
-status: planning
-stopped_at: Completed 42-01-PLAN.md
-last_updated: "2026-04-08T18:47:26.896Z"
-last_activity: 2026-04-08 — Roadmap created, 25 requirements mapped across 5 phases (42-46)
+status: active
+stopped_at: Completed 42-02-PLAN.md
+last_updated: "2026-04-08T19:00:00.000Z"
+last_activity: 2026-04-08 — Completed plan 42-02: cluster-node-skew doctor check and extended get nodes
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 ## Current Position
 
 Phase: 42 of 46 (Multi-Version Node Validation)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-04-08 — Roadmap created, 25 requirements mapped across 5 phases (42-46)
+Plan: 02 of 02 (complete)
+Status: Phase 42 complete
+Last activity: 2026-04-08 — Completed plan 42-02: cluster-node-skew doctor check and extended get nodes
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -60,6 +60,9 @@ Progress: [░░░░░░░░░░] 0%
 - v2.2 planning: Phases 43 and 46 flagged for `/gsd-research-phase` during planning (Provider interface change, Docker Desktop 27+ fallback)
 - [Phase 42]: Non-semver image tags (e.g. 'latest') skip version-skew validation to preserve backward compat with test/dev configs
 - [Phase 42]: ExplicitImage captured pre-defaults in encoding/convert.go — SetDefaultsCluster fills empty Image fields before Convertv1alpha4 runs, making post-defaults detection impossible
+- [Phase 42 plan 02]: ComputeSkew always shows cross+delta for any non-zero difference; ok=false only when >3 behind or any ahead of CP
+- [Phase 42 plan 02]: nodeEntry.VersionErr field enables test injection of read-failures without real container runtime
+- [Phase 42 plan 02]: IMAGE column always blank in live output — nodes.Node interface lacks image accessor; column present per spec, population deferred
 
 ### Pending Todos
 
@@ -72,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-08T18:47:26.893Z
-Stopped at: Completed 42-01-PLAN.md
+Last session: 2026-04-08T19:00:00.000Z
+Stopped at: Completed 42-02-PLAN.md
 Resume file: None
