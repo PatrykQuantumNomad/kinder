@@ -1,178 +1,210 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-03-02
+**Analysis Date:** 2026-04-08
 
-## Naming Patterns
+## Language Split
+
+This codebase has two primary components with different languages:
+- **Go**: Core CLI tool and runtime components (`/Users/patrykattc/work/git/kinder/pkg`, `/Users/patrykattc/work/git/kinder/cmd`)
+- **TypeScript/Astro**: Documentation site (`/Users/patrykattc/work/git/kinder/kinder-site`)
+
+## Go Naming Patterns
 
 **Files:**
-- Lowercase with hyphens for multi-word files: `docker-image.go`, `docker-image_test.go`
-- Test files: `<filename>_test.go` (unit tests), `<filename>_integration_test.go` (integration tests)
-- Internal packages may use underscores: `network_test.go`
+- Exported functions/packages: PascalCase (e.g., `NewCommand`, `DeleteClusters`)
+- Test files: `<module>_test.go` (e.g., `docker-image_test.go`, `provider_test.go`)
+- Internal helper functions: lowercase with underscores (e.g., `removeDuplicates`, `sanitizeImage`)
+- Package names: lowercase, single word (e.g., `load`, `delete`, `clusters`, `errors`)
 
 **Functions:**
-- PascalCase for exported functions: `NewCommand()`, `Version()`, `DisplayVersion()`
-- camelCase for unexported functions: `runE()`, `checkQuiet()`, `logError()`, `removeDuplicates()`
-- Command handlers often use `runE` naming convention for cobra RunE functions
-- Helper functions prefixed with action: `generateULASubnetFromName()`, `sanitizeImage()`, `truncate()`
+- Command constructors: `NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command`
+- Entry points: `runE(...)` or command-specific names like `deleteClusters(...)`
+- Helper functions: lowercase (e.g., `activeProviderName`, `checkIfImageReTagRequired`)
+- Test functions: `func Test<FunctionName>(t *testing.T)` or `func Test_<functionName>(t *testing.T)` for private functions
 
 **Variables:**
-- camelCase for local and unexported: `flags`, `imageNames`, `imageIDs`, `errCh`
-- PascalCase for exported package-level: `Version`, `DisplayVersion()`
-- Short names acceptable in loops: `tc` (test case), `i`, `j`
-- Struct field names are PascalCase (exported): `Name`, `Nodes`, `Args`, `ExpectError`
+- Field names in structs: PascalCase (e.g., `Kubeconfig`, `All`, `Nodes`, `Name`)
+- Local variables: camelCase (e.g., `imageNames`, `imageIDs`, `flags`)
+- Constants in error messages: descriptive strings
+- Test cases: `tc` for test case variable in table-driven tests
 
 **Types:**
-- PascalCase for exported types: `IOStreams`, `Logger`, `Config`, `Command`
-- camelCase or descriptive names for unexported: `flagpole`, `networkInspectEntry`, `imageTagFetcher`
-- Interface types named with `-er` suffix for behavior: `imageTagFetcher func(...)`
-
-**Constants:**
-- PascalCase for exported constants: `DefaultName`, `Version`
-- camelCase for unexported: `versionCore`, `versionPreRelease`
-- Comments document constant purpose and behavior
+- Public interfaces: PascalCase (e.g., `Provider`, `Logger`, `StackTracer`)
+- Struct names: PascalCase (e.g., `flagpole`, `mockProvider`)
+- Type aliases: PascalCase (e.g., `imageTagFetcher`)
 
 ## Code Style
 
 **Formatting:**
-- gofmt is used (standard Go formatting)
-- Run via `make gofmt` or `hack/make-rules/update/gofmt.sh`
-- Consistent indentation (Go standard: tabs)
+- Tool: `gofmt` with `-s` flag (simplify)
+- Applied via: `hack/make-rules/update/gofmt.sh`
+- Line length: Not explicitly restricted, but favor readability
+- Indentation: Tabs (Go standard)
 
 **Linting:**
-- Verified via `make verify` and `hack/make-rules/verify/lint.sh`
-- Part of CI pipeline
+- Tool: `golangci-lint` v2
+- Config: `hack/tools/.golangci.yml`
+- Key rules enabled:
+  - `errcheck`: Ensure error returns are handled
+  - `govet`: Go vet checker
+  - `ineffassign`: Detect ineffectual assignments
+  - `staticcheck`: Static analysis
+  - `gochecknoinits`: Prevent init functions
+  - `revive`: Go style rules
+  - `misspell`: Spelling check
+  - `unparam`: Find unused parameters
 
-**Import Organization:**
-- Standard library imports first
-- Third-party imports second (e.g., `github.com/`, `go.yaml.in/`)
-- Local package imports last (e.g., `sigs.k8s.io/kind/...`)
-- Example from `/Users/patrykattc/work/git/kinder/cmd/kind/app/main.go`:
-  ```go
-  import (
-    "io"
-    "os"
+**Notable exclusions:**
+- Unused parameters: Excluded for interface implementations (handlers may not use all params)
+- Package names: Exclusions for `common`, `errors`, `log`, `version` (established convention)
+- Test packages: Can use same name as package under test
 
-    "github.com/spf13/pflag"
+## Import Organization
 
-    "sigs.k8s.io/kind/pkg/cmd"
-    "sigs.k8s.io/kind/pkg/cmd/kind"
-    "sigs.k8s.io/kind/pkg/errors"
-    "sigs.k8s.io/kind/pkg/exec"
-    "sigs.k8s.io/kind/pkg/log"
-  )
-  ```
+**Order:**
+1. Standard library imports (e.g., `fmt`, `io`, `os`, `testing`)
+2. Third-party imports (e.g., `github.com/spf13/cobra`, `golang.org/x/sync`)
+3. Internal imports (e.g., `sigs.k8s.io/kind/pkg/...`)
 
 **Path Aliases:**
-- Full import paths used consistently: `sigs.k8s.io/kind/pkg/...`
-- No import aliases observed (except for standard lib conflicts like `stderrors` vs `errors`)
+- No explicit aliases in current code
+- Uses full module path: `sigs.k8s.io/kind/...`
+- Internal packages clearly marked: `sigs.k8s.io/kind/pkg/internal/...`
+
+**Example import block:**
+```go
+import (
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/spf13/cobra"
+
+	"sigs.k8s.io/kind/pkg/cluster"
+	"sigs.k8s.io/kind/pkg/errors"
+	"sigs.k8s.io/kind/pkg/log"
+)
+```
 
 ## Error Handling
 
 **Patterns:**
-- Errors wrapped with context using `errors.Wrap()` and `errors.Wrapf()` from `sigs.k8s.io/kind/pkg/errors`
-- Stack traces captured at creation point: `errors.New()` includes stack, `errors.NewWithoutStack()` for exports
-- Error context logged at call sites before returning
-- Example from `/Users/patrykattc/work/git/kinder/cmd/kind/app/main.go`:
-  ```go
-  if err := c.Execute(); err != nil {
-    logError(logger, err)
-    return err
-  }
-  ```
-- For command execution errors, check with `exec.RunErrorForError(err)` to extract output
-- Distinguish between expected errors (logged) and unexpected (with stack trace)
+- Custom error wrapper: `sigs.k8s.io/kind/pkg/errors` package (wraps `github.com/pkg/errors`)
+- Functions return `error` as last return value
+- Errors wrapped with context: `errors.Wrap(err, "context message")` or `errors.Wrapf(err, "formatted %s", value)`
+- New errors: `errors.New("message")` or `errors.Errorf("formatted %s", value)`
+- Aggregate errors: `errors.NewAggregate(errlist)` for multiple errors
+
+**Example from `deleteclusters.go`:**
+```go
+var errs []error
+for _, cluster := range clusters {
+	if err = provider.Delete(cluster, flags.Kubeconfig); err != nil {
+		logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete cluster %q", cluster))
+		errs = append(errs, errors.Wrapf(err, "failed to delete cluster %q", cluster))
+		continue
+	}
+	success = append(success, cluster)
+}
+if len(errs) > 0 {
+	return errors.Errorf("failed to delete %d cluster(s)", len(errs))
+}
+return nil
+```
+
+**Logging of errors:** Log individual errors via logger, then return aggregate error to CLI
 
 ## Logging
 
-**Framework:** `sigs.k8s.io/kind/pkg/log` (custom logger)
+**Framework:** Custom `sigs.k8s.io/kind/pkg/log` package
 
 **Patterns:**
-- Logger interface used, not direct stdout/stderr
-- Created via `cmd.NewLogger()` which returns `log.Logger`
-- Verbosity controlled via `.V(level).Enabled()` check
-- Example from `/Users/patrykattc/work/git/kinder/pkg/cmd/kind/version/version.go`:
+- Logger passed as parameter to functions: `logger log.Logger`
+- Verbosity levels: `logger.V(0).Infof(...)` for info, higher verbosity numbers for debug
+- Spinner support: Logger wraps output in spinner for terminal interactivity
+- Usage pattern:
   ```go
-  if logger.V(0).Enabled() {
-    fmt.Fprintln(streams.Out, DisplayVersion())
-  } else {
-    fmt.Fprintln(streams.Out, Version())
-  }
+  logger.V(0).Infof("Deleted clusters: %q", success)
   ```
-- Error logging: `logger.Errorf(format, args...)`
-- Color support checked with `cmd.ColorEnabled(logger)` before adding ANSI codes
-- Standard output written to `streams.Out` (io.Writer), errors to `streams.ErrOut`
-- Quiet mode (-q flag) suppresses stderr and uses NoopLogger
+
+**When to log:**
+- Operation start: Log what operation is beginning
+- Errors (non-fatal): Log errors that are recovered from
+- Completions: Log successful operations
+- High verbosity: Debug information
 
 ## Comments
 
 **When to Comment:**
-- Package-level comments explain package purpose: `// Package version implements the 'version' command`
-- Public functions documented with purpose statement: `// Version returns the kind CLI Semantic Version`
-- Inline comments explain non-obvious logic or important notes
-- Example from `/Users/patrykattc/work/git/kinder/pkg/errors/errors.go`:
-  ```go
-  // New returns an error with the supplied message.
-  // New also records the stack trace at the point it was called.
-  func New(message string) error {
-  ```
-- NOTE comments for build-time or special handling:
-  ```go
-  // NOTE: use 14 character short hash, like Kubernetes
-  // NOTE: we handle the quiet flag here so we can fully silence cobra
-  ```
+- Package-level documentation: Always include `// Package <name> ...` comment before main function
+- Exported items: Comments on all exported functions, types, and variables
+- Complex logic: Explain non-obvious implementation choices
+- Workarounds: Document any temporary fixes or known issues
 
-**JSDoc/TSDoc:**
-- Not used (Go project, uses standard doc comments)
-- Go doc comments placed above declarations
-- Starts with declaration name for discoverability: `// Version returns...`
+**Example package comment:**
+```go
+// Package clusters implements the `delete` command for multiple clusters
+package clusters
+```
+
+**JSDoc/GoDoc:**
+- Functions: Include return type description if not obvious
+- Packages: Always include package comment
+- Interfaces: Document purpose and contract
 
 ## Function Design
 
-**Size:**
-- Small, focused functions (100+ lines considered large)
-- Examples: `merge()` (40 lines), `checkQuiet()` (15 lines), `sanitizeImage()` (20 lines)
+**Size:** Keep functions under ~50 lines; split complex logic into helpers
 
 **Parameters:**
-- Logger and streams often passed as first parameters: `NewCommand(logger log.Logger, streams cmd.IOStreams)`
-- Flags/options grouped in struct: `flags *flagpole`
-- Variadic arguments used for multiple values: `(images []string)`
-- Example pattern from `/Users/patrykattc/work/git/kinder/pkg/cmd/kind/load/docker-image/docker-image.go`:
-  ```go
-  func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command
-  func runE(logger log.Logger, flags *flagpole, args []string) error
-  func loadImage(imageTarName string, node nodes.Node) error
-  ```
+- Logger first if needed: `logger log.Logger`
+- Flags/config next: `flags *flagpole`
+- Then business data: `args []string`
+- Functions accepting interfaces over concrete types
 
 **Return Values:**
-- Multiple return values for error handling: `(result, error)` pattern
-- Named return values when helpful: `(exists, reTagRequired bool, sanitizedImage string)`
-- Error always last return value if present
+- Single error as last return: `error`
+- Multiple returns ordered: data first, error last: `(result string, err error)`
+- Use named returns rarely; prefer explicit return statements
+
+**Example command function signature:**
+```go
+func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command
+func runE(logger log.Logger, flags *flagpole, args []string) error
+```
 
 ## Module Design
 
+**Package Structure:**
+- Each command gets its own package: `pkg/cmd/kind/delete/clusters/`
+- Shared utilities in `pkg/` subdirectories: `pkg/errors`, `pkg/log`, `pkg/cluster`
+- Internal implementation details in `pkg/internal/...`
+- Test packages co-located with implementation: `docker-image.go` and `docker-image_test.go` in same directory
+
 **Exports:**
-- Exported functions start with capital letter (Go rule)
-- Packages follow `sigs.k8s.io/kind/pkg/<feature>` structure
-- Command packages under `pkg/cmd/kind/<command>/` with subcommand structure
-- Internal implementation under `internal/` subdirectories (not exported)
+- Only `NewCommand()` typically exported from command packages
+- Helper functions unexported (lowercase) unless reused across packages
+- Use interfaces for extensibility: `log.Logger`, `cmd.IOStreams`
 
-**Barrel Files:**
-- Package-level initialization in main files
-- Example: `cmd/kind/app/main.go` calls `kind.NewCommand()` from `pkg/cmd/kind/`
-- Internal packages use aggregation: internal kubeconfig imports internal helpers
+**Barrel Files:** Not used; direct imports of specific packages
 
-## Copyright Headers
+## TypeScript/Astro Conventions
 
-**All files:** Apache 2.0 license header included
-```
-/*
-Copyright [Year] The Kubernetes Authors.
+**File naming:**
+- Components: PascalCase with `.astro` extension (e.g., `Comparison.astro`, `ThemeSelect.astro`)
+- Config: camelCase with `.mjs` extension (e.g., `astro.config.mjs`)
+- TypeScript files: camelCase (e.g., `content.config.ts`)
 
-Licensed under the Apache License, Version 2.0 (the "License");
-...
-*/
-```
+**Astro components:**
+- Front matter section for script logic (top of file between `---`)
+- HTML markup after front matter
+- Scoped styles in `<style>` tag at bottom
+- CSS classes: kebab-case (e.g., `not-content`, `comparison`)
+
+**TypeScript:**
+- Strict tsconfig (inherits from `astro/tsconfigs/strict`)
+- Collection definitions use Starlight loaders and schemas
 
 ---
 
-*Convention analysis: 2026-03-02*
+*Convention analysis: 2026-04-08*

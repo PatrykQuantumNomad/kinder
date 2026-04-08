@@ -1,282 +1,384 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-02
+**Analysis Date:** 2026-04-08
 
 ## Directory Layout
 
 ```
 kinder/
-├── cmd/                           # Binary entry points
+├── main.go                           # Binary entry point (stub wrapping cmd/kind/app.Main)
+├── go.mod                            # Go module definition
+├── go.sum                            # Go module checksums
+├── Makefile                          # Build targets for testing, linting, releases
+├── .goreleaser.yaml                  # Release configuration for multi-platform builds
+│
+├── cmd/
 │   └── kind/
-│       └── app/
-│           ├── main.go            # App.Main() entry point
-│           └── main_test.go
-├── pkg/                           # Main package libraries
-│   ├── apis/                      # Public API types (future versioning)
-│   │   └── config/
-│   │       ├── defaults/          # Default values
-│   │       └── v1alpha4/          # Current version schema
-│   ├── build/                     # Node image building
+│       ├── app/
+│       │   ├── main.go               # App entry point (logger, streams, Run invocation)
+│       │   └── main_test.go
+│       └── main.go                   # Kubernetes authors copyright notice
+│
+├── pkg/
+│   ├── cmd/                          # CLI command implementations via Cobra
+│   │   ├── kind/                     # Root command and subcommands
+│   │   │   ├── root.go               # Root command definition, subcommand registration
+│   │   │   ├── build/                # `kinder build` subcommand
+│   │   │   ├── create/               # `kinder create` subcommand hierarchy
+│   │   │   │   └── cluster/          # `kinder create cluster` implementation
+│   │   │   ├── delete/               # `kinder delete` subcommand hierarchy
+│   │   │   ├── get/                  # `kinder get` subcommand hierarchy
+│   │   │   ├── export/               # `kinder export` subcommand hierarchy
+│   │   │   ├── load/                 # `kinder load` subcommand hierarchy
+│   │   │   ├── version/              # `kinder version` subcommand
+│   │   │   ├── completion/           # Shell completion generators
+│   │   │   ├── env/                  # `kinder env` subcommand
+│   │   │   └── doctor/               # `kinder doctor` diagnostic command
+│   │   ├── iostreams.go              # I/O stream abstraction (Out, ErrOut)
+│   │   └── logger.go                 # Logger setup and color utilities
+│   │
+│   ├── cluster/                      # Core cluster operations API
+│   │   ├── provider.go               # Provider struct, public cluster lifecycle methods
+│   │   ├── createoption.go           # ProviderOption and builder pattern for provider setup
+│   │   ├── nodes/                    # Node type definitions
+│   │   │   ├── types.go              # Node struct, role constants
+│   │   │   └── doc.go
+│   │   ├── nodeutils/                # Node role detection and utilities
+│   │   │   ├── roles.go              # Control plane vs worker role detection
+│   │   │   └── util.go
+│   │   ├── constants/                # Cluster-level constants
+│   │   │   └── constants.go          # Default cluster name, network CIDR
+│   │   └── internal/                 # Implementation details (not part of public API)
+│   │       ├── providers/            # Container runtime provider implementations
+│   │       │   ├── common/           # Shared utilities across providers
+│   │       │   │   └── utils.go      # Image pulling, network utilities
+│   │       │   ├── docker/           # Docker provider implementation
+│   │       │   │   ├── provider.go   # Docker-specific provider methods
+│   │       │   │   ├── create.go     # Node creation via docker
+│   │       │   │   └── network.go    # Docker network management
+│   │       │   ├── nerdctl/          # Nerdctl provider implementation
+│   │       │   │   ├── provider.go   # Nerdctl-specific provider methods
+│   │       │   │   └── create.go     # Node creation via nerdctl
+│   │       │   └── podman/           # Podman provider implementation
+│   │       ├── create/               # Cluster creation orchestration
+│   │       │   ├── create.go         # Main creation logic, action sequencing
+│   │       │   └── actions/          # Composable creation actions
+│   │       │       ├── action.go     # Action interface definition
+│   │       │       ├── config/       # Apply kubeadm/containerd config patches
+│   │       │       ├── kubeadminit/  # Initialize control plane with kubeadm
+│   │       │       ├── kubeadmjoin/  # Join worker nodes to cluster
+│   │       │       ├── installcni/   # Install CNI plugin (Kindnetd)
+│   │       │       ├── installmetallb/   # Install MetalLB addon
+│   │       │       ├── installdashboard/ # Install Kubernetes dashboard addon
+│   │       │       ├── installstorage/   # Configure storage provisioner
+│   │       │       ├── installmetricsserver/ # Install metrics-server
+│   │       │       ├── installcertmanager/  # Install cert-manager addon
+│   │       │       ├── installenvoygw/     # Install Envoy Gateway addon
+│   │       │       ├── installcorednstuning/ # CoreDNS configuration
+│   │       │       ├── installnvidiagpu/    # NVIDIA GPU support addon
+│   │       │       ├── installlocalregistry/ # Local image registry addon
+│   │       │       ├── loadbalancer/        # Load balancer node setup
+│   │       │       └── waitforready/        # Wait for cluster readiness
+│   │       ├── delete/               # Cluster deletion logic
+│   │       │   └── delete.go         # Clean up nodes and resources
+│   │       ├── kubeconfig/           # Kubeconfig generation
+│   │       │   └── kubeconfig.go     # Generate and merge kubeconfig files
+│   │       ├── kubeadm/              # Kubeadm configuration generation
+│   │       ├── loadbalancer/         # Load balancer for HA control planes
+│   │       └── logs/                 # Log export functionality
+│   │
+│   ├── build/                        # Node image building
 │   │   └── nodeimage/
-│   │       └── internal/
-│   ├── cluster/                   # Core cluster management
-│   │   ├── constants/             # Constants (e.g., default names)
-│   │   ├── internal/              # Private cluster implementation
-│   │   │   ├── create/            # Cluster creation logic
-│   │   │   │   └── actions/       # Setup actions (addons, bootstrap)
-│   │   │   ├── delete/            # Cluster deletion logic
-│   │   │   ├── kubeadm/           # Kubeadm configuration
-│   │   │   ├── kubeconfig/        # Kubeconfig management
-│   │   │   ├── loadbalancer/      # Load balancer setup
-│   │   │   ├── logs/              # Log collection
-│   │   │   └── providers/         # Container runtime providers
-│   │   ├── nodes/                 # Node interface definition
-│   │   └── nodeutils/             # Node utility functions
-│   ├── cmd/                       # CLI infrastructure
-│   │   ├── iostreams.go           # Standard IO handling
-│   │   ├── logger.go              # Logger setup
-│   │   └── kind/                  # Command tree
-│   │       ├── root.go            # Root command
-│   │       ├── build/             # Build subcommand
-│   │       ├── completion/        # Shell completion
-│   │       ├── create/            # Create subcommand
-│   │       ├── delete/            # Delete subcommand
-│   │       ├── export/            # Export subcommand
-│   │       ├── get/               # Get subcommand
-│   │       ├── load/              # Load subcommand
-│   │       └── version/           # Version subcommand
-│   ├── errors/                    # Error handling utilities
-│   ├── exec/                      # Command execution
-│   ├── fs/                        # File system operations
-│   ├── internal/                  # Internal packages (not part of public API)
-│   │   ├── apis/                  # Internal config types
-│   │   │   └── config/
-│   │   │       ├── encoding/      # YAML/JSON parsing
-│   │   │       └── v1alpha4/      # Internal v1alpha4 schema
-│   │   ├── assert/                # Assertion utilities for tests
-│   │   ├── cli/                   # CLI utilities
-│   │   ├── env/                   # Environment utilities
-│   │   ├── integration/           # Integration test utilities
-│   │   ├── patch/                 # Kubernetes patch utilities
-│   │   ├── runtime/               # Runtime detection
-│   │   ├── sets/                  # Set data structures
-│   │   └── version/               # Version info
-│   └── log/                       # Logging interface
-├── main.go                        # Root entry point
-├── Makefile                       # Build targets
-├── go.mod                         # Go module definition
-├── go.sum                         # Dependency checksums
-└── [other files]                  # Docs, config, images
+│   │       ├── build.go              # Main build entry point
+│   │       ├── buildcontext.go       # Build context and options
+│   │       ├── internal/
+│   │       │   └── kube/             # Kubernetes binary integration
+│   │       ├── containerd.go         # Containerd configuration
+│   │       ├── defaults.go           # Default image and base image constants
+│   │       └── options.go            # BuildOption pattern for customization
+│   │
+│   ├── apis/                         # Configuration API definitions
+│   │   └── config/
+│   │       ├── v1alpha4/             # API version 1alpha4 (current)
+│   │       │   ├── types.go          # Cluster, Node, Networking, Addon types
+│   │       │   ├── default.go        # Default value assignment
+│   │       │   └── zz_generated.deepcopy.go # Code-generated copy methods
+│   │       └── defaults/             # Defaults for Cluster structure
+│   │
+│   ├── exec/                         # Command execution abstraction
+│   │   ├── types.go                  # Executor interface definition
+│   │   ├── local.go                  # Local shell command execution
+│   │   └── default.go                # Default executor initialization
+│   │
+│   ├── log/                          # Logging interfaces and utilities
+│   │   ├── types.go                  # Logger and InfoLogger interfaces
+│   │   └── noop.go                   # No-operation logger for silent mode
+│   │
+│   ├── errors/                       # Error handling utilities
+│   │   ├── errors.go                 # Stack trace wrapping
+│   │   ├── aggregate.go              # Multi-error collection
+│   │   ├── concurrent.go             # Concurrent error tracking
+│   │   └── *_test.go                 # Error type tests
+│   │
+│   ├── fs/                           # Filesystem utilities
+│   │   └── fs.go                     # Basic file operations
+│   │
+│   └── internal/                     # Internal utilities (not public API)
+│       ├── apis/                     # Internal API structures
+│       │   └── config/               # Internal config with defaults applied
+│       ├── doctor/                   # Cluster diagnostics
+│       ├── kindversion/              # Version information
+│       ├── patch/                    # Patch application utilities
+│       ├── cli/                      # CLI utilities
+│       ├── runtime/                  # Runtime detection
+│       ├── sets/                     # Data structure utilities
+│       └── version/                  # Version detection
+│
+├── kinder-site/                      # Documentation website (Astro)
+│   ├── astro.config.mjs              # Astro configuration
+│   ├── package.json                  # Dependencies: Astro, Starlight
+│   ├── src/
+│   │   ├── content/
+│   │   │   └── docs/                 # Markdown documentation pages
+│   │   │       ├── index.mdx         # Home page
+│   │   │       ├── installation.md
+│   │   │       ├── quick-start.md
+│   │   │       ├── configuration.md
+│   │   │       ├── known-issues.md
+│   │   │       ├── changelog.md
+│   │   │       ├── cli-reference/    # Command reference pages
+│   │   │       ├── guides/           # How-to guides
+│   │   │       └── addons/           # Addon documentation
+│   │   ├── components/               # Astro components
+│   │   │   ├── Comparison.astro
+│   │   │   ├── InstallCommand.astro
+│   │   │   └── ThemeSelect.astro
+│   │   ├── assets/                   # Images and logos
+│   │   ├── styles/                   # CSS theme
+│   │   └── pages/                    # Custom pages (404)
+│   └── public/                       # Static assets
+│
+├── hack/                             # Build and test scripts
+│   ├── build/                        # Build scripts
+│   ├── ci/                           # CI/CD scripts
+│   ├── make-rules/                   # Makefile rules
+│   ├── release/                      # Release automation
+│   ├── tools/                        # Code generation tools
+│   └── verify-integration.sh         # Integration test verification
+│
+├── images/                           # Container image definitions
+│   ├── base/                         # Base node image
+│   │   ├── Dockerfile
+│   │   └── files/                    # Image files and scripts
+│   ├── haproxy/                      # HAProxy load balancer image
+│   ├── kindnetd/                     # CNI daemon image
+│   └── kindnvidiagpu/                # NVIDIA GPU support image
+│
+├── .github/                          # GitHub configuration
+│   └── workflows/                    # CI/CD workflows
+│
+├── .planning/                        # GSD (Get Shit Done) planning directory
+│   ├── codebase/                     # Architecture/structure documentation
+│   └── [project files]/              # Project phases, milestones, etc.
+│
+└── dist/                             # Built binaries (generated by release process)
+    └── [platform builds]/            # Multi-platform binary artifacts
 ```
 
 ## Directory Purposes
 
-**cmd/kind/app/ - Application Entry Point:**
-- Purpose: Main binary entry point orchestration
-- Contains: Main() function, Run() function, error logging, quiet mode handling
-- Key files: `main.go` with app initialization logic
+**`cmd/kind/app/`:**
+- Purpose: Application initialization and entry point
+- Contains: Logger setup, I/O stream routing, clean error handling with stack traces
+- Key files: `main.go` (App.Main → Run), `main_test.go`
 
-**pkg/cluster/ - Cluster Lifecycle Management:**
-- Purpose: High-level cluster operations (create, delete, list)
-- Contains: Provider interface usage, cluster options, public API
-- Key files: `provider.go` (Provider type), `createoption.go` (builder options)
+**`pkg/cmd/kind/`:**
+- Purpose: CLI command implementations using Cobra framework
+- Contains: Root command definition, all subcommand hierarchies (create, delete, get, etc.)
+- Key files: `root.go`, command implementations per subdirectory
 
-**pkg/cluster/internal/create/ - Cluster Creation Engine:**
-- Purpose: Orchestrate ordered setup steps during cluster creation
-- Contains: Create() function, action execution, addon coordination
-- Key files: `create.go` (main orchestration), `create_addon_test.go` (addon tests)
+**`pkg/cluster/`:**
+- Purpose: Public API for cluster lifecycle operations
+- Contains: Provider struct, public methods (Create, Delete, ListNodes, etc.)
+- Key files: `provider.go`, options pattern via `createoption.go`
 
-**pkg/cluster/internal/create/actions/ - Cluster Setup Actions:**
-- Purpose: Individual setup steps executed in sequence
-- Contains: Action interface, ActionContext, concrete action implementations
-- Action subdirectories: installmetallb, installenvoygw, installmetricsserver, installstorage, installdashboard, installcni, installcorednstuning, kubeadminit, kubeadmjoin, loadbalancer, waitforready, config
-- Pattern: Each action is independent, receives ActionContext with logger, provider, config, nodes
+**`pkg/cluster/internal/`:**
+- Purpose: Implementation details for cluster operations (not exposed in public API)
+- Contains: Runtime providers, creation actions, kubeconfig generation, deletion logic
+- Key files: Provider implementations, action implementations, orchestration logic
 
-**pkg/cluster/internal/providers/ - Container Runtime Abstraction:**
-- Purpose: Abstract Docker/Podman/nerdctl operations
-- Contains: Provider interface, provider implementations
-- Subdirectories: docker, podman, nerdctl, common
-- Key files: `provider.go` (interface), `docker/provider.go` (Docker implementation)
+**`pkg/cluster/internal/providers/`:**
+- Purpose: Pluggable container runtime backends
+- Contains: Docker, Podman, Nerdctl implementations with shared utilities
+- Key files: `docker/provider.go`, `podman/provider.go`, `nerdctl/provider.go`, `common/utils.go`
 
-**pkg/internal/apis/config/ - Internal Configuration Schema:**
-- Purpose: Type-safe internal representation of cluster configuration
-- Contains: Cluster, Node, Networking, Addons types; validation logic
-- Key files: `types.go` (type definitions), `encoding/` (YAML parsing)
+**`pkg/cluster/internal/create/`:**
+- Purpose: Cluster creation orchestration and action sequencing
+- Contains: Creation flow logic, action interface, addon action implementations
+- Key files: `create.go` (main logic), `actions/` (individual setup steps)
 
-**pkg/cmd/kind/ - CLI Command Tree:**
-- Purpose: Cobra command definitions and flag parsing
-- Contains: Root command, subcommands for each operation
-- Subdirectories: create, delete, get, load, build, completion, export, version
-- Pattern: Each subcommand in its own directory, NewCommand() factory function
+**`pkg/cluster/internal/create/actions/`:**
+- Purpose: Composable steps executed during cluster creation
+- Contains: Individual addon installers, kubeadm init/join, config patching
+- Key files: Each addon has `{addon}.go` with Execute() implementation
 
-**pkg/log/ - Logging Interface:**
-- Purpose: Logger abstraction for testability
-- Contains: Logger interface definition, implementations (Kubernetes klog compatible)
-- Key files: `types.go` (interface), `noop.go` (no-op implementation)
+**`pkg/apis/config/v1alpha4/`:**
+- Purpose: Cluster configuration schema and type definitions
+- Contains: Cluster, Node, Networking, Addon struct definitions with YAML tags
+- Key files: `types.go` (all types), `default.go` (default values), `zz_generated.deepcopy.go` (code-generated)
 
-**pkg/errors/ - Error Handling:**
-- Purpose: Error wrapping, aggregation, stack traces
-- Contains: Wrap, WithStack, Cause, Aggregate implementations
-- Key files: `aggregate.go`, `concurrent.go`, error chain management
+**`pkg/build/nodeimage/`:**
+- Purpose: Build Kubernetes node images for cluster creation
+- Contains: Image build logic, base image selection, builder pattern options
+- Key files: `build.go` (main entry), `buildcontext.go` (context), `options.go` (customization)
 
-**pkg/exec/ - Command Execution:**
-- Purpose: Abstract command execution on nodes
-- Contains: Cmder interface, exec utilities, error types
-- Used by: Node implementations, actions
+**`pkg/log/`:**
+- Purpose: Abstract logging interface for consistent output across layers
+- Contains: Logger interface, InfoLogger interface, no-op implementation
+- Key files: `types.go` (interfaces), `noop.go` (no-op logger)
 
-**pkg/internal/cli/ - CLI Utilities:**
-- Purpose: Status display, spinner, logger overrides
-- Contains: Status struct for progress indication, spinner animation
-- Key files: `status.go`, `spinner.go`, `override.go` (for --name flag)
+**`pkg/exec/`:**
+- Purpose: Abstract local command execution
+- Contains: Executor interface, local command runner, error handling
+- Key files: `types.go` (interface), `local.go` (implementation)
 
-**pkg/internal/runtime/ - Provider Detection:**
-- Purpose: Detect available container runtime from environment
-- Contains: GetDefault() function for KIND_EXPERIMENTAL_PROVIDER
-- Returns: ProviderOption for Docker/Podman/nerdctl selection
+**`pkg/errors/`:**
+- Purpose: Error handling utilities with stack trace support
+- Contains: Error wrapping, aggregation of multiple errors, concurrent error tracking
+- Key files: `errors.go`, `aggregate.go`, `concurrent.go`
+
+**`pkg/internal/`:**
+- Purpose: Internal utilities not part of public API
+- Contains: Config encoding/decoding, version detection, patch utilities, diagnostics
+- Key files: `kindversion/`, `cli/`, `doctor/`, `patch/`
+
+**`kinder-site/`:**
+- Purpose: Documentation website built with Astro + Starlight
+- Contains: Markdown docs, components, asset files, build configuration
+- Key files: `astro.config.mjs`, `package.json`, `src/content/docs/`
+
+**`hack/`:**
+- Purpose: Build automation, testing scripts, CI integration
+- Contains: Make rules, test runners, release scripts, tool installation
+- Key files: `make-rules/test.sh`, `ci/e2e.sh`, `release/create.sh`
+
+**`images/`:**
+- Purpose: Container image definitions for cluster nodes and addons
+- Contains: Dockerfiles for base node image, CNI daemon, load balancer, GPU support
+- Key files: `base/Dockerfile`, `kindnetd/Dockerfile`, `haproxy/Dockerfile`
 
 ## Key File Locations
 
 **Entry Points:**
-- `main.go` - Root binary entry point, delegates to app.Main()
-- `cmd/kind/app/main.go` - app.Main() orchestrates Run(), handles exit codes
-- `pkg/cmd/kind/root.go` - Root command with all subcommands registered
-- `pkg/cmd/kind/create/cluster/createcluster.go` - Create cluster subcommand
-- `pkg/cmd/kind/delete/cluster/deletecluster.go` - Delete cluster subcommand
+- `main.go`: Binary stub entry point
+- `cmd/kind/app/main.go`: App initialization (logger, streams, Run)
+- `pkg/cmd/kind/root.go`: Root Cobra command with subcommand registration
 
 **Configuration:**
-- `pkg/internal/apis/config/types.go` - Cluster config type definitions
-- `pkg/internal/apis/config/encoding/` - YAML/JSON config file parsing
-- `pkg/apis/config/` - Public config API (currently mirrors internal)
+- `pkg/apis/config/v1alpha4/types.go`: Cluster schema definition
+- `pkg/apis/config/v1alpha4/default.go`: Default value application
+- `pkg/cluster/createoption.go`: Provider builder pattern options
 
 **Core Logic:**
-- `pkg/cluster/provider.go` - Provider type, cluster operations
-- `pkg/cluster/internal/create/create.go` - Cluster creation orchestration
-- `pkg/cluster/internal/providers/provider.go` - Provider interface
-- `pkg/cluster/internal/create/actions/action.go` - Action interface and context
+- `pkg/cluster/provider.go`: Public Provider API with lifecycle methods
+- `pkg/cluster/internal/create/create.go`: Creation orchestration and action sequencing
+- `pkg/cluster/internal/providers/*/provider.go`: Container runtime implementations
 
-**Addon Installations:**
-- `pkg/cluster/internal/create/actions/installmetallb/` - MetalLB LoadBalancer addon
-- `pkg/cluster/internal/create/actions/installenvoygw/` - Envoy Gateway addon
-- `pkg/cluster/internal/create/actions/installmetricsserver/` - Metrics Server addon
-- `pkg/cluster/internal/create/actions/installdashboard/` - Headlamp Dashboard addon
-- `pkg/cluster/internal/create/actions/installcni/` - CNI plugin installation
-- `pkg/cluster/internal/create/actions/installstorage/` - Storage class installation
-- `pkg/cluster/internal/create/actions/installcorednstuning/` - CoreDNS tuning
-
-**Utilities:**
-- `pkg/log/types.go` - Logger interface
-- `pkg/cmd/iostreams.go` - IO streams type
-- `pkg/errors/` - Error utilities
-- `pkg/internal/cli/status.go` - Progress status display
-- `pkg/internal/runtime/runtime.go` - Provider detection
+**Testing:**
+- `*_test.go` files co-located with implementation
+- Examples: `pkg/cmd/kind/delete/clusters/deleteclusters_test.go`, `pkg/build/nodeimage/internal/*_test.go`
+- Test utilities in `pkg/internal/assert/`, `pkg/cluster/internal/create/actions/testutil/`
 
 ## Naming Conventions
 
 **Files:**
-- `[description].go` - Standard Go source files, lowercase with underscores for multi-word names
-- `[name]_test.go` - Test files corresponding to implementation files
-- `doc.go` - Package documentation file
-- `types.go` - Type definitions and interfaces
-- `[verb][noun].go` - Action-oriented (e.g., `getkubeconfig.go`, `createsomething.go`)
+- Implementation files: `{feature}.go` (e.g., `create.go`, `provider.go`)
+- Test files: `{feature}_test.go` (e.g., `create_test.go`)
+- Code-generated files: `zz_generated.{purpose}.go` (e.g., `zz_generated.deepcopy.go`)
+- Constants: often in dedicated files like `constants.go`, `const.go`, `defaults.go`
 
 **Directories:**
-- `internal/` - Private packages not part of public API
-- `cmd/` - Command-line interface and executable entry points
-- `pkg/` - Library packages
-- `[feature]/` - Feature-specific subdirectories (e.g., `cluster/`, `cmd/`, `build/`)
-- `[feature]/internal/` - Internal implementation of a feature
+- Feature-based organization: `{action}` for major subsystems (cluster, build, cmd)
+- Subcommand hierarchy mirrors CLI structure: `pkg/cmd/kind/{verb}/{noun}/`
+- Addon actions named: `install{AddonName}` (e.g., `installmetallb`, `installcni`)
+- Internal packages marked with `internal/` to prevent external import
 
-**Packages:**
-- `package main` - Only in cmd/kind/app/ and main.go
-- `package kind` - Root command package
-- `package [feature]` - Public feature packages
-- `package [subfeature]` - Subfeatures within features
-
-**Types and Interfaces:**
-- `Capitalized` - Exported types (public API)
-- `lowercase` - Unexported types (private to package)
-- `[Name]Interface` - Exported interfaces (e.g., `Provider` not `ProviderInterface`)
-- Struct methods: `(p *provider) MethodName()` - use pointer receiver type
-
-**Functions:**
-- `Capitalized()` - Exported functions (public)
-- `lowercase()` - Unexported functions (private)
-- `New[Type]()` - Constructor functions (e.g., `NewProvider()`)
-- `[Verb][Noun]()` - Action-oriented names (e.g., `ListClusters()`)
+**Functions & Types:**
+- Public types capitalized: `Cluster`, `Provider`, `Node`, `Logger`
+- Public functions capitalized: `NewProvider()`, `Create()`, `Delete()`
+- Private functions lowercase: `runE()`, `checkQuiet()`, `defaultName()`
+- Option functions follow builder pattern: `ProviderWithDocker()`, `WithLogger()`
 
 ## Where to Add New Code
 
-**New Addon Installation:**
-- Directory: `pkg/cluster/internal/create/actions/install[addonname]/`
-- Files: `[addonname].go` with Kubernetes manifests in `manifests/` subdirectory
-- Pattern: Create struct implementing Action interface, embed manifest via `//go:embed`, implement Execute() method
-- Example: See `pkg/cluster/internal/create/actions/installmetallb/metallb.go`
-- Integration: Add NewAction() call to actions list in `pkg/cluster/internal/create/create.go`
-- Config: Add boolean field to `Addons` struct in `pkg/internal/apis/config/types.go`
+**New CLI Command/Subcommand:**
+- Implementation: `pkg/cmd/kind/{verb}/{noun}/{noun}.go`
+- Test: `pkg/cmd/kind/{verb}/{noun}/{noun}_test.go`
+- Register: Add `cmd.AddCommand(...)` in parent command's NewCommand()
+- Example: For `kinder get nodes` → `pkg/cmd/kind/get/nodes/nodes.go`
 
-**New Subcommand:**
-- Directory: `pkg/cmd/kind/[commandname]/`
-- Files: Create `[commandname].go` with NewCommand() factory function
-- Pattern: Use Cobra, define flags, implement RunE callback
-- Example: See `pkg/cmd/kind/create/cluster/createcluster.go`
-- Integration: Add cmd.AddCommand() in `pkg/cmd/kind/root.go`
+**New Addon:**
+- Implementation: `pkg/cluster/internal/create/actions/install{AddonName}/{addon}.go`
+- Config: Update `pkg/apis/config/v1alpha4/types.go` Addons struct
+- Manifest templates: Place YAML templates in `pkg/cluster/internal/create/actions/install{AddonName}/manifests/`
+- Action registration: Add action.Action to sequence in `pkg/cluster/internal/create/create.go`
 
-**New Provider (Container Runtime):**
-- Directory: `pkg/cluster/internal/providers/[runtime]/`
-- Files: `provider.go` implementing providers.Provider interface
-- Methods: Provision(), ListClusters(), ListNodes(), DeleteNodes(), GetAPIServerEndpoint(), etc.
-- Example: See `pkg/cluster/internal/providers/docker/`
+**New Container Runtime Provider:**
+- Implementation: Create `pkg/cluster/internal/providers/{runtime}/` directory
+- Required methods: Create, KillContainers, ListNodes, GetNode, ExecNode, etc. (see Provider interface)
+- Shared utilities: Use/extend `pkg/cluster/internal/providers/common/utils.go`
+- Registration: Add detection in `pkg/cluster/provider.go` DetectNodeProvider()
 
-**New Utility Package:**
-- Location: `pkg/[utilname]/` or `pkg/internal/[utilname]/ ` (if internal)
-- Pattern: Create doc.go with package documentation
-- Exports: Only export public API surface
+**New Configuration Option:**
+- Schema: Add field to appropriate struct in `pkg/apis/config/v1alpha4/types.go`
+- Defaults: Add default value logic in `pkg/apis/config/v1alpha4/default.go`
+- Validation: Add validation in config encoding layer if needed
+- CLI flag: Add flag to command in `pkg/cmd/kind/create/cluster/createcluster.go` if user-exposed
 
-**New Tests:**
-- Location: Same directory as code being tested
-- Naming: `[filename]_test.go` corresponds to `[filename].go`
-- Pattern: Use standard Go testing package (no special framework)
-- Examples: See `*_test.go` files throughout
+**Utilities & Helpers:**
+- Shared across packages: `pkg/{feature}/` at top level
+- Internal to subsystem: `pkg/{feature}/internal/{utility}/`
+- Public logging: Use injected `log.Logger` interface from `pkg/log/`
+- Execution: Use `pkg/exec/` Executor interface instead of direct os/exec
 
 ## Special Directories
 
-**pkg/cluster/internal/create/actions/[action]/manifests/:**
-- Purpose: Embedded Kubernetes manifests for addon installation
-- Generated: No, manually created
-- Committed: Yes, part of source control
-- Format: YAML files, referenced via `//go:embed` in Go code
-- Examples: MetalLB YAML in installmetallb/manifests/, Envoy Gateway in installenvoygw/manifests/
+**`pkg/internal/`:**
+- Purpose: Internal implementation details not part of public API
+- Generated: Some files are code-generated (e.g., deepcopy)
+- Committed: All files committed to repository
+- Not for external import
 
-**pkg/internal/apis/config/encoding/testdata/:**
-- Purpose: Test fixtures for config file parsing
-- Generated: No, manually created test data
-- Committed: Yes, test fixtures
-- Format: YAML configuration examples
-- Usage: Loaded by tests in `encoding/` package
+**`.planning/`:**
+- Purpose: GSD (Get Shit Done) project planning and tracking
+- Generated: Phase documents, milestones, roadmaps
+- Committed: Yes, planning artifacts tracked in git
+- Structure: Mirrors GSD workflow with milestones, phases, research docs
 
-**bin/:**
-- Purpose: Built binary output directory
-- Generated: Yes, created by build system
-- Committed: No (.gitignore excludes)
-- Format: Compiled executables
+**`dist/`:**
+- Purpose: Multi-platform compiled binaries
+- Generated: Yes, created during release build process
+- Committed: No, .gitignore excludes
+- Contents: Platform-specific binaries (darwin, linux, windows)
 
-**hack/:**
-- Purpose: Development and build scripts
-- Generated: No, development utilities
-- Committed: Yes
-- Contents: Scripts for testing, building, code generation
+**`hack/`:**
+- Purpose: Development automation and build tooling
+- Generated: Some output (e.g., coverage reports)
+- Committed: Scripts and tools committed
+- Not for distribution
 
-**images/:**
-- Purpose: Asset files and images for documentation
-- Generated: No, manually maintained
-- Committed: Yes
+**`images/`:**
+- Purpose: Container image sources (separate from binaries)
+- Generated: Images built via docker/podman, artifacts stored in image registry
+- Committed: Dockerfiles and image configs committed
+- Note: Images pushed to container registry, not stored in git
 
-**.planning/:**
-- Purpose: GSD planning documents and analysis
-- Generated: Yes, created by GSD tools
-- Committed: Yes (in .git)
-- Contents: Phase plans, codebase analysis documents
+**`node_modules/` (kinder-site/):**
+- Purpose: npm dependencies for documentation site
+- Generated: Created by `npm install`
+- Committed: No, .gitignore excludes
+- For: Astro build and development
 
 ---
 
-*Structure analysis: 2026-03-02*
+*Structure analysis: 2026-04-08*

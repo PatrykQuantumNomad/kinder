@@ -1,221 +1,240 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-02
+**Analysis Date:** 2026-04-08
 
 ## Tech Debt
 
-**Global State in Exec Module:**
-- Issue: `DefaultCmder` is a global variable that cannot be easily swapped for testing, limiting test flexibility
-- Files: `pkg/exec/default.go`
-- Impact: Makes it difficult to inject custom command execution behavior during tests; global state reduces testability
-- Fix approach: Consider dependency injection pattern or factory functions to allow test-time substitution without breaking existing API
+**Remote Runtime API Limitations:**
+- Issue: Port allocation for multi-control-plane clusters with remote Docker/Podman is unsupported
+- Files: `pkg/cluster/internal/providers/docker/create.go` (line 61-64), `pkg/cluster/internal/providers/podman/provision.go` (line 59-69), `pkg/cluster/internal/providers/nerdctl/create.go` (line 61)
+- Impact: Multi-control-plane HA clusters only work with local container runtimes. Remote deployments cannot use this architecture
+- Fix approach: Implement persistent port allocation scheme in configuration or use runtime-provided port assignment APIs when available
 
-**FS Package Exposed as Public API:**
-- Issue: `pkg/fs` package is marked as public API but contains a TODO comment suggesting it should be internal
-- Files: `pkg/fs/fs.go:19`
-- Impact: Creates confusion about package stability and API guarantees; internal refactoring becomes breaking changes
-- Fix approach: Move to `pkg/internal/fs/` and update all import paths; this is a low-risk change since few external packages should depend on it
+**IPv6 Network Creation Brittleness:**
+- Issue: IPv6 subnet collision detection uses repeated attempts with ULA generation rather than dynamic allocation
+- Files: `pkg/cluster/internal/providers/docker/network.go` (line 58, 84-125)
+- Impact: May fail after 5 attempts even if different subnets would work; network creation can be slow on systems with many existing networks
+- Fix approach: Implement smarter subnet allocation algorithm or query Docker/Podman for available IPv6 ranges
 
-**Unaddressed IPv6 Configuration Gap:**
-- Issue: Docker network creation has a known issue where existing networks may not have IPv6 enabled, but this isn't validated or fixed
-- Files: `pkg/cluster/internal/providers/docker/network.go:58-59`
-- Impact: Users with existing networks may experience IPv6 connectivity failures without warning or automatic recovery
-- Fix approach: Add validation and optional repair logic to detect IPv6-disabled networks and either fix them or fail fast with clear messaging
+**Incomplete Kubeadm Version Handling:**
+- Issue: Multiple TODO comments indicate incomplete version-specific logic for kubeadm 1.23 and 1.24
+- Files: `pkg/cluster/internal/create/actions/kubeadminit/init.go` (line 134-135)
+- Impact: As older Kubernetes versions reach EOL, this handling code needs removal but lacks clear deprecation path
+- Fix approach: Add version support matrix documentation and automated deprecation cleanup pipeline
 
-**Error Handling TODOs:**
-- Issue: Multiple files have TODOs about error handling that were deferred (e.g., `pkg/errors/errors.go:71`)
-- Files: `pkg/errors/errors.go`, `pkg/cluster/nodeutils/util_test.go`, `pkg/cluster/internal/providers/common/getport.go`
-- Impact: Error stack traces use external library types that could be wrapped; deferred work reduces consistency
-- Fix approach: Create custom StackTrace type wrapper and gradually migrate away from `github.com/pkg/errors` StackTrace dependency
+**Addon Manifest Management:**
+- Issue: No digest pinning on Kubernetes addon images (MetalLB, Envoy Gateway, cert-manager, etc.)
+- Files: `pkg/build/nodeimage/defaults.go` (line 23), `pkg/cluster/internal/create/actions/` subdirectories
+- Impact: Addon versions can drift unexpectedly between cluster creation runs; supply chain vulnerability
+- Fix approach: Pin all addon container images to specific digests; implement update check mechanism
 
-**Version Package Panics on Invalid Input:**
-- Issue: `ParseGeneric()` and `ParseSemantic()` panic when given invalid version strings instead of returning errors
-- Files: `pkg/internal/version/version.go:101, 119`
-- Impact: Invalid version strings crash the application instead of allowing graceful error handling
-- Fix approach: Change MustParse functions to use panics (as they do), but callers should validate input before calling these functions; add explicit validation at entry points
+**Pod/Service Subnet Validation Incomplete:**
+- Issue: Validates CIDR format but doesn't check for routing conflicts or overlap with docker network
+- Files: `pkg/internal/apis/config/validate.go` (line 61-68)
+- Impact: User can create clusters with pod subnets that conflict with host routing, causing connectivity failures
+- Fix approach: Add conflict detection with host network interfaces and existing Docker networks
 
 ## Known Bugs
 
-**Network Creation Race Condition:**
-- Symptoms: If multiple kind clusters are created concurrently with the same network name, one may fail while the other succeeds
-- Files: `pkg/cluster/internal/providers/docker/network.go:136-146`
-- Trigger: Run `kind create cluster --name test1 &` and `kind create cluster --name test2 &` simultaneously
-- Workaround: Use unique cluster names or run sequentially; the code does have retry logic that usually handles this
+**Kubeconfig Export Lock Contention:**
+- Symptoms: Intermittent kubeconfig export failures under concurrent cluster creation
+- Files: `pkg/cluster/internal/create/create.go` (line 230-241)
+- Trigger: Multiple `kinder create cluster` commands running simultaneously
+- Workaround: Implement sequential cluster creation or use file locking mechanism. Currently uses simple retry with backoff (0ms, 1ms, 50ms, 100ms) which may be insufficient
+- Root cause: kubeconfig file locking in `pkg/cluster/internal/kubeconfig/internal/kubeconfig/lock.go` uses basic file operations without exponential backoff or timeout
 
-**kindnetd Panics on Kubernetes API Errors:**
-- Symptoms: kindnetd pod crashes without graceful error message
-- Files: `images/kindnetd/cmd/kindnetd/main.go:80, 107`
-- Trigger: Kubernetes API endpoint unreachable or unable to create in-cluster config
-- Workaround: Ensure Kubernetes API is fully functional before starting networking daemon; check control plane logs
+**Addon Failures Silently Suppressed:**
+- Symptoms: Cluster creation succeeds despite addon installation failures
+- Files: `pkg/cluster/internal/create/create.go` (line 284-290)
+- Trigger: Any addon action fails during Wave 1 or Wave 2 installation
+- Workaround: Check addon status manually with `kubectl get pods -A`
+- Root cause: Design choice to use "warn-and-continue" for addon errors (line 290: `return nil // warn-and-continue`). Addon failures are logged but don't propagate to user error handling
 
-**IPv6 Probe Timeout Too Short:**
-- Symptoms: On slow networks, IPv6 subnet creation fails spuriously with "exhausted attempts" error
-- Files: `pkg/cluster/internal/providers/docker/network.go:101-126`
-- Trigger: Run kind on high-latency networks or with resource-constrained systems
-- Workaround: Current code retries up to 5 times, but each attempt is independent; this may not be sufficient for very slow systems
+**Partial Node Deletion on Creation Failure:**
+- Symptoms: Failed cluster creation may leave some node containers running
+- Files: `pkg/cluster/internal/create/create.go` (line 182-188)
+- Trigger: Node provisioning fails after some containers are created but before all are ready
+- Root cause: Provision() creates multiple containers concurrently; if one fails, previously created containers are only deleted if `Retain` is false, but intermediate containers may not be cleaned up immediately
 
 ## Security Considerations
 
-**Unsafe Skip CA Verification in Kubeadm Config:**
-- Risk: Multiple kubeadm configurations are hardcoded with `unsafeSkipCAVerification: true`, bypassing TLS verification
-- Files: `pkg/cluster/internal/kubeadm/config.go:270, 419`, `pkg/internal/patch/kubeyaml_test.go:140, 208, 296, 380`
-- Current mitigation: This is acceptable for local development clusters, but comment should clarify this is development-only
-- Recommendations: Add clear warning if attempting to use this configuration with production APIs; consider enforcing CA verification validation
+**Command Execution Without Input Validation:**
+- Risk: Commands passed to `exec.Command()` throughout codebase could be vulnerable if user input is unsanitized
+- Files: `pkg/cluster/internal/providers/docker/create.go`, `pkg/cluster/internal/providers/podman/provision.go`, `pkg/cluster/internal/providers/nerdctl/create.go` (all use `exec.Command()` with constructed arguments)
+- Current mitigation: Arguments are constructed from structured config objects and nodeutils, not raw user strings
+- Recommendations: Add input validation for all config fields that influence container arguments; audit uses of `shellescape` package (used in `pkg/cluster/internal/create/create.go`)
 
-**Command Execution String Handling:**
-- Risk: Shell commands are built using string concatenation and string formatting; potential for argument injection if inputs aren't validated
-- Files: `pkg/exec/local.go`, `pkg/cmd/kind/version/version.go` (and many shell-invoking files)
-- Current mitigation: `exec.Command()` properly uses argument arrays instead of shell invocation, which is safe; shellescape library used for kubeconfig paths
-- Recommendations: Audit all calls to exec.Command to ensure arguments are in array form, not shell strings; continue avoiding shell invocation
+**Kubeconfig Filesystem Permissions:**
+- Risk: Exported kubeconfig files may have overly permissive permissions exposing cluster credentials
+- Files: `pkg/cluster/internal/kubeconfig/internal/kubeconfig/write.go`
+- Current mitigation: File is written by application but permissions not explicitly set
+- Recommendations: Explicitly set kubeconfig to 0600 (read/write owner only) on all platforms
 
-**No Input Validation on Cluster Names:**
-- Risk: Cluster names are validated with regex (`validNameRE = regexp.MustCompile('...')`) but this happens after use in some cases
-- Files: `pkg/internal/apis/config/validate.go:33-44`
-- Current mitigation: Validation occurs early in cluster creation flow
-- Recommendations: Add validation immediately after user input is received, before any use in commands or file operations
+**Network Subnet Generation Seed:**
+- Risk: Network subnet generation uses deterministic ULA scheme based on cluster name without randomization
+- Files: `pkg/cluster/internal/providers/docker/network.go` (line 68, 103)
+- Current mitigation: ULA fd00::/7 range is private; network is only accessible from host
+- Recommendations: Document that cluster names should not be kept secret; consider adding optional randomization option
 
-**File Permissions Preserved During Copy:**
-- Risk: File copy operations preserve source permissions, which could propagate insecure permissions to host filesystem
-- Files: `pkg/fs/fs.go:56-156`
-- Current mitigation: Kind typically operates on temporary directories within container context
-- Recommendations: Audit copy destinations to ensure they're isolated; consider adding mode override parameter for sensitive operations
+**Container Image Tampering:**
+- Risk: No verification of container image signatures or digests for node or addon images
+- Files: `pkg/build/nodeimage/` (all files), `pkg/cluster/internal/create/actions/` (all addon installation)
+- Current mitigation: Images come from official sources (Kubernetes release artifacts, CNCF projects)
+- Recommendations: Implement image signature verification using cosign; pin all addon images to digests
 
 ## Performance Bottlenecks
 
-**Random Salutation Generation Every Time:**
-- Problem: Cluster creation logs a random message from array using `time.Now().UnixNano()` as seed, creating new rand.Source each time
-- Files: `pkg/cluster/internal/create/create.go:257-259`
-- Cause: `rand.NewSource()` is called on every cluster creation even though only used once
-- Improvement path: Use deterministic selection (hash of cluster name) or cache the source; this is minor but demonstrates unnecessary allocations
+**Sequential Kubeadm Join Operations:**
+- Problem: Worker nodes join cluster sequentially despite being independent
+- Files: `pkg/cluster/internal/create/actions/kubeadmjoin/join.go` (line 83)
+- Cause: No parallelization of kubeadm join across worker nodes
+- Improvement path: Use errgroup to parallelize join operations on independent worker nodes; currently this is explicitly noted as "too bad we can't do this concurrently"
 
-**Network Inspection Sorting on Every Creation:**
-- Problem: Every network creation queries Docker, inspects networks, and sorts them to find duplicates
-- Files: `pkg/cluster/internal/providers/docker/network.go:178-202`
-- Cause: Conservative approach to handling concurrency is correct but creates unnecessary API calls
-- Improvement path: Cache network list in memory; add exponential backoff for race conditions; consider atomic test-and-set operations
+**Wave 1 Addon Concurrency Limited:**
+- Problem: Only 3 addons run concurrently despite more being available
+- Files: `pkg/cluster/internal/create/create.go` (line 279: `g.SetLimit(3)`)
+- Cause: Hard-coded limit of 3 concurrent addons
+- Improvement path: Make concurrency limit configurable; consider CPU count based default; profile addon installation time to determine optimal parallelism
 
-**Node Image Building Full Docker Commit:**
-- Problem: Building kind node images requires running `docker commit` which is relatively expensive
-- Files: `pkg/build/nodeimage/buildcontext.go:136-144`
-- Cause: Every change to the image requires full snapshot
-- Improvement path: Consider layer-based approach; profile actual build times to determine if optimization is worthwhile
+**Network Creation Retry Loop:**
+- Problem: IPv6 network creation exhausts 5 attempts sequentially before failing
+- Files: `pkg/cluster/internal/providers/docker/network.go` (line 101-124)
+- Cause: Each retry waits for docker network creation to fail before attempting next subnet
+- Improvement path: Implement pre-flight subnet availability check; batch test multiple subnets before creation
 
-**Sequential Addon Installation:**
-- Problem: Addons are installed sequentially, but many could be parallelized
-- Files: `pkg/cluster/internal/create/create.go:182-203`
-- Cause: Unclear if addon ordering has implicit dependencies
-- Improvement path: Document dependencies; identify independent addons and use concurrent installation with error aggregation
+**Addon Manifest Compilation:**
+- Problem: Kubernetes manifests for addons are compiled as embedded strings, causing large binary size
+- Files: `pkg/build/nodeimage/const_*.go` files contain multi-kilobyte YAML strings
+- Cause: No compression of embedded manifests
+- Improvement path: Consider gzip compression of addon manifests if binary size becomes concern
 
 ## Fragile Areas
 
-**Provider Detection Logic:**
-- Files: `pkg/cluster/provider.go:82-94`
-- Why fragile: Fallback to Docker provider silently if detection fails; comment says "may change in the future"; breaking change risk
-- Safe modification: Add explicit logging of which provider was auto-selected; update documentation before changing default; consider making this explicit in config
-- Test coverage: Limited tests for provider detection failure paths
+**Kubeadm Configuration Generation:**
+- Files: `pkg/cluster/internal/kubeadm/config.go` (544 lines)
+- Why fragile: Generates raw kubeadm config YAML through string concatenation and custom marshaling logic; version-specific behaviors embedded throughout
+- Safe modification: Add comprehensive unit tests for each kubeadm version; create abstraction layer for version differences
+- Test coverage: `pkg/cluster/internal/kubeadm/` has 20+ test cases but doesn't cover all version combinations
 
-**Kubeadm Configuration Template Generation:**
-- Files: `pkg/cluster/internal/kubeadm/config.go:543 lines`
-- Why fragile: Large config generation function with multiple feature gates, version checks, and conditional blocks
-- Safe modification: Extract version-specific logic into separate functions; add unit tests for each Kubernetes version; use table-driven tests
-- Test coverage: Test coverage exists but sparse for version-specific branches
+**Provider Interface Implementation:**
+- Files: `pkg/cluster/internal/providers/docker/`, `pkg/cluster/internal/providers/podman/`, `pkg/cluster/internal/providers/nerdctl/`
+- Why fragile: Three separate provider implementations with 800+ combined lines of similar code; easy to miss required functionality during updates
+- Safe modification: Extract common provider logic to shared package before modifying container runtime specific code; document provider contract explicitly
+- Test coverage: Integration tests required for all three providers; unit tests sparse
 
-**Docker Network CIDR Generation:**
-- Files: `pkg/cluster/internal/providers/docker/network.go:68-125`
-- Why fragile: Complex CIDR collision detection with retry logic; multiple error types (IPv6 unavailable, pool overlap) handled differently
-- Safe modification: Add comprehensive logging at each retry attempt; add telemetry for collision frequency; document the algorithm
-- Test coverage: Network integration tests exist but limited coverage of edge cases
+**Network Plugin Deep Copy Closure:**
+- Files: `pkg/cluster/internal/providers/docker/create.go` (line 83-84), `pkg/cluster/internal/providers/podman/provision.go` (line 84)
+- Why fragile: Loop variable captured in closure; node.DeepCopy() required to avoid shared state. Common source of concurrency bugs
+- Safe modification: Use explicit variable copy pattern consistently; consider refactoring to return slice of configs instead of functions
+- Test coverage: Goroutine tests should verify no shared state between parallel operations
 
-**Node Kubeconfig Merging:**
-- Files: `pkg/cluster/internal/kubeconfig/internal/kubeconfig/merge.go:447 test lines`
-- Why fragile: Merging logic has many edge cases (duplicate users, conflicting contexts); test file is large
-- Safe modification: Add explicit invariant checks at merge boundaries; improve test readability with named test cases
-- Test coverage: Heavy coverage but complexity suggests more explicit documentation needed
+**Docker/Podman CLI Output Parsing:**
+- Files: `pkg/cluster/internal/providers/docker/network.go` (line 243-256), similar patterns in other provider files
+- Why fragile: Parses unstructured docker CLI output using regex and string splitting
+- Safe modification: Migrate to structured output (--format json) where available; add output validation
+- Test coverage: Add fixtures for various docker/podman versions and error cases
 
 ## Scaling Limits
 
-**Concurrent Error Handling:**
-- Current capacity: `errors.AggregateConcurrent()` uses buffered channel with size = number of goroutines
-- Limit: If any goroutine is very slow, others will block on channel writes; excessive goroutines could cause memory pressure
-- Scaling path: For >1000 concurrent operations, consider using sync.Pool for error slices or switching to structured concurrency patterns
+**Node Creation Concurrency:**
+- Current capacity: Works with ~10 nodes without issues on typical systems
+- Limit: ~50 nodes before hitting resource limits (API server startup time, etcd performance)
+- Scaling path: Implement per-node timeout configuration; add resource limit validation
 
-**Docker Network Retry Loop:**
-- Current capacity: Hard-coded maximum of 5 attempts for subnet collision
-- Limit: On systems with many kind clusters (>20), collision probability increases; after 5 attempts, cluster creation fails
-- Scaling path: Make max attempts configurable; implement exponential backoff between attempts; consider subnetting strategy for predictability
+**Cluster Name Length:**
+- Current capacity: Max 50 characters (`pkg/cluster/internal/create/create.go` line 62)
+- Limit: Linux hostname limit is 64 chars; kinder appends suffixes like "-control-plane" (14 chars)
+- Scaling path: Document limitation; consider hash-based shortening for longer names
 
-**In-Memory Addon Results Collection:**
-- Current capacity: Addon results stored in memory during cluster creation
-- Limit: With 10+ addons running sequentially, memory usage is low but scalable
-- Scaling path: Current approach is fine; no known scaling issues at typical addon counts
+**Network Subnet Availability:**
+- Current capacity: Supports 5 collision retries for IPv6 subnet allocation
+- Limit: Exhausts retries with many overlapping networks on host system
+- Scaling path: Implement subnet availability pre-check; add configuration for subnet range preference
+
+**Addon Manifest Size:**
+- Current capacity: Embedded addon manifests keep binary size to ~100MB
+- Limit: Adding large CRD addons could bloat binary significantly
+- Scaling path: Consider external addon registry or lazy-loading addon manifests
 
 ## Dependencies at Risk
 
-**github.com/pkg/errors Dependency:**
-- Risk: Package is in maintenance mode; team moved to standard library error wrapping; Stack() interface is non-standard
-- Impact: Custom error stack handling code depends on external API; if package is deprecated, migration required
-- Migration plan: Create custom StackTrace wrapper type; gradually migrate away from `pkg/errors` to `fmt.Errorf()` with `%w` verb; keep compatibility layer temporarily
+**Kubernetes Version EOL:**
+- Risk: Code contains explicit handling for kubeadm 1.23, 1.24, 1.25 but these versions reach EOL without cleanup mechanism
+- Impact: Binary size increases with each version-specific workaround; maintenance burden grows
+- Migration plan: Implement version support policy (e.g., support N-4 versions); automate deprecation cleanup; consider splitting version-specific logic into plugins
 
-**shellescape Library (al.essio.dev/pkg/shellescape):**
-- Risk: Small external library; not in standard library; used only for kubeconfig path quoting
-- Impact: Limited functionality dependency; library is stable
-- Migration plan: Library is low-risk; if needed, implement simple quote function locally; current usage is appropriate for external dependency
+**Docker/Podman API Stability:**
+- Risk: CLI output parsing assumes stable format; recent docker versions changed output formatting
+- Impact: Network creation may break with docker version updates
+- Migration plan: Migrate to Docker/Podman Go SDK for all operations instead of CLI parsing
 
-**Kubernetes Client Libraries (k8s.io/client-go):**
-- Risk: Large dependency; requires careful version alignment with Kubernetes versions being used
-- Impact: Critical for kindnetd functionality; version mismatches can cause subtle runtime errors
-- Migration plan: Current approach of specifying compatible versions in go.mod is correct; add documentation of version compatibility matrix
+**Kind Upstream Fork Divergence:**
+- Risk: Kinder is a fork of kind; maintaining divergent patches requires ongoing sync with upstream
+- Impact: Security fixes from kind may not be propagated; features diverge
+- Migration plan: Evaluate upstreaming kinder features to kind or using kind as library dependency
 
 ## Missing Critical Features
 
-**No Configuration Dry-Run Mode:**
-- Problem: Cannot validate cluster configuration without attempting creation; parsing errors only appear after starting container operations
-- Blocks: Users cannot validate config files before committing to cluster creation
+**Cluster Health Verification:**
+- Problem: No comprehensive health check after creation; `wait-for-ready` only checks API availability
+- Blocks: Cannot reliably determine if cluster is truly ready for workloads
+- Workaround: Manual `kubectl get nodes`, `kubectl get pods -A` verification
+- Recommendation: Implement comprehensive health check verifying control plane components, DNS, networking, and addon readiness
 
-**No Native Persistent Volume Support:**
-- Problem: Kind relies on storage addons; no built-in simple local storage for testing purposes
-- Blocks: Users developing with persistent volumes must manually set up storage
+**Addon Upgrade Path:**
+- Problem: No mechanism to upgrade addons after cluster creation; only available at creation time
+- Blocks: Cannot patch security vulnerabilities in addon images post-creation
+- Workaround: Manual helm/kubectl commands
+- Recommendation: Implement `kinder addon upgrade` command supporting all 8 addons
 
-**No Container Registry Integration:**
-- Problem: Loading images into kind requires `kind load docker-image`, but no built-in way to reference images from local registry
-- Blocks: CI/CD pipelines cannot easily use local registry with kind without extra scripting
+**Cluster Reconfiguration:**
+- Problem: Cannot modify cluster configuration after creation (e.g., toggle addons, change network config)
+- Blocks: Requires full cluster rebuild for any configuration change
+- Recommendation: Implement cluster update mechanism for non-destructive configuration changes
 
-**No Explicit Network Policy Support in Default CNI:**
-- Problem: Network policies require third-party addon (kube-network-policies); not built-in
-- Blocks: Users testing network policies must manually install; not discoverable
+**Multi-Cluster Networking:**
+- Problem: No built-in support for connecting multiple kinder clusters
+- Blocks: Cannot test cross-cluster scenarios (federation, service mesh)
+- Recommendation: Add optional shared network mode for multi-cluster setups
 
 ## Test Coverage Gaps
 
-**Provider Switching Edge Cases:**
-- What's not tested: Switching from Docker to Podman provider in same system; provider auto-detection failures
-- Files: `pkg/cluster/provider.go`, `pkg/cluster/internal/providers/provider.go`
-- Risk: Silent fallback to Docker provider could mask environment issues
-- Priority: Medium - affects developers with multiple runtimes installed
+**Provider Concurrency:**
+- What's not tested: Concurrent cluster creation and deletion across multiple providers
+- Files: `pkg/cluster/internal/providers/` (all three provider implementations)
+- Risk: Race conditions in shared resources (network, volumes) may only appear under load
+- Priority: High - affects production cluster rollout scenarios
 
-**Network Race Conditions:**
-- What's not tested: Concurrent cluster creation with same network name; simultaneous deletion during creation
-- Files: `pkg/cluster/internal/providers/docker/network.go`, `pkg/cluster/internal/providers/docker/network_integration_test.go`
-- Risk: Race conditions occur sporadically, hard to reproduce; may affect CI/CD systems with parallel job execution
-- Priority: High - impacts reliability in high-concurrency scenarios
+**Network Subnet Collision:**
+- What's not tested: IPv6 subnet generation with 100+ existing networks on host
+- Files: `pkg/cluster/internal/providers/docker/network.go`
+- Risk: Retry limit exhaustion not discovered until late in deployment
+- Priority: Medium - affects environments with many existing networks
 
-**Kubeadm Version-Specific Behavior:**
-- What's not tested: All Kubernetes versions from 1.20 onwards; only recent versions likely tested
-- Files: `pkg/cluster/internal/kubeadm/config.go`, `pkg/build/nodeimage/buildcontext.go`
-- Risk: Old Kubernetes versions may have broken kubeadm templates or deprecated features
-- Priority: Medium - impacts users running older clusters
+**Kubeadm Configuration Mutations:**
+- What's not tested: All combinations of kubeadm config options with different Kubernetes versions
+- Files: `pkg/cluster/internal/kubeadm/config.go`
+- Risk: Version-specific behavior changes go undetected
+- Priority: Medium - affects stability across version ranges
 
-**Error Message Quality:**
-- What's not tested: User-facing error messages from config validation failures
-- Files: `pkg/internal/apis/config/validate.go`
-- Risk: Users receive cryptic error messages instead of actionable guidance
-- Priority: Low - affects user experience but not functionality
+**Addon Install Failure Scenarios:**
+- What's not tested: Individual addon failures during Wave 1 and Wave 2 installations
+- Files: `pkg/cluster/internal/create/actions/` (all addon packages)
+- Risk: Silent failures with warn-and-continue mean broken addons go unnoticed
+- Priority: High - affects production cluster reliability
 
-**AddOn Installation Failure Handling:**
-- What's not tested: Partial addon installation with some addons failing; cleanup on addon failure
-- Files: `pkg/cluster/internal/create/create.go:182-212`
-- Risk: Failed addon leaves cluster in inconsistent state
-- Priority: Medium - affects stability of cluster creation
+**File Descriptor Leaks:**
+- What's not tested: Long-running operations for file descriptor exhaustion
+- Files: `pkg/cluster/internal/providers/` (command execution patterns)
+- Risk: cmd.Wait() may leak file descriptors in error paths
+- Priority: Medium - affects systems under resource pressure
+
+**Windows Network Configuration:**
+- What's not tested: Windows-specific container runtime network setup
+- Files: `pkg/cluster/internal/providers/docker/network.go` (line 195-198: mount device mapper)
+- Risk: Windows path handling differs from Linux; tests are Linux-focused
+- Priority: Low - Windows support is secondary platform
 
 ---
 
-*Concerns audit: 2026-03-02*
+*Concerns audit: 2026-04-08*

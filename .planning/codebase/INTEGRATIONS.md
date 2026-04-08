@@ -1,183 +1,167 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-02
+**Analysis Date:** 2026-04-08
 
-## APIs & External Services
+## Container Runtime Providers
 
-**Container Runtimes:**
-- Docker - Primary container runtime
-  - Integration: `pkg/cluster/internal/providers/docker/`
-  - Invoked via exec, not SDK
-  - Auto-detection support
+**Docker:**
+- Purpose: Primary container runtime for creating local Kubernetes clusters
+- Integration: CLI wrapper calling system `docker` binary
+- Implementation: `pkg/cluster/internal/providers/docker/`
+- Configuration: Via Docker system socket (auto-detected)
+- Network: Fixed network `kind` (or `KIND_EXPERIMENTAL_DOCKER_NETWORK` env override)
 
-- Podman - Alternative container runtime
-  - Integration: `pkg/cluster/internal/providers/podman/`
-  - Invoked via exec, not SDK
-  - Auto-detection support
+**Podman:**
+- Purpose: Alternative container runtime (rootless-compatible)
+- Integration: CLI wrapper calling system `podman` binary
+- Implementation: `pkg/cluster/internal/providers/podman/`
+- Configuration: Via Podman system socket (auto-detected)
+- Testing: Separate workflow (`podman.yml`)
 
-- nerdctl - Alternative container runtime
-  - Integration: `pkg/cluster/internal/providers/nerdctl/`
-  - Invoked via exec, not SDK
-  - Auto-detection support
+**nerdctl:**
+- Purpose: Alternative container runtime (containerd native)
+- Integration: CLI wrapper calling system `nerdctl` binary
+- Implementation: `pkg/cluster/internal/providers/nerdctl/`
+- Configuration: Via nerdctl CLI interface (auto-detected)
+- Testing: Separate workflow (`nerdctl.yaml`)
 
-**Kubernetes Components:**
-- kubeadm - Kubernetes initialization
-  - Integration: `pkg/cluster/internal/create/actions/kubeadminit/`
-  - Used to bootstrap control plane and worker nodes
-  - Invoked via container exec
+## Node Image Management
 
-- kubelet - Node agent (embedded in node image)
-  - Integration: Node provisioning via container
+**Docker Image Loading:**
+- Uses system Docker daemon to pull and manage base images
+- `ensureNodeImages()` function pre-pulls images before provisioning
+- Supports local and remote image registries
+- Image format: container image archives and Docker-compatible images
 
-- kubectl - Cluster management
-  - Integration: Used for applying manifests, checking readiness
-  - Invoked via container exec or locally
+**Image Archive Handling:**
+- `pkg/cmd/kind/load/image-archive/` - Handles OCI image archive loading
+- `pkg/cmd/kind/load/docker-image/` - Handles Docker image loading into cluster
 
-**Kubernetes Addons (installed during cluster creation):**
-1. **MetalLB** (Load Balancer)
-   - Namespace: `metallb-system`
-   - Configuration: `pkg/cluster/internal/create/actions/installmetallb/`
-   - Manifests: `pkg/cluster/internal/create/actions/installmetallb/manifests/metallb-native.yaml`
-   - Purpose: Enables LoadBalancer service type support
-   - Enabled by: `Config.Addons.MetalLB` (default: true)
+## Kubernetes Components
 
-2. **Envoy Gateway** (Gateway API)
-   - Configuration: `pkg/cluster/internal/create/actions/installenvoygw/`
-   - Purpose: Provides Gateway API CRD support
-   - Enabled by: `Config.Addons.EnvoyGateway` (default: true)
+**Infrastructure:**
+- kubeconfig management: `pkg/cluster/internal/kubeconfig/`
+- Kubernetes manifests in YAML format (via sigs.k8s.io/yaml)
+- API server endpoint discovery and management
+- Node-level Kubernetes setup via systemd and container configuration
 
-3. **Metrics Server** (Metrics for HPA/kubectl top)
-   - Configuration: `pkg/cluster/internal/create/actions/installmetricsserver/`
-   - Purpose: Enables `kubectl top` and Horizontal Pod Autoscaler metrics
-   - Enabled by: `Config.Addons.MetricsServer` (default: true)
+**Base Components:**
+- containerd - Container runtime inside cluster nodes (pre-installed in base image)
+- CoreDNS - DNS service (included in Kubernetes)
+- kubelet - Node agent (included in Kubernetes)
+- API server - Control plane component
 
-4. **CoreDNS Tuning** (Performance optimization)
-   - Configuration: `pkg/cluster/internal/create/actions/installcorednstuning/`
-   - Manifests: `pkg/cluster/internal/create/actions/installcorednstuning/`
-   - Purpose: Enables caching and performance tuning for CoreDNS
-   - Enabled by: `Config.Addons.CoreDNSTuning` (default: true)
+## Configuration & API
 
-5. **Headlamp Dashboard** (Kubernetes UI)
-   - Configuration: `pkg/cluster/internal/create/actions/installdashboard/`
-   - Manifests: `pkg/cluster/internal/create/actions/installdashboard/manifests/headlamp.yaml`
-   - Creates: RBAC, long-lived service account token, deployment/headlamp
-   - Secret: `kinder-dashboard-token` (contains access token)
-   - Enabled by: `Config.Addons.Dashboard` (default: true)
+**Cluster Configuration:**
+- Format: YAML (kind.x-k8s.io/v1alpha4 API version)
+- Configuration parsing: sigs.k8s.io/yaml v1.4.0
+- Supports: IP family (IPv4/IPv6), node roles, networking setup
+- Location: User-supplied config files or stdin
 
-## Data Storage
+**Kubernetes API:**
+- Communication: kubectl commands against API server
+- kubeconfig generation: Stored in user's home directory
+- API server endpoint: Auto-detected from Docker network
 
-**Databases:**
-- None - Kinder is a stateless CLI tool
-- Cluster state: Stored in Docker containers/volumes managed by container runtime
-- kubeconfig: Stored in `~/.kube/config` or `$KUBECONFIG` (standard Kubernetes location)
+## Error Handling & Logging
 
-**File Storage:**
-- Local filesystem only
-- kubeconfig merging/removal: `pkg/cluster/internal/kubeconfig/`
-- Node image caching: Via container runtime (Docker/Podman/nerdctl)
-- Configuration files: YAML files on disk, no remote storage
+**Command Execution:**
+- Shell command execution wrapper: `pkg/exec/`
+- Error capture with command output: `exec.RunErrorForError()`
+- Supports colored output when terminal supports it
 
-**Caching:**
-- None - Each cluster creation fresh; no persistent caching across clusters
+**Logging Framework:**
+- Interface-based logging: `pkg/log/Logger`
+- Verbosity levels: `-v` flag (1+ = verbose)
+- Color output detection via go-isatty
+- Noop logger for quiet mode: `-q/--quiet` flag disables all stderr
 
-## Authentication & Identity
+## File System Operations
 
-**Auth Provider:**
-- Custom - Kubernetes built-in auth
-  - Implementation: kubeadm-generated certificates and tokens
-  - kubeconfig contains client certificate auth to control plane
-  - Service accounts: Created per addon (MetalLB, Metrics Server, Headlamp)
-  - Headlamp: Long-lived token in `kinder-dashboard-token` secret
-  - No external auth provider required
+**Node Image Bases:**
+- Debian-based images (ARG BASE_IMAGE=debian:trixie-slim in Dockerfile)
+- Pre-built base images hosted on container registries
+- Custom Kubernetes-specific configurations in base image
 
-## Monitoring & Observability
+**Local Storage:**
+- Docker volumes for persistent cluster state
+- kubeconfig written to standard locations (~/.kube/config)
+- Cluster metadata stored in Docker labels and container names
 
-**Error Tracking:**
-- None detected - Standard Go error handling and CLI output
+## Build & Release Infrastructure
 
-**Logs:**
-- Console output - Real-time status and logs during cluster creation
-- CLI logging: `pkg/cmd/logger.go`, `pkg/internal/cli/logger.go`
-- Smart terminal detection for formatted output (spinners, colors)
-- Log levels: `logger.V(0)` for info messages
-- Cluster logs export: `kind export logs` command in upstream kind
+**GitHub Actions:**
+- CI/CD platform for testing and releases
+- Workflows:
+  - `docker.yaml` - Docker provider tests (single/multi-node, IPv4/IPv6)
+  - `nerdctl.yaml` - nerdctl provider tests
+  - `podman.yml` - Podman provider tests
+  - `vm.yaml` - Virtual machine provider tests
+  - `release.yml` - Release builds on version tags
+  - `deploy-site.yml` - Documentation site deployment
 
-## CI/CD & Deployment
+**Release Pipeline:**
+- Trigger: Git tags matching `v*`
+- Tool: GoReleaser (version ~2.x)
+- Secrets used:
+  - `GITHUB_TOKEN` - GitHub Release creation and asset upload
+  - `HOMEBREW_TAP_TOKEN` - PAT for Homebrew tap updates
+- Output: GitHub Releases with checksums
 
-**Hosting:**
-- GitHub Pages - New Astro documentation site
-- Netlify - Legacy Hugo site (via `netlify.toml`)
+**Documentation Deployment:**
+- Platform: Netlify (configured in `netlify.toml`)
+- Base directory: `site/`
+- Build command: Hugo (version 0.111.3)
+- Output directory: `site/public/`
+- Environment: Production config sets HUGO_BASEURL to `https://kind.sigs.k8s.io/`
 
-**CI Pipeline:**
-- GitHub Actions workflow files:
-  - `.github/workflows/deploy-site.yml` - Build and deploy documentation
-    - Runs on: `push` to main (paths: `kinder-site/**`)
-    - Uses: `withastro/action@v5`
-    - Deploys to GitHub Pages
-    - Node.js 22
+## Environment Variables & Configuration
 
-  - `.github/workflows/release.yml` - Release binary builds
+**Runtime Configuration:**
+- `KIND_EXPERIMENTAL_DOCKER_NETWORK` - Override Docker network name (experimental)
+- `KUBECONFIG` - Standard Kubernetes config location
+- `HUGO_ENV` - Documentation site build environment (production/preview)
+- `HUGO_BASEURL` - Documentation site base URL
+- `HUGO_VERSION` - Hugo version pinned to 0.111.3
 
-  - `.github/workflows/docker.yaml` - Test with Docker
+**Build Configuration:**
+- `GO111MODULE` - Enable Go modules (on)
+- `CGO_ENABLED` - Disable C library linking (0 for static binaries)
+- `GOTOOLCHAIN` - Go toolchain version
+- `COMMIT` - Git commit hash (injected into binary)
+- `COMMIT_COUNT` - Commits since last release
 
-  - `.github/workflows/podman.yml` - Test with Podman
+## Cluster Resources
 
-  - `.github/workflows/nerdctl.yaml` - Test with nerdctl
+**Provider Capabilities Detection:**
+- Rootless container support detection
+- Cgroup2 support detection
+- Memory limit support
+- PID limit support
+- CPU share support
+- Information exposed via `ProviderInfo` interface
 
-  - `.github/workflows/vm.yaml` - Test on VM
+**Kubernetes Cluster Types:**
+- Single-node clusters (control-plane only)
+- Multi-node clusters (control-plane + worker nodes)
+- IPv4 and IPv6 networking support
+- Custom networking configuration via YAML
 
-**Build Process:**
-- Local: `make build` → outputs to `bin/kinder` binary
-- Cross-compilation: Go's native support for GOOS/GOARCH
-- Build flags: Reproducible builds (`-trimpath`), minimal binaries (`-w`), git metadata
+## External Dependencies (Go Modules)
 
-## Environment Configuration
+**TOML Support:**
+- github.com/BurntSushi/toml v1.4.0
+- github.com/pelletier/go-toml v1.9.5
 
-**Required env vars:**
-- None - Tool works out-of-box
-- Optional: `KIND_CLUSTER_NAME`, `KIND_EXPERIMENTAL_PROVIDER`, container runtime env vars
-- Standard: `KUBECONFIG`, proxy vars (HTTP_PROXY, HTTPS_PROXY, NO_PROXY)
+**JSON Operations:**
+- github.com/evanphx/json-patch/v5 v5.6.0 - Kubernetes-style JSON patches
 
-**Secrets location:**
-- kubeconfig: `~/.kube/config` (contains admin credentials for created cluster)
-- Headlamp token: `kinder-dashboard-token` secret in cluster (ephemeral)
-- No external secrets management
-
-## Webhooks & Callbacks
-
-**Incoming:**
-- None detected
-
-**Outgoing:**
-- None detected - Tool is read-only from external systems perspective
-
-## Container Runtime Selection
-
-**Detection Strategy:**
-- Order: Docker (preferred) → Podman → nerdctl → error if none found
-- Override: `KIND_EXPERIMENTAL_PROVIDER` environment variable
-- Auto-fallback: If no explicit provider set, defaults to Docker
-- Location: `pkg/cluster/provider.go`, `pkg/internal/runtime/runtime.go`
-
-## Configuration File Format
-
-**Cluster Config:**
-- Type: Kubernetes-style YAML (kind: Cluster, apiVersion: kind.x-k8s.io/v1alpha4)
-- Location: Passed via `--config` flag or stdin via `-`
-- Format example:
-  ```yaml
-  kind: Cluster
-  apiVersion: kind.x-k8s.io/v1alpha4
-  name: my-cluster
-  addons:
-    metalLB: true
-    envoyGateway: true
-    metricsServer: true
-    coreDNSTuning: true
-    dashboard: true
-  ```
-- Schema: `pkg/apis/config/v1alpha4/types.go`
+**System Integration:**
+- golang.org/x/sync v0.19.0 - Concurrency for parallel operations
+- golang.org/x/sys v0.41.0 - OS-specific functionality
+- github.com/mattn/go-isatty v0.0.20 - Terminal capability detection
 
 ---
 
-*Integration audit: 2026-03-02*
+*Integration audit: 2026-04-08*
