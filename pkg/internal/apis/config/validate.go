@@ -24,6 +24,7 @@ import (
 
 	"sigs.k8s.io/kind/pkg/errors"
 	"sigs.k8s.io/kind/pkg/internal/sets"
+	"sigs.k8s.io/kind/pkg/internal/version"
 )
 
 // similar to valid docker container names, but since we will prefix
@@ -93,6 +94,11 @@ func (c *Cluster) Validate() error {
 	numControlPlane, anyControlPlane := numByRole[ControlPlaneRole]
 	if !anyControlPlane || numControlPlane < 1 {
 		errs = append(errs, errors.Errorf("must have at least one %s node", string(ControlPlaneRole)))
+	}
+
+	// validate version skew between nodes
+	if err := validateVersionSkew(c.Nodes); err != nil {
+		errs = append(errs, err)
 	}
 
 	if len(errs) > 0 {
@@ -262,6 +268,141 @@ func validateSubnets(subnetStr string, ipFamily ClusterIPFamily) error {
 		return errors.NewAggregate(allErrs)
 	}
 	return nil
+}
+
+// imageTagVersion extracts the version tag from a node image string.
+// It strips any @sha256: digest suffix first, then extracts the substring after
+// the last ':'. Returns an error if no tag is found.
+func imageTagVersion(image string) (string, error) {
+	// Strip @sha256:... digest suffix if present
+	if idx := strings.Index(image, "@"); idx != -1 {
+		image = image[:idx]
+	}
+	idx := strings.LastIndex(image, ":")
+	if idx == -1 || idx == len(image)-1 {
+		return "", fmt.Errorf("image %q has no version tag", image)
+	}
+	return image[idx+1:], nil
+}
+
+// skewViolation records a worker node whose minor version is too far behind
+// the control-plane minor version.
+type skewViolation struct {
+	NodeName string
+	Role     string
+	Version  string
+	Delta    int
+}
+
+// validateVersionSkew checks that:
+//  1. All control-plane nodes share the same minor version (HA etcd consistency).
+//  2. No worker node is more than 3 minor versions behind the control-plane.
+//
+// All violations are reported together in a table-format error message with
+// remediation hints. If any image tag is absent (no colon), an error is returned.
+// If any image tag cannot be parsed as semver (e.g. "latest"), the entire
+// version-skew check is skipped for this cluster — non-semver tags are used in
+// test and development scenarios where skew policy is not applicable.
+func validateVersionSkew(nodes []Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	// Parse versions for all nodes.
+	type nodeVersion struct {
+		index int
+		role  NodeRole
+		image string
+		v     *version.Version
+	}
+	parsed := make([]nodeVersion, 0, len(nodes))
+	for i, n := range nodes {
+		tag, err := imageTagVersion(n.Image)
+		if err != nil {
+			return fmt.Errorf("version-skew validation: node[%d] (%s): %v", i, n.Role, err)
+		}
+		v, err := version.ParseSemantic(tag)
+		if err != nil {
+			// Non-semver tag (e.g. "latest") — skip skew validation for this cluster.
+			return nil
+		}
+		parsed = append(parsed, nodeVersion{index: i, role: n.Role, image: n.Image, v: v})
+	}
+
+	// Collect control-plane nodes.
+	var cpNodes []nodeVersion
+	for _, nv := range parsed {
+		if nv.role == ControlPlaneRole {
+			cpNodes = append(cpNodes, nv)
+		}
+	}
+	if len(cpNodes) == 0 {
+		// No CP nodes — other validation will catch this.
+		return nil
+	}
+
+	// Check HA control-plane minor version consistency.
+	cpMinor := cpNodes[0].v.Minor()
+	var haMismatch []nodeVersion
+	for _, nv := range cpNodes[1:] {
+		if nv.v.Minor() != cpMinor {
+			haMismatch = append(haMismatch, nv)
+		}
+	}
+	if len(haMismatch) > 0 {
+		msg := fmt.Sprintf("version-skew policy violation: HA control-plane nodes must all run the same minor version\n")
+		msg += fmt.Sprintf("  (etcd requires all control-plane nodes to share a minor version for consistency)\n")
+		msg += fmt.Sprintf("  %-10s  %-16s  %-8s\n", "Node", "Image", "Minor")
+		msg += fmt.Sprintf("  %-10s  %-16s  %-8s\n", "----", "-----", "-----")
+		msg += fmt.Sprintf("  %-10s  %-16s  v1.%d\n",
+			fmt.Sprintf("cp[0]"), cpNodes[0].image, cpMinor)
+		for i, nv := range haMismatch {
+			msg += fmt.Sprintf("  %-10s  %-16s  v1.%d\n",
+				fmt.Sprintf("cp[%d]", i+1), nv.image, nv.v.Minor())
+		}
+		msg += fmt.Sprintf("  Remediation: use the same minor version for all control-plane nodes")
+		return fmt.Errorf("%s", msg)
+	}
+
+	// Check worker version skew (must be within 3 minor versions of CP).
+	const maxSkew = 3
+	var violations []skewViolation
+	for i, nv := range parsed {
+		if nv.role != WorkerRole {
+			continue
+		}
+		workerMinor := nv.v.Minor()
+		var delta int
+		if cpMinor > workerMinor {
+			delta = int(cpMinor - workerMinor)
+		} else {
+			delta = -int(workerMinor - cpMinor)
+		}
+		if delta > maxSkew {
+			violations = append(violations, skewViolation{
+				NodeName: fmt.Sprintf("worker[%d]", i),
+				Role:     string(nv.role),
+				Version:  nv.image,
+				Delta:    delta,
+			})
+		}
+	}
+
+	if len(violations) == 0 {
+		return nil
+	}
+
+	// Build table-format error message with remediation hints.
+	msg := fmt.Sprintf("version-skew policy violation: %d worker node(s) are more than %d minor versions behind the control-plane (v1.%d)\n",
+		len(violations), maxSkew, cpMinor)
+	msg += fmt.Sprintf("  %-14s  %-40s  %-8s  %s\n", "Node", "Image", "Delta", "Remediation")
+	msg += fmt.Sprintf("  %-14s  %-40s  %-8s  %s\n", "----", "-----", "-----", "-----------")
+	for _, v := range violations {
+		minVersion := int(cpMinor) - maxSkew
+		remediation := fmt.Sprintf("update %s to v1.%d+", v.NodeName, minVersion)
+		msg += fmt.Sprintf("  %-14s  %-40s  %-8d  %s\n", v.NodeName, v.Version, v.Delta, remediation)
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // isDualStackCIDRs returns if

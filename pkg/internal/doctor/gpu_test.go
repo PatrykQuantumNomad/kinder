@@ -287,8 +287,8 @@ func TestNvidiaDockerRuntimeCheck_Run(t *testing.T) {
 func TestAllChecks_RegisteredOrder(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 18 {
-		t.Fatalf("AllChecks() returned %d checks, want 18", len(checks))
+	if len(checks) != 19 {
+		t.Fatalf("AllChecks() returned %d checks, want 19", len(checks))
 	}
 	expected := []struct {
 		name     string
@@ -312,6 +312,7 @@ func TestAllChecks_RegisteredOrder(t *testing.T) {
 		{"wsl2-cgroup", "Platform"},
 		{"rootfs-device", "Platform"},
 		{"network-subnet", "Network"},
+		{"cluster-node-skew", "Cluster"},
 	}
 	for i, exp := range expected {
 		if checks[i].Name() != exp.name {

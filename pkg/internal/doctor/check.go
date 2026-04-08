@@ -77,6 +77,8 @@ var allChecks = []Check{
 	newRootfsDeviceCheck(),
 	// Category: Network (Phase 41)
 	newSubnetClashCheck(),
+	// Category: Cluster (Phase 42)
+	newClusterNodeSkewCheck(),
 }
 
 // AllChecks returns all registered diagnostic checks.
