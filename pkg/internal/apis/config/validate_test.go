@@ -295,6 +295,123 @@ func newDefaultedNode(role NodeRole) Node {
 	return n
 }
 
+func TestValidateVersionSkew(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		nodes       []Node
+		expectError bool
+		errorContains []string
+	}{
+		{
+			name: "single CP + workers within 3 minor versions: no error",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.2"},
+				{Role: WorkerRole, Image: "kindest/node:v1.29.0"},
+				{Role: WorkerRole, Image: "kindest/node:v1.28.5"},
+			},
+			expectError: false,
+		},
+		{
+			name: "workers exactly 3 minor versions behind: no error (boundary case)",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.0"},
+				{Role: WorkerRole, Image: "kindest/node:v1.28.0"},
+			},
+			expectError: false,
+		},
+		{
+			name: "single CP v1.31.2 + worker v1.27.1 (delta -4): error with remediation hint",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.2"},
+				{Role: WorkerRole, Image: "kindest/node:v1.27.1"},
+			},
+			expectError: true,
+			errorContains: []string{"version-skew", "worker"},
+		},
+		{
+			name: "single CP v1.31.2 + two workers at v1.26.0 and v1.27.1: both violations reported",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.2"},
+				{Role: WorkerRole, Image: "kindest/node:v1.26.0"},
+				{Role: WorkerRole, Image: "kindest/node:v1.27.1"},
+			},
+			expectError: true,
+			errorContains: []string{"version-skew", "v1.26", "v1.27"},
+		},
+		{
+			name: "HA CP with same minor version: no error",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.0"},
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.2"},
+			},
+			expectError: false,
+		},
+		{
+			name: "HA CP with different minor versions: error about etcd consistency",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.0"},
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.30.0"},
+			},
+			expectError: true,
+			errorContains: []string{"control-plane"},
+		},
+		{
+			name: "node image without version tag: error about unparseable image tag",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node"},
+			},
+			expectError: true,
+			errorContains: []string{"tag"},
+		},
+		{
+			name: "all nodes same image: no error",
+			nodes: []Node{
+				{Role: ControlPlaneRole, Image: "kindest/node:v1.31.0"},
+				{Role: WorkerRole, Image: "kindest/node:v1.31.0"},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateVersionSkew(tt.nodes)
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error but got nil")
+					return
+				}
+				errStr := err.Error()
+				for _, want := range tt.errorContains {
+					if !contains(errStr, want) {
+						t.Errorf("error %q does not contain %q", errStr, want)
+					}
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// contains is a helper for case-insensitive substring check in tests.
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(substr); i++ {
+				if s[i:i+len(substr)] == substr {
+					return true
+				}
+			}
+			return false
+		}())
+}
+
 func TestNodeValidate(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
