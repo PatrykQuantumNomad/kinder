@@ -37,7 +37,7 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 
 - [ ] **MOUNT-01**: Pre-flight validation checks host path existence before node provisioning with clear error message
 - [ ] **MOUNT-02**: Platform warning emitted when non-None propagation mode specified on macOS/Windows
-- [ ] **MOUNT-03**: `kinder doctor` checks host path exists and Docker Desktop file sharing is configured (macOS)
+- [x] **MOUNT-03**: `kinder doctor` checks host path exists and Docker Desktop file sharing is configured (macOS)
 - [ ] **MOUNT-04**: Documentation covers two-hop mount pattern (host → node extraMount → pod hostPath PV)
 
 ### Load Images Command
@@ -99,7 +99,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | STOR-06 | Phase 44 | Pending |
 | MOUNT-01 | Phase 45 | Pending |
 | MOUNT-02 | Phase 45 | Pending |
-| MOUNT-03 | Phase 45 | Pending |
+| MOUNT-03 | Phase 45 | Complete |
 | MOUNT-04 | Phase 45 | Pending |
 | LOAD-01 | Phase 46 | Pending |
 | LOAD-02 | Phase 46 | Pending |

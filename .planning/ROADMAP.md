@@ -176,5 +176,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
 | 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 44. Local-Path-Provisioner Addon | v2.2 | 3/3 | Complete   | 2026-04-09 |
-| 45. Host-Directory Mounting | v2.2 | 0/TBD | Not started | - |
+| 45. Host-Directory Mounting | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 46. kinder load images Command | v2.2 | 0/TBD | Not started | - |

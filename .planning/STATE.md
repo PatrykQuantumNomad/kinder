@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
-status: active
-stopped_at: Completed phase 44
-last_updated: "2026-04-09T14:00:00Z"
-last_activity: 2026-04-09 — Phase 44 verified (5/5 automated criteria passed, SC2 human-approved), phase complete
+status: completed
+stopped_at: Completed 45-03-PLAN.md
+last_updated: "2026-04-09T16:39:09.924Z"
+last_activity: 2026-04-09 — Phase 45 Plan 01 complete (2 tasks, all tests pass, go vet clean)
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
-  percent: 60
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 44 of 46 (Local-Path-Provisioner Addon) — COMPLETE
-Plan: 3/3 complete, verified 5/5 + SC2 human-approved
-Status: Phase 44 verified and complete
-Last activity: 2026-04-09 — Phase 44 verified (5/5 automated + SC2 human-approved)
+Phase: 45 of 46 (Host Directory Mounting) — IN PROGRESS
+Plan: 1/3 complete
+Status: Plan 01 complete — validateExtraMounts and logMountPropagationPlatformWarning implemented and tested
+Last activity: 2026-04-09 — Phase 45 Plan 01 complete (2 tasks, all tests pass, go vet clean)
 
-Progress: [██████░░░░] 60%
+Progress: [██████░░░░] 62%
 
 ## Performance Metrics
 
@@ -78,6 +78,12 @@ Progress: [██████░░░░] 60%
 - [Phase 44-02]: AllChecks count tests updated to 21 — feat(44-03) ran out of order adding local-path-cve check before plan 44-02 tests were written
 - [Phase 44-03]: CVE threshold v0.0.34 returns ok (it is the fix version); only strictly less-than triggers warn
 - [Phase 44-03]: realGetProvisionerVersion uses container exec kubectl inside kind control-plane — avoids import cycle with pkg/cluster/internal same as realListNodes in clusterskew.go
+- [Phase 45-01]: validateExtraMounts called after Config.Validate() and before Provision() — host paths verified before any container is created
+- [Phase 45-01]: logMountPropagationPlatformWarning warns once (return after first non-None match) — mirrors logMetalLBPlatformWarning pattern
+- [Phase 45-01]: Relative paths resolved via filepath.Abs before os.Stat — avoids false negatives for CWD-relative paths
+- [Phase 45-01]: Test file reuses existing testLogger from create_addon_test.go (same package) — avoids duplicate type declarations
+- [Phase 45]: isPathCovered uses dir+/ separator to prevent prefix false positives (/Userspace vs /Users)
+- [Phase 45]: dockerDesktopFileSharingCheck falls back to Docker Desktop default dirs when settings-store.json absent
 
 ### Pending Todos
 
@@ -89,6 +95,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T14:00:00Z
-Stopped at: Completed phase 44
+Last session: 2026-04-09T16:39:09.921Z
+Stopped at: Completed 45-03-PLAN.md
 Resume file: None
