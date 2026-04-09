@@ -4,7 +4,7 @@ milestone: v2.2
 milestone_name: Cluster Capabilities
 status: completed
 stopped_at: Completed 45-03-PLAN.md
-last_updated: "2026-04-09T16:39:09.924Z"
+last_updated: "2026-04-09T16:39:13.965Z"
 last_activity: 2026-04-09 — Phase 45 Plan 01 complete (2 tasks, all tests pass, go vet clean)
 progress:
   total_phases: 5
@@ -84,6 +84,7 @@ Progress: [██████░░░░] 62%
 - [Phase 45-01]: Test file reuses existing testLogger from create_addon_test.go (same package) — avoids duplicate type declarations
 - [Phase 45]: isPathCovered uses dir+/ separator to prevent prefix false positives (/Userspace vs /Users)
 - [Phase 45]: dockerDesktopFileSharingCheck falls back to Docker Desktop default dirs when settings-store.json absent
+- [Phase 45-03]: Guide uses absolute hostPath in YAML example (not tilde) because kind config does not perform shell expansion
 
 ### Pending Todos
 
