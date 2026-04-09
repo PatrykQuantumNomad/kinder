@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
 status: active
-stopped_at: Completed phase 43
-last_updated: "2026-04-09T13:00:00.000Z"
-last_activity: 2026-04-09 — Phase 43 verified (5/5 success criteria), approved by user
+stopped_at: Completed 44-01-PLAN.md
+last_updated: "2026-04-09T13:19:14Z"
+last_activity: 2026-04-09 — Phase 44 Plan 01 complete (LocalPath config pipeline + installlocalpath action)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 40
+  total_plans: 8
+  completed_plans: 6
+  percent: 44
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 43 of 46 (Air-Gapped Cluster Creation) — COMPLETE
-Plan: 3/3 complete, verified 5/5
-Status: Phase 43 verified and complete
-Last activity: 2026-04-09 — Phase 43 verified (5/5 success criteria), approved by user
+Phase: 44 of 46 (Local-Path-Provisioner Addon) — In progress
+Plan: 1/3 complete
+Status: Plan 44-01 complete — config pipeline + installlocalpath action package
+Last activity: 2026-04-09 — Plan 44-01 complete (LocalPath config pipeline + installlocalpath action)
 
-Progress: [████░░░░░░] 40%
+Progress: [████░░░░░░] 44%
 
 ## Performance Metrics
 
@@ -70,6 +70,10 @@ Progress: [████░░░░░░] 40%
 - [Phase 43]: Addon image warning uses addonImages.Len() > 0 guard to avoid empty NOTE when no addons enabled
 - [Phase 43]: Image list defined inline in offlinereadiness.go — no import from pkg/cluster/internal to avoid import cycle
 - [Phase 43]: offlineReadinessCheck skips gracefully when no container runtime found (lookPath detection before inspect)
+- [Phase 44-01]: LocalPath uses boolVal (opt-out, default true) not boolValOptIn — consistent with MetalLB/CertManager pattern
+- [Phase 44-01]: StorageClass named local-path (not standard) to avoid collision with legacy installstorage
+- [Phase 44-01]: installstorage gated behind !LocalPath in sequential pipeline (before kubeadmjoin)
+- [Phase 44-01]: Images var uses docker.io/ prefix for both images (docker.io/rancher/local-path-provisioner:v0.0.35, docker.io/library/busybox:1.37.0)
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T13:00:00.000Z
-Stopped at: Completed phase 43
+Last session: 2026-04-09T13:19:14Z
+Stopped at: Completed 44-01-PLAN.md
 Resume file: None

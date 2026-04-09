@@ -130,7 +130,10 @@ Plans:
   3. Setting `addons.localPath: false` in the cluster config skips the addon, and `installstorage` installs the legacy `standard` StorageClass instead (exact same behavior as pre-v2.2)
   4. `kinder doctor` on a running cluster warns when local-path-provisioner is below v0.0.34 (CVE-2025-62878 threshold)
   5. The embedded manifest uses `busybox:1.37.0` with `imagePullPolicy: IfNotPresent`, ensuring PVC operations work correctly in air-gapped clusters where `busybox:latest` cannot be pulled
-**Plans**: TBD
+**Plans**:
+- [x] 44-01-PLAN.md — LocalPath config pipeline (5-location), installlocalpath action package, installstorage gate, wave1 registration, RequiredAddonImages registration
+- [ ] 44-02-PLAN.md — TBD
+- [ ] 44-03-PLAN.md — TBD
 
 ### Phase 45: Host-Directory Mounting
 **Goal**: Users can mount host directories into cluster nodes with clear pre-flight validation, explicit platform warnings, and documented guidance for wiring mounts through to pods via hostPath PVs
@@ -172,6 +175,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
 | 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
-| 44. Local-Path-Provisioner Addon | v2.2 | 0/TBD | Not started | - |
+| 44. Local-Path-Provisioner Addon | v2.2 | 1/3 | In progress | - |
 | 45. Host-Directory Mounting | v2.2 | 0/TBD | Not started | - |
 | 46. kinder load images Command | v2.2 | 0/TBD | Not started | - |
