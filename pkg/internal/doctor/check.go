@@ -79,6 +79,8 @@ var allChecks = []Check{
 	newSubnetClashCheck(),
 	// Category: Cluster (Phase 42)
 	newClusterNodeSkewCheck(),
+	// Category: Offline (Phase 43)
+	newOfflineReadinessCheck(),
 }
 
 // AllChecks returns all registered diagnostic checks.
