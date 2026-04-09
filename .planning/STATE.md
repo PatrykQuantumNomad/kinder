@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
 status: active
-stopped_at: Completed 44-01-PLAN.md
-last_updated: "2026-04-09T13:19:14Z"
-last_activity: 2026-04-09 — Phase 44 Plan 01 complete (LocalPath config pipeline + installlocalpath action)
+stopped_at: Completed 44-03-PLAN.md
+last_updated: "2026-04-09T13:26:37Z"
+last_activity: 2026-04-09 — Phase 44 Plan 03 complete (doctor CVE-2025-62878 check for local-path-provisioner)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 6
-  percent: 44
+  completed_plans: 8
+  percent: 56
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 44 of 46 (Local-Path-Provisioner Addon) — In progress
-Plan: 1/3 complete
-Status: Plan 44-01 complete — config pipeline + installlocalpath action package
-Last activity: 2026-04-09 — Plan 44-01 complete (LocalPath config pipeline + installlocalpath action)
+Phase: 44 of 46 (Local-Path-Provisioner Addon) — Complete
+Plan: 3/3 complete
+Status: Plan 44-03 complete — doctor CVE-2025-62878 check for local-path-provisioner
+Last activity: 2026-04-09 — Plan 44-03 complete (doctor CVE-2025-62878 check)
 
-Progress: [████░░░░░░] 44%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -74,6 +74,8 @@ Progress: [████░░░░░░] 44%
 - [Phase 44-01]: StorageClass named local-path (not standard) to avoid collision with legacy installstorage
 - [Phase 44-01]: installstorage gated behind !LocalPath in sequential pipeline (before kubeadmjoin)
 - [Phase 44-01]: Images var uses docker.io/ prefix for both images (docker.io/rancher/local-path-provisioner:v0.0.35, docker.io/library/busybox:1.37.0)
+- [Phase 44-02]: offlinereadiness entries use docker.io/ prefix matching the Images var declaration in localpathprovisioner.go
+- [Phase 44-02]: AllChecks count tests updated to 21 — feat(44-03) ran out of order adding local-path-cve check before plan 44-02 tests were written
 
 ### Pending Todos
 
@@ -85,6 +87,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T13:19:14Z
-Stopped at: Completed 44-01-PLAN.md
+Last session: 2026-04-09T13:26:00Z
+Stopped at: Completed 44-02-PLAN.md
 Resume file: None
