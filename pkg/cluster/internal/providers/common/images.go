@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalpath"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
@@ -65,6 +66,9 @@ func RequiredAddonImages(cfg *config.Cluster) sets.String {
 	}
 	if cfg.Addons.Dashboard {
 		images.Insert(installdashboard.Images...)
+	}
+	if cfg.Addons.LocalPath {
+		images.Insert(installlocalpath.Images...)
 	}
 	if cfg.Addons.NvidiaGPU {
 		images.Insert(installnvidiagpu.Images...)

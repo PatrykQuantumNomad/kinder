@@ -43,13 +43,14 @@ import (
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcni"
-	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installnvidiagpu"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcorednstuning"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalpath"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installnvidiagpu"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installstorage"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/kubeadminit"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/kubeadmjoin"
@@ -219,9 +220,13 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 				installcni.NewAction(), // install CNI
 			)
 		}
+		// Install legacy StorageClass only when local-path-provisioner is disabled.
+		// When LocalPath is enabled, the local-path StorageClass replaces it (wave1 addon).
+		if !opts.Config.Addons.LocalPath {
+			actionsToRun = append(actionsToRun, installstorage.NewAction())
+		}
 		// add remaining steps
 		actionsToRun = append(actionsToRun,
-			installstorage.NewAction(),                // install StorageClass
 			kubeadmjoin.NewAction(),                   // run kubeadm join
 			waitforready.NewAction(opts.WaitForReady), // wait for cluster readiness
 		)
@@ -280,6 +285,7 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 		{"CoreDNS Tuning", opts.Config.Addons.CoreDNSTuning, installcorednstuning.NewAction()},
 		{"Dashboard", opts.Config.Addons.Dashboard, installdashboard.NewAction()},
 		{"Cert Manager", opts.Config.Addons.CertManager, installcertmanager.NewAction()},
+		{"Local Path Provisioner", opts.Config.Addons.LocalPath, installlocalpath.NewAction()},
 		{"NVIDIA GPU", opts.Config.Addons.NvidiaGPU, installnvidiagpu.NewAction()},
 	}
 
