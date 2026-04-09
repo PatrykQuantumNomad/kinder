@@ -144,7 +144,12 @@ Plans:
   2. Specifying `propagation: HostToContainer` or `propagation: Bidirectional` on macOS or Windows emits a visible warning during cluster creation explaining that propagation is unsupported on Docker Desktop and defaults to `None`
   3. `kinder doctor` on macOS checks that a configured host mount path exists and that Docker Desktop file sharing is enabled for that path, reporting actionable guidance when either check fails
   4. The website documents the two-hop mount pattern (host directory → node extraMount → pod hostPath PV) with a complete example YAML showing host dir mounted as a PV-backed volume
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [x] 45-01-PLAN.md — Host path pre-flight validation and platform propagation warnings
+- [x] 45-02-PLAN.md — Doctor host-mount-path and docker-desktop-file-sharing checks
+- [x] 45-03-PLAN.md — Host directory mounting documentation guide
+- [ ] 45-04-PLAN.md — Gap closure: wire doctor mount checks to cluster config via --config flag
 **UI hint**: yes
 
 ### Phase 46: kinder load images Command
@@ -176,5 +181,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
 | 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 44. Local-Path-Provisioner Addon | v2.2 | 3/3 | Complete   | 2026-04-09 |
-| 45. Host-Directory Mounting | v2.2 | 3/3 | Complete   | 2026-04-09 |
+| 45. Host-Directory Mounting | v2.2 | 3/4 | Gap closure | - |
 | 46. kinder load images Command | v2.2 | 0/TBD | Not started | - |
