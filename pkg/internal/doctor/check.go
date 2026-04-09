@@ -82,6 +82,9 @@ var allChecks = []Check{
 	newLocalPathCVECheck(),
 	// Category: Offline (Phase 43)
 	newOfflineReadinessCheck(),
+	// Category: Mounts (Phase 45)
+	newHostMountPathCheck(),
+	newDockerDesktopFileSharingCheck(),
 }
 
 // AllChecks returns all registered diagnostic checks.
