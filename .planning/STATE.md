@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
-status: active
-stopped_at: Completed 42-02-PLAN.md
-last_updated: "2026-04-08T19:00:00.000Z"
-last_activity: 2026-04-08 — Completed plan 42-02: cluster-node-skew doctor check and extended get nodes
+status: verifying
+stopped_at: Completed 43-01-PLAN.md
+last_updated: "2026-04-09T12:17:45.899Z"
+last_activity: 2026-04-08 — Phase 42 verified (5/5 success criteria), gap fixed (realListNodes + IMAGE column)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 20
+  total_plans: 5
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -63,6 +63,8 @@ Progress: [██░░░░░░░░] 20%
 - [Phase 42 plan 02]: ComputeSkew always shows cross+delta for any non-zero difference; ok=false only when >3 behind or any ahead of CP
 - [Phase 42 plan 02]: nodeEntry.VersionErr field enables test injection of read-failures without real container runtime
 - [Phase 42]: IMAGE column populated via container inspect CLI (avoids import cycle with cluster package); doctor check realListNodes uses same low-level CLI approach
+- [Phase 43]: RequiredAddonImages imports addon packages into common/images.go; no import cycle since addon packages do not import common
+- [Phase 43]: localregistry Images var references existing private registryImage const rather than duplicating the literal string
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-08T19:00:00.000Z
-Stopped at: Completed 42-02-PLAN.md
+Last session: 2026-04-09T12:17:45.896Z
+Stopped at: Completed 43-01-PLAN.md
 Resume file: None

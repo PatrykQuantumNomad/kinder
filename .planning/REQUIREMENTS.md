@@ -17,10 +17,10 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 
 ### Air-Gapped Clusters
 
-- [ ] **AIRGAP-01**: `--air-gapped` flag on `kinder create cluster` enables offline mode
+- [x] **AIRGAP-01**: `--air-gapped` flag on `kinder create cluster` enables offline mode
 - [ ] **AIRGAP-02**: Air-gapped mode fails fast with clear error listing missing images instead of retrying pulls
-- [ ] **AIRGAP-03**: All three providers (docker/podman/nerdctl) support air-gapped mode via ProvisionOptions
-- [ ] **AIRGAP-04**: Addon image warning output lists all required images that need pre-loading before creation
+- [x] **AIRGAP-03**: All three providers (docker/podman/nerdctl) support air-gapped mode via ProvisionOptions
+- [x] **AIRGAP-04**: Addon image warning output lists all required images that need pre-loading before creation
 - [ ] **AIRGAP-05**: `kinder doctor` offline readiness check lists which required images are missing
 - [ ] **AIRGAP-06**: Two-mode design documented (pre-create bake via privileged container commit vs. post-create load)
 
@@ -85,10 +85,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | MVER-03 | Phase 42 | Complete |
 | MVER-04 | Phase 42 | Complete |
 | MVER-05 | Phase 42 | Complete |
-| AIRGAP-01 | Phase 43 | Pending |
+| AIRGAP-01 | Phase 43 | Complete |
 | AIRGAP-02 | Phase 43 | Pending |
-| AIRGAP-03 | Phase 43 | Pending |
-| AIRGAP-04 | Phase 43 | Pending |
+| AIRGAP-03 | Phase 43 | Complete |
+| AIRGAP-04 | Phase 43 | Complete |
 | AIRGAP-05 | Phase 43 | Pending |
 | AIRGAP-06 | Phase 43 | Pending |
 | STOR-01 | Phase 44 | Pending |
