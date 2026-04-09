@@ -25,12 +25,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/internal/apis/config"
+	"sigs.k8s.io/kind/pkg/internal/apis/config/encoding"
 	"sigs.k8s.io/kind/pkg/internal/doctor"
 	"sigs.k8s.io/kind/pkg/log"
 )
 
 type flagpole struct {
 	Output string
+	Config string
 }
 
 // NewCommand returns a new cobra.Command for the doctor subcommand
@@ -46,7 +49,24 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&flags.Output, "output", "", "output format; supported values: \"\", \"json\"")
+	c.Flags().StringVar(&flags.Config, "config", "", "path to cluster config file; enables host mount checks against configured extraMounts")
 	return c
+}
+
+// extractMountPaths returns deduplicated host paths from all ExtraMounts in cfg.
+// Returns nil when no mounts are configured across any node.
+func extractMountPaths(cfg *config.Cluster) []string {
+	seen := make(map[string]struct{})
+	var paths []string
+	for _, node := range cfg.Nodes {
+		for _, mount := range node.ExtraMounts {
+			if _, ok := seen[mount.HostPath]; !ok {
+				seen[mount.HostPath] = struct{}{}
+				paths = append(paths, mount.HostPath)
+			}
+		}
+	}
+	return paths
 }
 
 func runE(streams cmd.IOStreams, flags *flagpole) error {
@@ -55,6 +75,16 @@ func runE(streams cmd.IOStreams, flags *flagpole) error {
 		// valid
 	default:
 		return fmt.Errorf("unsupported output format %q; supported values: \"\", \"json\"", flags.Output)
+	}
+
+	if flags.Config != "" {
+		cfg, err := encoding.Load(flags.Config)
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
+		if paths := extractMountPaths(cfg); len(paths) > 0 {
+			doctor.SetMountPaths(paths)
+		}
 	}
 
 	results := doctor.RunAllChecks()
