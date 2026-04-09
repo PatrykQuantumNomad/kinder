@@ -79,6 +79,7 @@ var allChecks = []Check{
 	newSubnetClashCheck(),
 	// Category: Cluster (Phase 42)
 	newClusterNodeSkewCheck(),
+	newLocalPathCVECheck(),
 	// Category: Offline (Phase 43)
 	newOfflineReadinessCheck(),
 }
