@@ -43,8 +43,9 @@ type addonImage struct {
 //   - Envoy Gateway:       2
 //   - Dashboard:           1
 //   - NVIDIA GPU:          1
+//   - Local Path Provisioner: 2
 //
-// Total: 12
+// Total: 14
 var allAddonImages = []addonImage{
 	// Load Balancer (HA clusters only)
 	{"docker.io/kindest/haproxy:v20260131-7181c60a", "Load Balancer (HA)"},
@@ -66,6 +67,9 @@ var allAddonImages = []addonImage{
 	{"ghcr.io/headlamp-k8s/headlamp:v0.40.1", "Dashboard"},
 	// NVIDIA GPU
 	{"nvcr.io/nvidia/k8s-device-plugin:v0.17.1", "NVIDIA GPU"},
+	// Local Path Provisioner
+	{"docker.io/rancher/local-path-provisioner:v0.0.35", "Local Path Provisioner"},
+	{"docker.io/library/busybox:1.37.0", "Local Path Provisioner"},
 }
 
 // offlineReadinessCheck reports which addon images are absent from the local

@@ -116,10 +116,10 @@ func TestOfflineReadiness_NoRuntime(t *testing.T) {
 }
 
 // TestAllAddonImages_CountMatchesExpected verifies the canonical image list has
-// exactly 12 entries (one per known addon image across all addons).
+// exactly 14 entries (one per known addon image across all addons).
 func TestAllAddonImages_CountMatchesExpected(t *testing.T) {
 	t.Parallel()
-	const expected = 12
+	const expected = 14
 	if len(allAddonImages) != expected {
 		t.Errorf("len(allAddonImages) = %d, want %d", len(allAddonImages), expected)
 	}

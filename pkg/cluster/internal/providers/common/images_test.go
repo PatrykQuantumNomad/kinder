@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalpath"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
@@ -133,6 +134,7 @@ func TestRequiredAddonImages_AllEnabled(t *testing.T) {
 		CertManager:   true,
 		EnvoyGateway:  true,
 		Dashboard:     true,
+		LocalPath:     true,
 		NvidiaGPU:     true,
 	})
 	got := RequiredAddonImages(cfg)
@@ -145,8 +147,19 @@ func TestRequiredAddonImages_AllEnabled(t *testing.T) {
 	want.Insert(installcertmanager.Images...)
 	want.Insert(installenvoygw.Images...)
 	want.Insert(installdashboard.Images...)
+	want.Insert(installlocalpath.Images...)
 	want.Insert(installnvidiagpu.Images...)
 
+	if !got.Equal(want) {
+		t.Errorf("RequiredAddonImages() = %v, want %v", got.List(), want.List())
+	}
+}
+
+func TestRequiredAddonImages_LocalPathOnly(t *testing.T) {
+	t.Parallel()
+	cfg := singleCPCluster(config.Addons{LocalPath: true})
+	got := RequiredAddonImages(cfg)
+	want := sets.NewString(installlocalpath.Images...)
 	if !got.Equal(want) {
 		t.Errorf("RequiredAddonImages() = %v, want %v", got.List(), want.List())
 	}
