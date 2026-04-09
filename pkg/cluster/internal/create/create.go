@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -154,6 +156,14 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	if err := opts.Config.Validate(); err != nil {
 		return err
 	}
+
+	// Pre-flight: verify all extraMount host paths exist before creating containers.
+	if err := validateExtraMounts(opts.Config); err != nil {
+		return err
+	}
+
+	// Warn macOS/Windows users about unsupported mount propagation modes.
+	logMountPropagationPlatformWarning(logger, opts.Config)
 
 	// setup a status object to show progress to the user
 	status := cli.StatusForLogger(logger)
@@ -446,6 +456,56 @@ func logMetalLBPlatformWarning(logger log.Logger) {
 				"   kubectl port-forward svc/<service-name> <local-port>:<service-port>",
 			runtime.GOOS,
 		)
+	}
+}
+
+// validateExtraMounts checks that all hostPath entries in ExtraMounts exist
+// on the host filesystem before any containers are created.
+// Returns an error identifying the missing path and which node it belongs to.
+func validateExtraMounts(cfg *config.Cluster) error {
+	for i, node := range cfg.Nodes {
+		for j, mount := range node.ExtraMounts {
+			hostPath := mount.HostPath
+			if hostPath == "" {
+				continue
+			}
+			if !filepath.IsAbs(hostPath) {
+				abs, err := filepath.Abs(hostPath)
+				if err != nil {
+					return errors.Errorf("node[%d] extraMount[%d]: cannot resolve path %q: %v", i, j, hostPath, err)
+				}
+				hostPath = abs
+			}
+			if _, err := os.Stat(hostPath); err != nil {
+				if os.IsNotExist(err) {
+					return errors.Errorf("node[%d] extraMount[%d]: host path %q does not exist", i, j, hostPath)
+				}
+				return errors.Errorf("node[%d] extraMount[%d]: cannot access host path %q: %v", i, j, hostPath, err)
+			}
+		}
+	}
+	return nil
+}
+
+// logMountPropagationPlatformWarning emits a warning on macOS/Windows when any
+// extraMount specifies a non-None propagation mode. Docker Desktop silently
+// ignores propagation settings, defaulting to None.
+func logMountPropagationPlatformWarning(logger log.Logger, cfg *config.Cluster) {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		for _, node := range cfg.Nodes {
+			for _, mount := range node.ExtraMounts {
+				if mount.Propagation != "" && mount.Propagation != config.MountPropagationNone {
+					logger.Warnf(
+						"On %s, mount propagation mode %q is not supported by Docker Desktop "+
+							"and will be silently treated as None.\n"+
+							"   Use propagation: None (or omit it) to suppress this warning.",
+						runtime.GOOS, mount.Propagation,
+					)
+					return // warn once, not per mount
+				}
+			}
+		}
 	}
 }
 
