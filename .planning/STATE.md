@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
 status: completed
-stopped_at: Completed 45-03-PLAN.md
-last_updated: "2026-04-09T16:39:13.965Z"
-last_activity: 2026-04-09 — Phase 45 Plan 01 complete (2 tasks, all tests pass, go vet clean)
+stopped_at: Completed 45-04-PLAN.md
+last_updated: "2026-04-09T17:40:30.974Z"
+last_activity: 2026-04-09 — Phase 45 Plan 04 complete (2 tasks, all tests pass, go vet clean, go build ok)
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 ## Current Position
 
 Phase: 45 of 46 (Host Directory Mounting) — IN PROGRESS
-Plan: 1/3 complete
-Status: Plan 01 complete — validateExtraMounts and logMountPropagationPlatformWarning implemented and tested
-Last activity: 2026-04-09 — Phase 45 Plan 01 complete (2 tasks, all tests pass, go vet clean)
+Plan: 4/4 complete
+Status: Plan 04 complete — SC-3 gap closed: kinder doctor --config wires ExtraMounts into mount checks
+Last activity: 2026-04-09 — Phase 45 Plan 04 complete (2 tasks, all tests pass, go vet clean, go build ok)
 
 Progress: [██████░░░░] 62%
 
@@ -85,6 +85,10 @@ Progress: [██████░░░░] 62%
 - [Phase 45]: isPathCovered uses dir+/ separator to prevent prefix false positives (/Userspace vs /Users)
 - [Phase 45]: dockerDesktopFileSharingCheck falls back to Docker Desktop default dirs when settings-store.json absent
 - [Phase 45-03]: Guide uses absolute hostPath in YAML example (not tilde) because kind config does not perform shell expansion
+- [Phase 45-04]: mountPathConfigurable interface is unexported (internal to doctor package); SetMountPaths is exported for cmd layer
+- [Phase 45-04]: extractMountPaths deduplicates by seen map to handle multi-node configs with shared host paths
+- [Phase 45-04]: SetMountPaths(nil) restores skip behavior for backward compatibility without --config flag
+- [Phase 45-04]: encoding.Load already handles empty path (returns default cluster); doctor skips SetMountPaths when Config is empty string
 
 ### Pending Todos
 
@@ -96,6 +100,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T16:39:09.921Z
-Stopped at: Completed 45-03-PLAN.md
+Last session: 2026-04-09T17:40:30.971Z
+Stopped at: Completed 45-04-PLAN.md
 Resume file: None
