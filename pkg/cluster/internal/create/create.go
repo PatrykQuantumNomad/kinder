@@ -37,6 +37,8 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/doctor"
 	"sigs.k8s.io/kind/pkg/log"
 
+	"sigs.k8s.io/kind/pkg/cluster/internal/providers/common"
+
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
 	configaction "sigs.k8s.io/kind/pkg/cluster/internal/create/actions/config"
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
@@ -176,6 +178,20 @@ func Cluster(logger log.Logger, p providers.Provider, opts *ClusterOptions) erro
 	if errs := doctor.ApplySafeMitigations(logger); len(errs) > 0 {
 		for _, err := range errs {
 			logger.Warnf("Mitigation warning: %v", err)
+		}
+	}
+
+	// Warn about addon images that will be pulled (helps users prepare for air-gapped mode).
+	if !opts.Config.AirGapped {
+		addonImages := common.RequiredAddonImages(opts.Config)
+		if addonImages.Len() > 0 {
+			logger.V(0).Info("")
+			logger.V(0).Info("NOTE: The following addon images will be pulled during cluster creation.")
+			logger.V(0).Info("      Pre-load them and use --air-gapped to skip pulls:")
+			for _, img := range addonImages.List() {
+				logger.V(0).Infof("        %s", img)
+			}
+			logger.V(0).Info("")
 		}
 	}
 
