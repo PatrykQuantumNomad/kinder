@@ -160,11 +160,11 @@ func TestDockerSocketCheck_Run(t *testing.T) {
 func TestAllChecks_Registry(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 20 {
-		t.Fatalf("AllChecks() has %d entries, want 20", len(checks))
+	if len(checks) != 21 {
+		t.Fatalf("AllChecks() has %d entries, want 21", len(checks))
 	}
 
-	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(1), Cluster(1), Offline(1)
+	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(1), Cluster(2), Offline(1)
 	expected := []struct {
 		name     string
 		category string
@@ -188,6 +188,7 @@ func TestAllChecks_Registry(t *testing.T) {
 		{"rootfs-device", "Platform"},
 		{"network-subnet", "Network"},
 		{"cluster-node-skew", "Cluster"},
+		{"local-path-cve", "Cluster"},
 		{"offline-readiness", "Offline"},
 	}
 
