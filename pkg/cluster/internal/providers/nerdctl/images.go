@@ -33,6 +33,9 @@ import (
 // ensureNodeImages ensures that the node images used by the create
 // configuration are present
 func ensureNodeImages(logger log.Logger, status *cli.Status, cfg *config.Cluster, binaryName string) error {
+	if cfg.AirGapped {
+		return checkAllImagesPresent(logger, status, cfg, binaryName)
+	}
 	// pull each required image
 	for _, image := range common.RequiredNodeImages(cfg).List() {
 		// prints user friendly message
@@ -44,6 +47,45 @@ func ensureNodeImages(logger log.Logger, status *cli.Status, cfg *config.Cluster
 		}
 	}
 	return nil
+}
+
+// checkAllImagesPresent verifies all required images exist locally.
+// In air-gapped mode, no pulls are attempted. Returns a single error listing
+// every missing image so the user can pre-load them all in one pass.
+func checkAllImagesPresent(logger log.Logger, status *cli.Status, cfg *config.Cluster, binaryName string) error {
+	status.Start("Checking local images (air-gapped mode) 🔒")
+	allRequired := common.RequiredAllImages(cfg)
+	var missing []string
+	for _, image := range allRequired.List() {
+		cmd := exec.Command(binaryName, "inspect", "--type=image", image)
+		if err := cmd.Run(); err != nil {
+			missing = append(missing, image)
+		}
+	}
+	if len(missing) > 0 {
+		status.End(false)
+		return formatMissingImagesError(missing, binaryName)
+	}
+	status.End(true)
+	logger.V(0).Info(" * All required images present locally")
+	return nil
+}
+
+// formatMissingImagesError returns a human-readable error listing all missing
+// images and providing pre-load instructions for the given runtime.
+func formatMissingImagesError(missing []string, binaryName string) error {
+	var b strings.Builder
+	b.WriteString("air-gapped mode: the following required images are not present locally:\n\n")
+	for _, img := range missing {
+		b.WriteString("  ")
+		b.WriteString(img)
+		b.WriteString("\n")
+	}
+	b.WriteString("\nPre-load these images before using --air-gapped. For example:\n")
+	b.WriteString("  " + binaryName + " pull <image>        # on a machine with internet access\n")
+	b.WriteString("  " + binaryName + " save <image> | gzip > image.tar.gz\n")
+	b.WriteString("  " + binaryName + " load < image.tar.gz # on the air-gapped machine\n")
+	return errors.New(b.String())
 }
 
 // pullIfNotPresent will pull an image if it is not present locally
