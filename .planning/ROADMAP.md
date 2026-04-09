@@ -164,7 +164,7 @@ Plans:
 **Plans**: 1/2 plans complete
 Plans:
 - [x] 46-01-PLAN.md — LoadImageArchiveWithFallback in nodeutils for Docker Desktop 27+ containerd fallback
-- [ ] 46-02-PLAN.md — images subcommand with provider-abstracted save/inspect, smart-load, load.go registration
+- [x] 46-02-PLAN.md — images subcommand with provider-abstracted save/inspect, smart-load, load.go registration
 
 ## Progress
 
@@ -185,4 +185,4 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 44. Local-Path-Provisioner Addon | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 45. Host-Directory Mounting | v2.2 | 4/4 | Complete   | 2026-04-09 |
-| 46. kinder load images Command | v2.2 | 1/2 | In progress | - |
+| 46. kinder load images Command | v2.2 | 2/2 | Complete   | 2026-04-09 |
