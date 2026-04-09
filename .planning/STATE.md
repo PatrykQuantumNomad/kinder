@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
 status: verifying
-stopped_at: Completed 43-01-PLAN.md
-last_updated: "2026-04-09T12:17:45.899Z"
+stopped_at: Completed 43-02-PLAN.md
+last_updated: "2026-04-09T12:23:48.012Z"
 last_activity: 2026-04-08 — Phase 42 verified (5/5 success criteria), gap fixed (realListNodes + IMAGE column)
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
@@ -65,6 +65,9 @@ Progress: [██░░░░░░░░] 20%
 - [Phase 42]: IMAGE column populated via container inspect CLI (avoids import cycle with cluster package); doctor check realListNodes uses same low-level CLI approach
 - [Phase 43]: RequiredAddonImages imports addon packages into common/images.go; no import cycle since addon packages do not import common
 - [Phase 43]: localregistry Images var references existing private registryImage const rather than duplicating the literal string
+- [Phase 43]: inspectImageFunc package-level var in docker provider enables test injection without requiring a real Docker daemon
+- [Phase 43]: nerdctl formatMissingImagesError takes binaryName parameter for runtime-specific pre-load instructions
+- [Phase 43]: Addon image warning uses addonImages.Len() > 0 guard to avoid empty NOTE when no addons enabled
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T12:17:45.896Z
-Stopped at: Completed 43-01-PLAN.md
+Last session: 2026-04-09T12:23:48.009Z
+Stopped at: Completed 43-02-PLAN.md
 Resume file: None

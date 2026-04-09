@@ -18,7 +18,7 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 ### Air-Gapped Clusters
 
 - [x] **AIRGAP-01**: `--air-gapped` flag on `kinder create cluster` enables offline mode
-- [ ] **AIRGAP-02**: Air-gapped mode fails fast with clear error listing missing images instead of retrying pulls
+- [x] **AIRGAP-02**: Air-gapped mode fails fast with clear error listing missing images instead of retrying pulls
 - [x] **AIRGAP-03**: All three providers (docker/podman/nerdctl) support air-gapped mode via ProvisionOptions
 - [x] **AIRGAP-04**: Addon image warning output lists all required images that need pre-loading before creation
 - [ ] **AIRGAP-05**: `kinder doctor` offline readiness check lists which required images are missing
@@ -86,7 +86,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | MVER-04 | Phase 42 | Complete |
 | MVER-05 | Phase 42 | Complete |
 | AIRGAP-01 | Phase 43 | Complete |
-| AIRGAP-02 | Phase 43 | Pending |
+| AIRGAP-02 | Phase 43 | Complete |
 | AIRGAP-03 | Phase 43 | Complete |
 | AIRGAP-04 | Phase 43 | Complete |
 | AIRGAP-05 | Phase 43 | Pending |
