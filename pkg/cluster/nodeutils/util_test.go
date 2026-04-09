@@ -17,7 +17,10 @@ limitations under the License.
 package nodeutils
 
 import (
+	"fmt"
 	"testing"
+
+	"sigs.k8s.io/kind/pkg/exec"
 )
 
 func TestParseSnapshotter(t *testing.T) {
@@ -260,5 +263,59 @@ func TestParseSnapshotter(t *testing.T) {
 	_, err = parseSnapshotter("aaaa")
 	if err == nil {
 		t.Fatal("expected error parsing invalid config")
+	}
+}
+
+// NOTE: LoadImageArchiveWithFallback integration tests require a running cluster
+// node to call getSnapshotter. The fallback logic is verified by:
+// 1. TestIsContentDigestError — error classification
+// 2. TestParseSnapshotter — config parsing (existing test)
+// 3. Manual integration testing with Docker Desktop 27+ containerd image store
+
+func TestIsContentDigestError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "RunError with content digest in output",
+			err: &exec.RunError{
+				Output: []byte("content digest sha256:abc123: not found"),
+				Inner:  fmt.Errorf("exit status 1"),
+			},
+			want: true,
+		},
+		{
+			name: "RunError without content digest",
+			err: &exec.RunError{
+				Output: []byte("some other error"),
+				Inner:  fmt.Errorf("exit status 1"),
+			},
+			want: false,
+		},
+		{
+			name: "plain error with content digest in message",
+			err:  fmt.Errorf("content digest not found"),
+			want: true,
+		},
+		{
+			name: "plain error without content digest",
+			err:  fmt.Errorf("permission denied"),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isContentDigestError(tc.err)
+			if got != tc.want {
+				t.Errorf("isContentDigestError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
