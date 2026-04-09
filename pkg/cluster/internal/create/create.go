@@ -76,6 +76,7 @@ type ClusterOptions struct {
 	// Options to control output
 	DisplayUsage      bool
 	DisplaySalutation bool
+	AirGapped         bool
 }
 
 // addonResult captures the outcome of running a single addon action.
@@ -387,6 +388,10 @@ func fixupOptions(opts *ClusterOptions) error {
 				opts.Config.Nodes[i].Image = opts.NodeImage
 			}
 		}
+	}
+
+	if opts.AirGapped {
+		opts.Config.AirGapped = true
 	}
 
 	return nil

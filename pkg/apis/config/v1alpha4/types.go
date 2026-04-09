@@ -87,6 +87,9 @@ type Cluster struct {
 
 	// Addons configures which default addons are installed.
 	Addons Addons `yaml:"addons,omitempty" json:"addons,omitempty"`
+
+	// AirGapped disables image pulls; cluster creation fails fast if required images are missing locally.
+	AirGapped bool `yaml:"airGapped,omitempty" json:"airGapped,omitempty"`
 }
 
 // Addons configures which default addons are installed during cluster creation.

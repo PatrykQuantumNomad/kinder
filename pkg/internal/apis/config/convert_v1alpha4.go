@@ -65,6 +65,8 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 		NvidiaGPU:     boolValOptIn(in.Addons.NvidiaGPU),
 	}
 
+	out.AirGapped = in.AirGapped
+
 	for i := range in.KubeadmConfigPatchesJSON6902 {
 		convertv1alpha4PatchJSON6902(&in.KubeadmConfigPatchesJSON6902[i], &out.KubeadmConfigPatchesJSON6902[i])
 	}

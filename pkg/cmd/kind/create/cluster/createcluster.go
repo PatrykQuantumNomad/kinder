@@ -40,6 +40,7 @@ type flagpole struct {
 	Wait       time.Duration
 	Kubeconfig string
 	Profile    string
+	AirGapped  bool
 }
 
 // NewCommand returns a new cobra.Command for cluster creation
@@ -98,6 +99,12 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		"",
 		"addon preset: minimal, full, gateway, ci",
 	)
+	cmd.Flags().BoolVar(
+		&flags.AirGapped,
+		"air-gapped",
+		false,
+		"fail fast if required images are missing locally instead of pulling",
+	)
 	return cmd
 }
 
@@ -118,6 +125,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 		flags.Name,
 		withConfig,
 		cluster.CreateWithAddonProfile(flags.Profile), // profile overrides config addons
+		cluster.CreateWithAirGapped(flags.AirGapped),
 		cluster.CreateWithNodeImage(flags.ImageName),
 		cluster.CreateWithRetain(flags.Retain),
 		cluster.CreateWithWaitForReady(flags.Wait),

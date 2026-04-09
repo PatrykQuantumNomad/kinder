@@ -127,6 +127,15 @@ func CreateWithDisplaySalutation(displaySalutation bool) CreateOption {
 	})
 }
 
+// CreateWithAirGapped configures the cluster to fail fast if required images are missing locally
+// instead of pulling them from the internet.
+func CreateWithAirGapped(airGapped bool) CreateOption {
+	return createOptionAdapter(func(o *internalcreate.ClusterOptions) error {
+		o.AirGapped = airGapped
+		return nil
+	})
+}
+
 // CreateWithAddonProfile applies a named addon preset to the cluster configuration.
 // An empty profile is a no-op; existing configuration is unchanged.
 // Valid profiles: minimal, full, gateway, ci.

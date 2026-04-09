@@ -72,6 +72,9 @@ type Cluster struct {
 
 	// Addons configures which default addons are installed.
 	Addons Addons
+
+	// AirGapped disables image pulls; cluster creation fails fast if required images are missing locally.
+	AirGapped bool
 }
 
 // Addons configures which default addons are installed during cluster creation.
