@@ -157,8 +157,86 @@ you also need to prepare HAProxy image in advance.
 
 You can find the specific tag currently in use at [loadbalancer source code][loadbalancer source code].
 
+## Addon images
 
+In addition to the node image and (for HA clusters) the HAProxy load balancer
+image, kinder installs several addon images during cluster creation. In an
+offline environment, these images must be available locally before you create
+the cluster.
 
+### Check which images you need
+
+Run `kinder doctor` to see which addon images are missing:
+
+```
+kinder doctor
+```
+
+The **offline-readiness** check lists every addon image and whether it is
+present locally. Images are labeled by addon, so you can skip images for
+addons you plan to disable.
+
+Alternatively, create a cluster without `--air-gapped` first — kinder prints
+a NOTE listing every addon image that will be pulled.
+
+### Pre-load addon images
+
+On a machine with internet access, pull and save the images you need:
+
+```sh
+# Example: save MetalLB images
+docker pull quay.io/metallb/controller:v0.15.3
+docker pull quay.io/metallb/speaker:v0.15.3
+docker save quay.io/metallb/controller:v0.15.3 quay.io/metallb/speaker:v0.15.3 | gzip > metallb.tar.gz
+```
+
+Transfer the tarball to your offline machine and load:
+
+```sh
+docker load < metallb.tar.gz
+```
+
+Repeat for every addon you intend to enable.
+
+### Create the cluster in air-gapped mode
+
+Once all images are pre-loaded:
+
+```sh
+kinder create cluster --air-gapped
+```
+
+If any required image is missing, kinder exits immediately with a complete
+list of missing images — no partial creation, no hung pulls.
+
+### Two-mode offline workflow
+
+There are two approaches to working offline with kinder:
+
+**Mode 1: Pre-create image baking (recommended)**
+
+Pre-load all required images onto the host before creating the cluster.
+This is the simplest approach and works with `--air-gapped`:
+
+1. `kinder doctor` — check which images are missing
+2. `docker pull` + `docker save` — pull and export on a connected machine
+3. `docker load` — import on the air-gapped machine
+4. `kinder create cluster --air-gapped` — create the cluster
+
+**Mode 2: Post-create image loading**
+
+Create the cluster first (with internet access or with `--air-gapped` for
+node images only), then load additional images into the running nodes:
+
+1. `kinder create cluster` — create with at least the node image available
+2. `kinder load docker-image <image> [<image>...]` — load images into all cluster nodes
+
+This mode is useful when you need to add images after the cluster is
+already running, for example to test a locally-built application image.
+
+> **Note:** `kinder load docker-image` currently requires Docker on the host
+> side (it uses `docker save` internally). Podman and nerdctl users should
+> use Mode 1.
 
 
 
