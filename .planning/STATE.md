@@ -76,6 +76,8 @@ Progress: [█████░░░░░] 50%
 - [Phase 44-01]: Images var uses docker.io/ prefix for both images (docker.io/rancher/local-path-provisioner:v0.0.35, docker.io/library/busybox:1.37.0)
 - [Phase 44-02]: offlinereadiness entries use docker.io/ prefix matching the Images var declaration in localpathprovisioner.go
 - [Phase 44-02]: AllChecks count tests updated to 21 — feat(44-03) ran out of order adding local-path-cve check before plan 44-02 tests were written
+- [Phase 44-03]: CVE threshold v0.0.34 returns ok (it is the fix version); only strictly less-than triggers warn
+- [Phase 44-03]: realGetProvisionerVersion uses container exec kubectl inside kind control-plane — avoids import cycle with pkg/cluster/internal same as realListNodes in clusterskew.go
 
 ### Pending Todos
 
@@ -87,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T13:26:00Z
-Stopped at: Completed 44-02-PLAN.md
+Last session: 2026-04-09T13:26:37Z
+Stopped at: Completed 44-03-PLAN.md
 Resume file: None

@@ -133,7 +133,7 @@ Plans:
 **Plans**:
 - [x] 44-01-PLAN.md — LocalPath config pipeline (5-location), installlocalpath action package, installstorage gate, wave1 registration, RequiredAddonImages registration
 - [x] 44-02-PLAN.md — Unit tests (FakeNode), offlinereadiness +2 images (total 14), images_test LocalPath coverage
-- [ ] 44-03-PLAN.md — TBD
+- [x] 44-03-PLAN.md — Doctor CVE-2025-62878 check: warns when local-path-provisioner < v0.0.34
 
 ### Phase 45: Host-Directory Mounting
 **Goal**: Users can mount host directories into cluster nodes with clear pre-flight validation, explicit platform warnings, and documented guidance for wiring mounts through to pods via hostPath PVs
@@ -175,6 +175,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
 | 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
-| 44. Local-Path-Provisioner Addon | v2.2 | 2/3 | In progress | - |
+| 44. Local-Path-Provisioner Addon | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 45. Host-Directory Mounting | v2.2 | 0/TBD | Not started | - |
 | 46. kinder load images Command | v2.2 | 0/TBD | Not started | - |
