@@ -19,6 +19,7 @@ package nodeutils
 import (
 	"bytes"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"path"
@@ -86,6 +87,77 @@ func LoadImageArchive(n nodes.Node, image io.Reader) error {
 	cmd := n.Command("ctr", "--namespace=k8s.io", "images", "import", "--all-platforms", "--digests", "--snapshotter="+snapshotter, "-").SetStdin(image)
 	if err := cmd.Run(); err != nil {
 		return errors.Wrap(err, "failed to load image")
+	}
+	return nil
+}
+
+// runImport runs ctr images import on the node. When allPlatforms is true,
+// the --all-platforms flag is included (standard behavior). When false, it is
+// omitted (fallback for Docker Desktop 27+ containerd image store).
+func runImport(n nodes.Node, image io.Reader, snapshotter string, allPlatforms bool) error {
+	args := []string{"--namespace=k8s.io", "images", "import", "--digests", "--snapshotter=" + snapshotter}
+	if allPlatforms {
+		args = append(args, "--all-platforms")
+	}
+	args = append(args, "-")
+	cmd := n.Command("ctr", args...).SetStdin(image)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// isContentDigestError checks whether the error is the "content digest: not found"
+// failure from ctr images import --all-platforms on Docker Desktop 27+ with the
+// containerd image store enabled. See upstream kind issue #3795.
+func isContentDigestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check the RunError.Output field which contains combined stdout+stderr
+	var runErr *exec.RunError
+	if stderrors.As(err, &runErr) {
+		return strings.Contains(string(runErr.Output), "content digest")
+	}
+	// Fallback: check the error string itself
+	return strings.Contains(err.Error(), "content digest")
+}
+
+// LoadImageArchiveWithFallback loads an image archive onto the node with
+// automatic fallback for Docker Desktop 27+ containerd image store compatibility.
+// The openArchive factory is called to obtain a fresh reader for each attempt,
+// because the tar stream is consumed on read and cannot be rewound.
+//
+// On the first attempt, it imports with --all-platforms (standard behavior).
+// If that fails with a "content digest: not found" error (Docker Desktop 27+
+// containerd image store issue, see kind#3795), it retries without --all-platforms.
+// All other errors are returned immediately.
+func LoadImageArchiveWithFallback(n nodes.Node, openArchive func() (io.ReadCloser, error)) error {
+	snapshotter, err := getSnapshotter(n)
+	if err != nil {
+		return err
+	}
+	// Attempt 1: standard all-platforms import
+	r, err := openArchive()
+	if err != nil {
+		return errors.Wrap(err, "failed to open image archive")
+	}
+	err = runImport(n, r, snapshotter, true)
+	r.Close()
+	if err == nil {
+		return nil
+	}
+	if !isContentDigestError(err) {
+		return errors.Wrap(err, "failed to load image")
+	}
+	// Attempt 2: single-platform fallback (Docker Desktop 27+ containerd image store)
+	r2, err := openArchive()
+	if err != nil {
+		return errors.Wrap(err, "failed to open image archive for fallback")
+	}
+	defer r2.Close()
+	if err := runImport(n, r2, snapshotter, false); err != nil {
+		return errors.Wrap(err, "failed to load image (fallback without --all-platforms)")
 	}
 	return nil
 }
