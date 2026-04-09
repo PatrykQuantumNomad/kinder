@@ -113,7 +113,11 @@ Plans:
   3. Running `kinder create cluster` (without `--air-gapped`) prints a warning listing all addon images that will be pulled, so users know what to pre-load before switching to offline mode
   4. `kinder doctor` run before cluster creation lists which required images are absent from the local image store, serving as a pre-flight offline readiness check
   5. The two-mode offline workflow (pre-create image baking via privileged container commit vs. post-create load via `kinder load images`) is documented and reachable from the website
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 43-01-PLAN.md — AirGapped flag plumbing, addon image constants, RequiredAddonImages utility
+- [ ] 43-02-PLAN.md — Provider air-gapped fast-fail, non-air-gapped addon image warning
+- [ ] 43-03-PLAN.md — Doctor offline-readiness check, working-offline.md documentation
 **UI hint**: yes
 
 ### Phase 44: Local-Path-Provisioner Addon
