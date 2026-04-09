@@ -260,6 +260,140 @@ func TestDockerDesktopFileSharingCheck(t *testing.T) {
 	}
 }
 
+// TestHostMountPathCheck_SetMountPaths tests the setMountPaths method on
+// hostMountPathCheck directly.
+func TestHostMountPathCheck_SetMountPaths(t *testing.T) {
+	t.Parallel()
+
+	// Create a check with a fake statPath that returns not-exist for everything.
+	check := &hostMountPathCheck{
+		getMountPaths: func() []string { return nil },
+		statPath: func(p string) (os.FileInfo, error) {
+			return nil, &os.PathError{Op: "stat", Path: p, Err: os.ErrNotExist}
+		},
+	}
+
+	// Before setMountPaths: Run returns skip.
+	results := check.Run()
+	if len(results) != 1 || results[0].Status != "skip" {
+		t.Fatalf("before setMountPaths: want 1 skip result, got %v", results)
+	}
+
+	// After setMountPaths: Run returns non-skip results.
+	check.setMountPaths([]string{"/data/test"})
+	results = check.Run()
+	if len(results) == 0 {
+		t.Fatal("after setMountPaths: expected non-empty results")
+	}
+	if results[0].Status == "skip" {
+		t.Errorf("after setMountPaths: expected non-skip status, got skip")
+	}
+
+	// Calling setMountPaths(nil) restores skip behavior.
+	check.setMountPaths(nil)
+	results = check.Run()
+	if len(results) != 1 || results[0].Status != "skip" {
+		t.Errorf("after setMountPaths(nil): want skip, got %v", results)
+	}
+}
+
+// TestDockerDesktopFileSharingCheck_SetMountPaths tests the setMountPaths method on
+// dockerDesktopFileSharingCheck directly.
+func TestDockerDesktopFileSharingCheck_SetMountPaths(t *testing.T) {
+	t.Parallel()
+
+	check := &dockerDesktopFileSharingCheck{
+		getMountPaths: func() []string { return nil },
+		readFile: func(string) ([]byte, error) {
+			return []byte(`{"filesharingDirectories":["/Users","/Volumes","/private","/tmp"]}`), nil
+		},
+		homeDir: func() (string, error) { return "/Users/dev", nil },
+	}
+
+	// Before setMountPaths: Run returns skip.
+	results := check.Run()
+	if len(results) != 1 || results[0].Status != "skip" {
+		t.Fatalf("before setMountPaths: want 1 skip result, got %v", results)
+	}
+
+	// After setMountPaths with a covered path: ok result.
+	check.setMountPaths([]string{"/Users/dev/project"})
+	results = check.Run()
+	if len(results) == 0 {
+		t.Fatal("after setMountPaths: expected non-empty results")
+	}
+	if results[0].Status == "skip" {
+		t.Errorf("after setMountPaths: expected non-skip status, got skip")
+	}
+
+	// Calling setMountPaths(nil) restores skip behavior.
+	check.setMountPaths(nil)
+	results = check.Run()
+	if len(results) != 1 || results[0].Status != "skip" {
+		t.Errorf("after setMountPaths(nil): want skip, got %v", results)
+	}
+}
+
+// TestSetMountPaths tests the exported SetMountPaths function that injects paths
+// into all mountPathConfigurable checks via the global allChecks registry.
+func TestSetMountPaths(t *testing.T) {
+	// Not parallel: manipulates global allChecks.
+
+	// Save and restore allChecks.
+	original := allChecks
+	defer func() { allChecks = original }()
+
+	// Create fresh mount checks with injected dependencies so the test
+	// doesn't rely on the filesystem.
+	hostCheck := &hostMountPathCheck{
+		getMountPaths: func() []string { return nil },
+		statPath: func(p string) (os.FileInfo, error) {
+			return nil, &os.PathError{Op: "stat", Path: p, Err: os.ErrNotExist}
+		},
+	}
+	ddCheck := &dockerDesktopFileSharingCheck{
+		getMountPaths: func() []string { return nil },
+		readFile: func(string) ([]byte, error) {
+			// Return dirs that don't include /data/test so we get a warn.
+			return []byte(`{"filesharingDirectories":["/Users","/Volumes"]}`), nil
+		},
+		homeDir: func() (string, error) { return "/Users/dev", nil },
+	}
+
+	// Replace allChecks with just the mount checks for isolation.
+	allChecks = []Check{hostCheck, ddCheck}
+
+	// Before SetMountPaths: both checks should skip.
+	for _, c := range allChecks {
+		results := c.Run()
+		if len(results) != 1 || results[0].Status != "skip" {
+			t.Errorf("before SetMountPaths: check %s: want skip, got %v", c.Name(), results)
+		}
+	}
+
+	// After SetMountPaths: both checks should produce non-skip results.
+	SetMountPaths([]string{"/data/test"})
+	for _, c := range allChecks {
+		results := c.Run()
+		if len(results) == 0 {
+			t.Errorf("after SetMountPaths: check %s: expected non-empty results", c.Name())
+			continue
+		}
+		if results[0].Status == "skip" {
+			t.Errorf("after SetMountPaths: check %s: expected non-skip, got skip", c.Name())
+		}
+	}
+
+	// SetMountPaths(nil) restores skip behavior.
+	SetMountPaths(nil)
+	for _, c := range allChecks {
+		results := c.Run()
+		if len(results) != 1 || results[0].Status != "skip" {
+			t.Errorf("after SetMountPaths(nil): check %s: want skip, got %v", c.Name(), results)
+		}
+	}
+}
+
 // TestIsPathCovered covers the isPathCovered helper.
 func TestIsPathCovered(t *testing.T) {
 	t.Parallel()
