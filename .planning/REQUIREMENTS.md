@@ -21,8 +21,8 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 - [x] **AIRGAP-02**: Air-gapped mode fails fast with clear error listing missing images instead of retrying pulls
 - [x] **AIRGAP-03**: All three providers (docker/podman/nerdctl) support air-gapped mode via ProvisionOptions
 - [x] **AIRGAP-04**: Addon image warning output lists all required images that need pre-loading before creation
-- [ ] **AIRGAP-05**: `kinder doctor` offline readiness check lists which required images are missing
-- [ ] **AIRGAP-06**: Two-mode design documented (pre-create bake via privileged container commit vs. post-create load)
+- [x] **AIRGAP-05**: `kinder doctor` offline readiness check lists which required images are missing
+- [x] **AIRGAP-06**: Two-mode design documented (pre-create bake via privileged container commit vs. post-create load)
 
 ### Local Storage (local-path-provisioner)
 
@@ -89,8 +89,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | AIRGAP-02 | Phase 43 | Complete |
 | AIRGAP-03 | Phase 43 | Complete |
 | AIRGAP-04 | Phase 43 | Complete |
-| AIRGAP-05 | Phase 43 | Pending |
-| AIRGAP-06 | Phase 43 | Pending |
+| AIRGAP-05 | Phase 43 | Complete |
+| AIRGAP-06 | Phase 43 | Complete |
 | STOR-01 | Phase 44 | Pending |
 | STOR-02 | Phase 44 | Pending |
 | STOR-03 | Phase 44 | Pending |

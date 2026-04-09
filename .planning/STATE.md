@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
 status: verifying
-stopped_at: Completed 43-02-PLAN.md
-last_updated: "2026-04-09T12:23:48.012Z"
+stopped_at: Completed 43-03-PLAN.md
+last_updated: "2026-04-09T12:25:31.350Z"
 last_activity: 2026-04-08 — Phase 42 verified (5/5 success criteria), gap fixed (realListNodes + IMAGE column)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -68,6 +68,8 @@ Progress: [██░░░░░░░░] 20%
 - [Phase 43]: inspectImageFunc package-level var in docker provider enables test injection without requiring a real Docker daemon
 - [Phase 43]: nerdctl formatMissingImagesError takes binaryName parameter for runtime-specific pre-load instructions
 - [Phase 43]: Addon image warning uses addonImages.Len() > 0 guard to avoid empty NOTE when no addons enabled
+- [Phase 43]: Image list defined inline in offlinereadiness.go — no import from pkg/cluster/internal to avoid import cycle
+- [Phase 43]: offlineReadinessCheck skips gracefully when no container runtime found (lookPath detection before inspect)
 
 ### Pending Todos
 
@@ -80,6 +82,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T12:23:48.009Z
-Stopped at: Completed 43-02-PLAN.md
+Last session: 2026-04-09T12:25:31.348Z
+Stopped at: Completed 43-03-PLAN.md
 Resume file: None

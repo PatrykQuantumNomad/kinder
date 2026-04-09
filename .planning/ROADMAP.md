@@ -113,11 +113,11 @@ Plans:
   3. Running `kinder create cluster` (without `--air-gapped`) prints a warning listing all addon images that will be pulled, so users know what to pre-load before switching to offline mode
   4. `kinder doctor` run before cluster creation lists which required images are absent from the local image store, serving as a pre-flight offline readiness check
   5. The two-mode offline workflow (pre-create image baking via privileged container commit vs. post-create load via `kinder load images`) is documented and reachable from the website
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 43-01-PLAN.md — AirGapped flag plumbing, addon image constants, RequiredAddonImages utility
 - [x] 43-02-PLAN.md — Provider air-gapped fast-fail, non-air-gapped addon image warning
-- [ ] 43-03-PLAN.md — Doctor offline-readiness check, working-offline.md documentation
+- [x] 43-03-PLAN.md — Doctor offline-readiness check, working-offline.md documentation
 **UI hint**: yes
 
 ### Phase 44: Local-Path-Provisioner Addon
@@ -171,7 +171,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 35-37. v2.0 phases | v2.0 | 7/7 | Complete | 2026-03-05 |
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42. Multi-Version Node Validation | v2.2 | 2/2 | Complete   | 2026-04-08 |
-| 43. Air-Gapped Cluster Creation | v2.2 | 2/3 | In Progress|  |
+| 43. Air-Gapped Cluster Creation | v2.2 | 3/3 | Complete   | 2026-04-09 |
 | 44. Local-Path-Provisioner Addon | v2.2 | 0/TBD | Not started | - |
 | 45. Host-Directory Mounting | v2.2 | 0/TBD | Not started | - |
 | 46. kinder load images Command | v2.2 | 0/TBD | Not started | - |
