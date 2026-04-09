@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Cluster Capabilities
-status: completed
-stopped_at: Completed 45-04-PLAN.md
-last_updated: "2026-04-09T17:40:30.974Z"
-last_activity: 2026-04-09 — Phase 45 Plan 04 complete (2 tasks, all tests pass, go vet clean, go build ok)
+status: in_progress
+stopped_at: Completed 46-01-PLAN.md
+last_updated: "2026-04-09T20:34:00Z"
+last_activity: 2026-04-09 — Phase 46 Plan 01 complete (2 tasks, all tests pass, go vet clean, go build ok)
 progress:
   total_phases: 5
   completed_phases: 4
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 45 of 46 (Host Directory Mounting) — IN PROGRESS
-Plan: 4/4 complete
-Status: Plan 04 complete — SC-3 gap closed: kinder doctor --config wires ExtraMounts into mount checks
-Last activity: 2026-04-09 — Phase 45 Plan 04 complete (2 tasks, all tests pass, go vet clean, go build ok)
+Phase: 46 of 46 (kinder load images Command) — IN PROGRESS
+Plan: 1/2 complete
+Status: Plan 01 complete — LoadImageArchiveWithFallback added to nodeutils with Docker Desktop 27+ containerd fallback
+Last activity: 2026-04-09 — Phase 46 Plan 01 complete (2 tasks, all tests pass, go vet clean, go build ok)
 
 Progress: [██████░░░░] 62%
 
@@ -89,6 +89,10 @@ Progress: [██████░░░░] 62%
 - [Phase 45-04]: extractMountPaths deduplicates by seen map to handle multi-node configs with shared host paths
 - [Phase 45-04]: SetMountPaths(nil) restores skip behavior for backward compatibility without --config flag
 - [Phase 45-04]: encoding.Load already handles empty path (returns default cluster); doctor skips SetMountPaths when Config is empty string
+- [Phase 46-01]: stderrors alias (stdlib "errors") avoids conflict with sigs.k8s.io/kind/pkg/errors import
+- [Phase 46-01]: openArchive factory pattern required because tar stream is consumed on read and cannot be rewound
+- [Phase 46-01]: isContentDigestError checks RunError.Output before falling back to err.Error() string
+- [Phase 46-01]: LoadImageArchive unchanged to preserve existing public API for image-archive command
 
 ### Pending Todos
 
@@ -96,10 +100,10 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 46 (load images): Docker Desktop 27+ `--local` flag availability needs verification against a live environment before implementation begins
+None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T17:40:30.971Z
-Stopped at: Completed 45-04-PLAN.md
+Last session: 2026-04-09T20:34:00Z
+Stopped at: Completed 46-01-PLAN.md
 Resume file: None
