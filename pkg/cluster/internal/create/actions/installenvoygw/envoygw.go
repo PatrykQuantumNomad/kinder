@@ -30,6 +30,12 @@ import (
 //go:embed manifests/install.yaml
 var envoyGWManifest string
 
+// Images contains the container images used by Envoy Gateway.
+var Images = []string{
+	"docker.io/envoyproxy/ratelimit:ae4cee11",
+	"envoyproxy/gateway:v1.3.1",
+}
+
 const gatewayClassYAML = `apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

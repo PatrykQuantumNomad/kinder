@@ -36,6 +36,11 @@ var runtimeClassManifest string
 //go:embed manifests/nvidia-device-plugin.yaml
 var devicePluginManifest string
 
+// Images contains the container images used by the NVIDIA GPU device plugin.
+var Images = []string{
+	"nvcr.io/nvidia/k8s-device-plugin:v0.17.1",
+}
+
 // currentOS is the runtime OS, overridable in tests to bypass the platform guard.
 var currentOS = runtime.GOOS
 

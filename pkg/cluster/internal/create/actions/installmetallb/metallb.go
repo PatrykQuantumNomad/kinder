@@ -31,6 +31,12 @@ import (
 //go:embed manifests/metallb-native.yaml
 var metalLBManifest string
 
+// Images contains the container images used by MetalLB.
+var Images = []string{
+	"quay.io/metallb/controller:v0.15.3",
+	"quay.io/metallb/speaker:v0.15.3",
+}
+
 const crTemplate = `---
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool

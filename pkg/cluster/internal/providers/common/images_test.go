@@ -20,6 +20,14 @@ import (
 	"reflect"
 	"testing"
 
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installcertmanager"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installdashboard"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installenvoygw"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installlocalregistry"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetallb"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installmetricsserver"
+	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions/installnvidiagpu"
+	"sigs.k8s.io/kind/pkg/cluster/internal/loadbalancer"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 	"sigs.k8s.io/kind/pkg/internal/sets"
 )
@@ -64,5 +72,97 @@ func TestRequiredNodeImages(t *testing.T) {
 				t.Errorf("RequiredNodeImages() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// singleCPCluster returns a cluster with one control-plane node (no implicit LB).
+func singleCPCluster(addons config.Addons) *config.Cluster {
+	return &config.Cluster{
+		Nodes:  []config.Node{{Role: config.ControlPlaneRole, Image: "kindest/node:v1.30.0"}},
+		Addons: addons,
+	}
+}
+
+// multiCPCluster returns a cluster with 3 control-plane nodes (has implicit LB).
+func multiCPCluster(addons config.Addons) *config.Cluster {
+	return &config.Cluster{
+		Nodes: []config.Node{
+			{Role: config.ControlPlaneRole, Image: "kindest/node:v1.30.0"},
+			{Role: config.ControlPlaneRole, Image: "kindest/node:v1.30.0"},
+			{Role: config.ControlPlaneRole, Image: "kindest/node:v1.30.0"},
+		},
+		Addons: addons,
+	}
+}
+
+func TestRequiredAddonImages_AllDisabled(t *testing.T) {
+	t.Parallel()
+	cfg := singleCPCluster(config.Addons{})
+	got := RequiredAddonImages(cfg)
+	if got.Len() != 0 {
+		t.Errorf("expected empty set, got %v", got.List())
+	}
+}
+
+func TestRequiredAddonImages_LBOnlyWithMultiCP(t *testing.T) {
+	t.Parallel()
+	cfg := multiCPCluster(config.Addons{})
+	got := RequiredAddonImages(cfg)
+	want := sets.NewString(loadbalancer.Image)
+	if !got.Equal(want) {
+		t.Errorf("RequiredAddonImages() = %v, want %v", got.List(), want.List())
+	}
+}
+
+func TestRequiredAddonImages_MetalLBOnly(t *testing.T) {
+	t.Parallel()
+	cfg := singleCPCluster(config.Addons{MetalLB: true})
+	got := RequiredAddonImages(cfg)
+	want := sets.NewString(installmetallb.Images...)
+	if !got.Equal(want) {
+		t.Errorf("RequiredAddonImages() = %v, want %v", got.List(), want.List())
+	}
+}
+
+func TestRequiredAddonImages_AllEnabled(t *testing.T) {
+	t.Parallel()
+	cfg := multiCPCluster(config.Addons{
+		LocalRegistry: true,
+		MetalLB:       true,
+		MetricsServer: true,
+		CertManager:   true,
+		EnvoyGateway:  true,
+		Dashboard:     true,
+		NvidiaGPU:     true,
+	})
+	got := RequiredAddonImages(cfg)
+
+	// Build expected set: LB + all addon images
+	want := sets.NewString(loadbalancer.Image)
+	want.Insert(installlocalregistry.Images...)
+	want.Insert(installmetallb.Images...)
+	want.Insert(installmetricsserver.Images...)
+	want.Insert(installcertmanager.Images...)
+	want.Insert(installenvoygw.Images...)
+	want.Insert(installdashboard.Images...)
+	want.Insert(installnvidiagpu.Images...)
+
+	if !got.Equal(want) {
+		t.Errorf("RequiredAddonImages() = %v, want %v", got.List(), want.List())
+	}
+}
+
+func TestRequiredAllImages(t *testing.T) {
+	t.Parallel()
+	cfg := singleCPCluster(config.Addons{MetalLB: true})
+	cfg.Nodes[0].Image = "kindest/node:v1.30.0"
+
+	got := RequiredAllImages(cfg)
+
+	want := sets.NewString("kindest/node:v1.30.0")
+	want.Insert(installmetallb.Images...)
+
+	if !got.Equal(want) {
+		t.Errorf("RequiredAllImages() = %v, want %v", got.List(), want.List())
 	}
 }

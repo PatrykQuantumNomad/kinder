@@ -30,6 +30,11 @@ import (
 //go:embed manifests/components.yaml
 var metricsServerManifest string
 
+// Images contains the container images used by Metrics Server.
+var Images = []string{
+	"registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+}
+
 type action struct{}
 
 // NewAction returns a new action for installing Metrics Server

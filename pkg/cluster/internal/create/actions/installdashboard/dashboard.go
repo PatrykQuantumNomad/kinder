@@ -32,6 +32,11 @@ import (
 //go:embed manifests/headlamp.yaml
 var headlampManifest string
 
+// Images contains the container images used by the Dashboard (Headlamp).
+var Images = []string{
+	"ghcr.io/headlamp-k8s/headlamp:v0.40.1",
+}
+
 type action struct{}
 
 // NewAction returns a new action for installing the Dashboard

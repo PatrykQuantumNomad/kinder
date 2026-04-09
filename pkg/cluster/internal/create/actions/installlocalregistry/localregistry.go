@@ -41,6 +41,9 @@ const (
 	registryDir     = "/etc/containerd/certs.d/localhost:5001"
 )
 
+// Images contains the container images used by the local registry.
+var Images = []string{registryImage}
+
 // hostsTOML instructs containerd to route localhost:5001 pulls to the
 // kind-registry container on the kind Docker network.
 // IMPORTANT: use the container name (kind-registry), NOT localhost — inside
