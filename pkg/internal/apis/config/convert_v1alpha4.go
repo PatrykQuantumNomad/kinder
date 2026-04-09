@@ -62,6 +62,7 @@ func Convertv1alpha4(in *v1alpha4.Cluster) *Cluster {
 		Dashboard:     boolVal(in.Addons.Dashboard),
 		LocalRegistry: boolVal(in.Addons.LocalRegistry),
 		CertManager:   boolVal(in.Addons.CertManager),
+		LocalPath:     boolVal(in.Addons.LocalPath),
 		NvidiaGPU:     boolValOptIn(in.Addons.NvidiaGPU),
 	}
 

@@ -59,6 +59,11 @@ func (in *Addons) DeepCopyInto(out *Addons) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.LocalPath != nil {
+		in, out := &in.LocalPath, &out.LocalPath
+		*out = new(bool)
+		**out = **in
+	}
 	if in.NvidiaGPU != nil {
 		in, out := &in.NvidiaGPU, &out.NvidiaGPU
 		*out = new(bool)

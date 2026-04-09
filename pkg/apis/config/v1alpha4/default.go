@@ -90,6 +90,7 @@ func SetDefaultsCluster(obj *Cluster) {
 	boolPtrTrue(&obj.Addons.Dashboard)
 	boolPtrTrue(&obj.Addons.LocalRegistry)
 	boolPtrTrue(&obj.Addons.CertManager)
+	boolPtrTrue(&obj.Addons.LocalPath)
 }
 
 // SetDefaultsNode sets uninitialized fields to their default value.

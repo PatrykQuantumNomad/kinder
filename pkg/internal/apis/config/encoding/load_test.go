@@ -173,6 +173,9 @@ func TestAddonsDefaults(t *testing.T) {
 	if !cfg.Addons.CertManager {
 		t.Error("expected CertManager to default to true when addons section absent")
 	}
+	if !cfg.Addons.LocalPath {
+		t.Error("expected LocalPath to default to true when addons section absent")
+	}
 
 	// Test 2: Some addons disabled — explicit false should be respected
 	cfg2, err := Load("./testdata/v1alpha4/valid-addons-some-disabled.yaml")
@@ -214,5 +217,8 @@ func TestAddonsDefaults(t *testing.T) {
 	}
 	if cfg4.Addons.CertManager {
 		t.Error("expected CertManager to be false when explicitly set to false")
+	}
+	if cfg4.Addons.LocalPath {
+		t.Error("expected LocalPath to be false when explicitly set to false")
 	}
 }

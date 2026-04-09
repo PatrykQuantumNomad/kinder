@@ -86,6 +86,7 @@ type Addons struct {
 	Dashboard     bool
 	LocalRegistry bool
 	CertManager   bool
+	LocalPath     bool
 	NvidiaGPU     bool
 }
 
