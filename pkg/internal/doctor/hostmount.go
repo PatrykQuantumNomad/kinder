@@ -43,6 +43,12 @@ func (c *hostMountPathCheck) Name() string       { return "host-mount-path" }
 func (c *hostMountPathCheck) Category() string    { return "Mounts" }
 func (c *hostMountPathCheck) Platforms() []string { return nil }
 
+// setMountPaths implements mountPathConfigurable, replacing the getMountPaths
+// closure so that Run() checks the supplied paths instead of skipping.
+func (c *hostMountPathCheck) setMountPaths(paths []string) {
+	c.getMountPaths = func() []string { return paths }
+}
+
 // Run checks each configured mount path for existence and accessibility.
 // Returns a skip result when no mount paths are configured.
 func (c *hostMountPathCheck) Run() []Result {
@@ -113,6 +119,12 @@ func newDockerDesktopFileSharingCheck() Check {
 func (c *dockerDesktopFileSharingCheck) Name() string       { return "docker-desktop-file-sharing" }
 func (c *dockerDesktopFileSharingCheck) Category() string    { return "Mounts" }
 func (c *dockerDesktopFileSharingCheck) Platforms() []string { return []string{"darwin"} }
+
+// setMountPaths implements mountPathConfigurable, replacing the getMountPaths
+// closure so that Run() checks the supplied paths instead of skipping.
+func (c *dockerDesktopFileSharingCheck) setMountPaths(paths []string) {
+	c.getMountPaths = func() []string { return paths }
+}
 
 // defaultFileSharingDirs are the directories Docker Desktop shares by default.
 var defaultFileSharingDirs = []string{

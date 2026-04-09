@@ -87,6 +87,23 @@ var allChecks = []Check{
 	newDockerDesktopFileSharingCheck(),
 }
 
+// mountPathConfigurable is implemented by checks that need host mount paths
+// injected from an external config source (e.g., --config flag).
+type mountPathConfigurable interface {
+	setMountPaths(paths []string)
+}
+
+// SetMountPaths injects host mount paths into all checks that implement
+// mountPathConfigurable. Call before RunAllChecks to wire config-derived
+// paths into mount checks.
+func SetMountPaths(paths []string) {
+	for _, check := range allChecks {
+		if mc, ok := check.(mountPathConfigurable); ok {
+			mc.setMountPaths(paths)
+		}
+	}
+}
+
 // AllChecks returns all registered diagnostic checks.
 func AllChecks() []Check {
 	return allChecks
