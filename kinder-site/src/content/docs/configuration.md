@@ -29,6 +29,7 @@ addons:
   metalLB: true
   metricsServer: true
   coreDNSTuning: true
+  localPath: true
   # Optional addons (enabled by default -- disable for lightweight clusters)
   envoyGateway: true
   dashboard: true
@@ -37,7 +38,7 @@ addons:
 ```
 
 :::note[All addons enabled by default]
-All 7 addons are installed by default. The **core** group (MetalLB, Metrics Server, CoreDNS) is always useful for any workflow. The **optional** group (Envoy Gateway, Headlamp, Local Registry, cert-manager) is also enabled by default but commonly disabled for lightweight or CI clusters using `--profile minimal` or `--profile ci`.
+All 8 addons are installed by default. The **core** group (MetalLB, Metrics Server, CoreDNS, Local Path Provisioner) is always useful for any workflow. The **optional** group (Envoy Gateway, Headlamp, Local Registry, cert-manager) is also enabled by default but commonly disabled for lightweight or CI clusters using `--profile minimal` or `--profile ci`.
 :::
 
 ## Using a Config File
@@ -59,6 +60,7 @@ These addons are always useful regardless of your workload.
 | `metalLB` | `bool` | `true` | Install [MetalLB](https://metallb.universe.tf/) for LoadBalancer IP assignment |
 | `metricsServer` | `bool` | `true` | Install [Metrics Server](https://github.com/kubernetes-sigs/metrics-server) for `kubectl top` support |
 | `coreDNSTuning` | `bool` | `true` | Apply CoreDNS tuning for optimised local DNS caching |
+| `localPath` | `bool` | `true` | Install [local-path-provisioner](/addons/local-path-provisioner/) — `local-path` as the default StorageClass. Set to `false` to restore the legacy `standard` StorageClass |
 
 ### Optional Addons
 
@@ -95,6 +97,7 @@ addons:
   envoyGateway: false
   metricsServer: false
   coreDNSTuning: false
+  localPath: false
   dashboard: false
   localRegistry: false
   certManager: false

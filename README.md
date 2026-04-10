@@ -16,6 +16,7 @@ kinder is a batteries-included tool for running local Kubernetes clusters using 
 | [Envoy Gateway](https://kinder.patrykgolabek.dev/addons/envoy-gateway/) | Gateway API routing with the `eg` GatewayClass pre-configured |
 | [Metrics Server](https://kinder.patrykgolabek.dev/addons/metrics-server/) | Enables `kubectl top` and Horizontal Pod Autoscaler support |
 | [CoreDNS Tuning](https://kinder.patrykgolabek.dev/addons/coredns/) | Autopath, verified pod records, and doubled cache TTL |
+| [Local Path Provisioner](https://kinder.patrykgolabek.dev/addons/local-path-provisioner/) | Automatic dynamic PVC provisioning — `local-path` as the default StorageClass |
 | [Headlamp](https://kinder.patrykgolabek.dev/addons/headlamp/) | Web-based cluster dashboard accessible via port-forward |
 | [Local Registry](https://kinder.patrykgolabek.dev/addons/local-registry/) | Pre-configured `localhost:5001` registry for local image development |
 | [cert-manager](https://kinder.patrykgolabek.dev/addons/cert-manager/) | TLS certificate management with a self-signed ClusterIssuer ready to use |
@@ -110,13 +111,19 @@ See the full [Configuration Reference](https://kinder.patrykgolabek.dev/configur
 
 ## Why kinder over plain kind?
 
-- **One command** — no post-install scripts to wire up MetalLB, ingress, metrics, or a dashboard
-- **8 addons** — MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, local registry, cert-manager, and NVIDIA GPU support
+- **One command** — no post-install scripts to wire up MetalLB, ingress, metrics, storage, or a dashboard
+- **9 addons** — MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, local-path-provisioner, Headlamp, local registry, cert-manager, and NVIDIA GPU support
 - **LoadBalancer support** — `type: LoadBalancer` works out of the box
 - **Gateway API** — Envoy Gateway ready without manual CRD installation
+- **Dynamic storage** — PVCs bind automatically via local-path-provisioner (`local-path` as default StorageClass)
 - **Observability** — `kubectl top` and a web dashboard from the start
+- **Air-gapped mode** — `kinder create cluster --air-gapped` works offline; `kinder doctor` tells you which images to pre-load
+- **Multi-version nodes** — per-node Kubernetes versions with config-time version-skew validation
+- **Host directory mounting** — pre-flight path validation and platform propagation warnings for `extraMounts`
+- **Cross-provider image loading** — `kinder load images` works with docker, podman, nerdctl, finch, and nerdctl.lima
 - **Addon profiles** — `--profile minimal|full|gateway|ci` for targeted presets
 - **JSON output** — `--output json` on all read commands for scripting
+- **18 diagnostic checks** — `kinder doctor` covers runtime, disk, kernel, security, platform, and network issues
 - **100% compatible** — any kind config or workflow still works
 
 ## Documentation

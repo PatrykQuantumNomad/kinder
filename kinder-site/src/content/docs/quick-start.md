@@ -26,19 +26,21 @@ Creating cluster "kind" ...
  ✓ Installing MetalLB
  ✓ Installing Metrics Server
  ✓ Tuning CoreDNS
+ ✓ Installing Local Path Provisioner
  ✓ Installing Envoy Gateway
  ✓ Installing Dashboard
  ✓ Installing Local Registry
  ✓ Installing cert-manager
 
 Addons:
- * MetalLB              installed
- * Metrics Server       installed
- * CoreDNS Tuning       installed
- * Envoy Gateway        installed
- * Dashboard            installed
- * Local Registry       installed
- * cert-manager         installed
+ * MetalLB                 installed
+ * Metrics Server          installed
+ * CoreDNS Tuning          installed
+ * Local Path Provisioner  installed
+ * Envoy Gateway           installed
+ * Dashboard               installed
+ * Local Registry          installed
+ * cert-manager            installed
 Set kubectl context to "kind-kind"
 You can now use your cluster with:
 
@@ -48,12 +50,22 @@ kubectl cluster-info --context kind-kind
 kinder also prints a dashboard token and port-forward command — save these for later.
 
 :::tip[Addon profiles]
-`kinder create cluster` enables all 7 addons by default. Use `--profile` to select a preset:
+`kinder create cluster` enables all 8 addons by default. Use `--profile` to select a preset:
 
 - `--profile minimal` — no kinder addons (plain kind cluster)
 - `--profile gateway` — MetalLB + Envoy Gateway only
 - `--profile ci` — Metrics Server + cert-manager (CI-optimized)
 - `--profile full` — all addons (same as default)
+:::
+
+:::tip[Offline / air-gapped]
+Add `--air-gapped` to create a cluster without any network calls for image pulls:
+
+```sh
+kinder create cluster --air-gapped
+```
+
+kinder fails fast with a complete list of missing images instead of hanging on failed pulls. See the [Working Offline](/guides/working-offline/) guide for the pre-load workflow.
 :::
 
 ## What You Get
@@ -64,6 +76,7 @@ kinder also prints a dashboard token and port-forward command — save these for
 | Envoy Gateway | `envoy-gateway-system` | Gateway API ingress |
 | Metrics Server | `kube-system` | `kubectl top` support |
 | CoreDNS tuning | `kube-system` | Optimised DNS caching |
+| Local Path Provisioner | `local-path-storage` | Automatic dynamic PVC provisioning with `local-path` as default StorageClass |
 | Headlamp | `kube-system` | Web UI for cluster inspection |
 | Local Registry | `default` (host network) | Private container registry at localhost:5001 |
 | cert-manager | `cert-manager` | Automatic TLS certificates with self-signed ClusterIssuer |
@@ -233,6 +246,17 @@ Expected output:
 NAME                READY   AGE
 selfsigned-issuer   True    60s
 ```
+
+## Loading local images
+
+To load a locally-built image into every node of the cluster, use `kinder load images`:
+
+```sh
+docker build -t myapp:dev .
+kinder load images myapp:dev
+```
+
+This works with all three providers (docker, podman, nerdctl) and skips re-importing if the image is already present on every node. See the [Load Images CLI reference](/cli-reference/load-images/) for full details.
 
 ## Something wrong?
 

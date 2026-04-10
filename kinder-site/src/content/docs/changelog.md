@@ -11,6 +11,74 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 ---
 
+## v1.4 — Cluster Capabilities
+
+**Released:** April 10, 2026
+
+Four cluster capabilities that fill the gap between plain kind and a production-like local environment: multi-version per-node Kubernetes, offline/air-gapped cluster creation, local-path-provisioner dynamic storage, and host-directory mounting — plus a provider-abstracted `kinder load images` utility that ties the offline and multi-version workflows together. Zero new Go module dependencies.
+
+### Multi-Version Node Validation
+
+- **Per-node image preservation** — `--image` flag no longer overrides explicit per-node `image:` entries. Explicit image assignments capture pre-defaults via `ExplicitImage` sentinel in `encoding/convert.go`
+- **Version-skew validation** — config parse rejects workers more than 3 minor versions behind the control-plane before any containers are created, with a precise error message stating the violating node and version delta
+- **HA consistency check** — control-plane nodes at different versions are rejected at config validation time
+- **Doctor cluster-skew check** — `kinder doctor` reports a warning when a running multi-version cluster violates version-skew policy; injectable node reader enables test coverage without a live runtime
+- **New `kinder get nodes` columns** — output now includes `VERSION`, `IMAGE`, and `SKEW` columns sourced via container `inspect` (avoids import cycle with `pkg/cluster`)
+- Non-semver image tags (e.g. `latest`) skip version-skew validation to preserve backward compatibility with test/dev configs
+
+### Air-Gapped Cluster Creation
+
+- **`--air-gapped` flag** — new flag on `kinder create cluster` disables all network calls for image pulls across docker, podman, and nerdctl providers
+- **Fast-fail with actionable error** — missing images produce a complete list of what must be pre-loaded, instead of timing out or hanging on failed pulls. Per-runtime pre-load instructions via `formatMissingImagesError(binaryName)`
+- **Addon image warning** — non-air-gapped creation prints a NOTE listing every addon image that will be pulled, so users know what to pre-load before switching to offline mode
+- **Doctor offline-readiness check** — `kinder doctor` lists which required images are absent from the local image store, serving as a pre-flight offline readiness check. Skips gracefully when no container runtime is found
+- **`RequiredAddonImages` utility** — centralised image inventory imported from addon packages (no import cycle, since addon packages don't import common)
+- **Working Offline guide** — new [working-offline guide](/guides/working-offline/) documenting the two-mode offline workflow: pre-create image baking vs. post-create `kinder load images`
+
+### Local-Path-Provisioner Addon
+
+- **New default addon** — [local-path-provisioner](/addons/local-path-provisioner/) v0.0.35 installed by default; `local-path` is the only default StorageClass (the legacy `standard` StorageClass from `installstorage` is gated off)
+- **Automatic dynamic PVC provisioning** — `PersistentVolumeClaim` resources transition to `Bound` automatically in both single-node and multi-node clusters without manual operator action
+- **Opt-out config** — `addons.localPath: false` in the cluster config skips the addon and restores the legacy `standard` StorageClass (exact pre-v1.4 behavior)
+- **CVE-2025-62878 doctor check** — `kinder doctor` warns when local-path-provisioner is below v0.0.34 (the fix version; strictly less-than triggers warn)
+- **Air-gapped compatible** — embedded manifest pins `busybox:1.37.0` with `imagePullPolicy: IfNotPresent`, ensuring PVC operations work in air-gapped clusters where `busybox:latest` cannot be pulled
+- Uses `boolVal` (opt-out, default true) consistent with MetalLB/CertManager pattern
+
+### Host-Directory Mounting
+
+- **Pre-flight path validation** — `extraMounts` entries with non-existent host paths are rejected before any containers are created, with an error message identifying the missing path. Relative paths resolved via `filepath.Abs` before `os.Stat`
+- **Platform propagation warnings** — `propagation: HostToContainer` or `Bidirectional` on macOS or Windows now emits a visible warning explaining that propagation is unsupported on Docker Desktop and defaults to `None`
+- **Doctor host-mount check** — on macOS, `kinder doctor` verifies that configured host mount paths exist and that Docker Desktop file sharing is enabled for that path, reporting actionable guidance when either check fails. Falls back to Docker Desktop default dirs when `settings-store.json` is absent
+- **`--config` flag on doctor** — `kinder doctor --config cluster.yaml` extracts `extraMounts` paths from the config and wires them into mount checks; `mountPathConfigurable` interface allows per-check mount path injection
+- **Host Directory Mounting guide** — new [guide](/guides/host-directory-mounting/) walks through the two-hop mount pattern (host directory → node `extraMount` → pod `hostPath` PV) with complete YAML examples
+
+### `kinder load images` Command
+
+- **New `kinder load images <image> [<image>...]` subcommand** — loads one or more local images into every node of a running cluster with a single command
+- **Provider-abstracted** — `providerBinaryName()` resolves the actual binary for docker, podman, nerdctl, finch, and nerdctl.lima. `save()` and `imageID()` take `binaryName` as a parameter instead of hardcoding `docker save`
+- **Docker Desktop 27+ containerd fallback** — `LoadImageArchiveWithFallback` in `nodeutils` detects the "content digest: not found" error from `ctr images import --all-platforms` and retries without `--all-platforms`. Factory pattern (`openArchive func() (io.ReadCloser, error)`) provides a fresh reader for the retry since tar streams cannot be rewound
+- **Smart-load skip** — re-running with an image already present on all nodes completes without re-importing and logs `"Image ... found to be already present on all nodes."`
+- **Load Images CLI reference** — new [CLI reference page](/cli-reference/load-images/) with per-provider examples, smart-load behavior, and the Docker Desktop 27+ compatibility note
+
+### Website
+
+- **[Local Path Provisioner](/addons/local-path-provisioner/)** addon page documenting config, verification, CVE check, and air-gapped image list
+- **[Working Offline](/guides/working-offline/)** guide with pre-load and post-create workflows
+- **[Host Directory Mounting](/guides/host-directory-mounting/)** tutorial with two-hop mount walkthrough
+- **[Load Images](/cli-reference/load-images/)** CLI reference covering all three providers, smart-load behavior, and Docker Desktop 27+ fallback
+- Landing page updated with local-path in Core Addons
+- Configuration reference gained the `localPath` addon field
+
+### Internal
+
+- `ExplicitImage` captured pre-defaults in `encoding/convert.go` (SetDefaultsCluster fills empty Image fields before `Convertv1alpha4`, making post-defaults detection impossible)
+- `stderrors` alias for stdlib `errors` avoids conflict with `sigs.k8s.io/kind/pkg/errors` import
+- `isContentDigestError` checks `RunError.Output` before falling back to `err.Error()` string
+- `LoadImageArchive` (existing public API) unchanged — new `LoadImageArchiveWithFallback` coexists for `kinder load images` usage
+- `realListNodes` / `realGetProvisionerVersion` / `realListNodes` in doctor checks use the low-level container `exec` CLI approach to avoid import cycles with `pkg/cluster/internal`
+
+---
+
 ## v1.3 — Known Issues & Proactive Diagnostics
 
 **Released:** March 6, 2026

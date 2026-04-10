@@ -1,6 +1,6 @@
 ---
 title: kinder
-description: kind with MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, Local Registry, and cert-manager pre-installed.
+description: kind with MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, Headlamp, Local Registry, cert-manager, and Local Path Provisioner pre-installed.
 template: splash
 hero:
   tagline: kind, but with everything you actually need.
@@ -49,6 +49,11 @@ Always-on essentials for every kinder cluster.
     Autopath short names, verified pod records, and doubled cache TTL.
 
     [View docs](/addons/coredns/)
+  </Card>
+  <Card title="Local Path Provisioner" icon="document">
+    Automatic dynamic PVC provisioning — `local-path` as the default StorageClass.
+
+    [View docs](/addons/local-path-provisioner/)
   </Card>
 </CardGrid>
 
