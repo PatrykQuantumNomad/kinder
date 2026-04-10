@@ -42,10 +42,10 @@ Requirements for v2.2 Cluster Capabilities. Each maps to roadmap phases.
 
 ### Load Images Command
 
-- [ ] **LOAD-01**: `kinder load images` subcommand loads one or more images into all cluster nodes
-- [ ] **LOAD-02**: Provider-abstracted image saving (works with docker/podman/nerdctl, not hardcoded to docker save)
-- [ ] **LOAD-03**: Fallback import strategy for Docker Desktop 27+ containerd image store compatibility
-- [ ] **LOAD-04**: Smart-load skips images already present on nodes
+- [x] **LOAD-01**: `kinder load images` subcommand loads one or more images into all cluster nodes
+- [x] **LOAD-02**: Provider-abstracted image saving (works with docker/podman/nerdctl, not hardcoded to docker save)
+- [x] **LOAD-03**: Fallback import strategy for Docker Desktop 27+ containerd image store compatibility
+- [x] **LOAD-04**: Smart-load skips images already present on nodes
 
 ## v2.3+ Requirements
 
@@ -101,10 +101,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | MOUNT-02 | Phase 45 | Complete |
 | MOUNT-03 | Phase 45 | Complete |
 | MOUNT-04 | Phase 45 | Complete |
-| LOAD-01 | Phase 46 | Pending |
-| LOAD-02 | Phase 46 | Pending |
-| LOAD-03 | Phase 46 | Pending |
-| LOAD-04 | Phase 46 | Pending |
+| LOAD-01 | Phase 46 | Complete |
+| LOAD-02 | Phase 46 | Complete |
+| LOAD-03 | Phase 46 | Complete |
+| LOAD-04 | Phase 46 | Complete |
 
 **Coverage:**
 - v2.2 requirements: 25 total
