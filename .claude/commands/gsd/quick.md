@@ -1,7 +1,7 @@
 ---
 name: gsd:quick
 description: Execute a quick task with GSD guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: "[--full] [--discuss]"
+argument-hint: "[--full] [--validate] [--discuss] [--research]"
 allowed-tools:
   - Read
   - Write
@@ -24,13 +24,17 @@ Quick mode is the same system with a shorter path:
 
 **`--discuss` flag:** Lightweight discussion phase before planning. Surfaces assumptions, clarifies gray areas, captures decisions in CONTEXT.md. Use when the task has ambiguity worth resolving upfront.
 
-**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
+**`--full` flag:** Enables the complete quality pipeline — discussion + research + plan-checking + verification. One flag for everything.
 
-Flags are composable: `--discuss --full` gives discussion + plan-checking + verification.
+**`--validate` flag:** Enables plan-checking (max 2 iterations) and post-execution verification only. Use when you want quality guarantees without discussion or research.
+
+**`--research` flag:** Spawns a focused research agent before planning. Investigates implementation approaches, library options, and pitfalls for the task. Use when you're unsure of the best approach.
+
+Granular flags are composable: `--discuss --research --validate` gives the same result as `--full`.
 </objective>
 
 <execution_context>
-@./.claude/get-shit-done/workflows/quick.md
+@/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/quick.md
 </execution_context>
 
 <context>
@@ -40,6 +44,6 @@ Context files are resolved inside the workflow (`init quick`) and delegated via 
 </context>
 
 <process>
-Execute the quick workflow from @./.claude/get-shit-done/workflows/quick.md end-to-end.
+Execute the quick workflow from @/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/quick.md end-to-end.
 Preserve all workflow gates (validation, task description, planning, execution, state updates, commits).
 </process>

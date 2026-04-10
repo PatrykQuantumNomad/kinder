@@ -1,6 +1,8 @@
 ---
 name: gsd:help
 description: Show available GSD commands and usage guide
+allowed-tools:
+  - Read
 ---
 <objective>
 Display the complete GSD command reference.
@@ -13,10 +15,10 @@ Output ONLY the reference content below. Do NOT add:
 </objective>
 
 <execution_context>
-@./.claude/get-shit-done/workflows/help.md
+@/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/help.md
 </execution_context>
 
 <process>
-Output the complete GSD command reference from @./.claude/get-shit-done/workflows/help.md.
+Output the complete GSD command reference from @/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/help.md.
 Display the reference content directly — no additions or modifications.
 </process>

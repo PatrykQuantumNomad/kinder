@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf .planning/codebase)",
+      "Bash(mkdir -p .planning/codebase)",
+      "WebSearch"
+    ]
+  }
+}

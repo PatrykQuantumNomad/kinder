@@ -419,27 +419,31 @@ func formatSkewTable(violations []skewViolation) string {
 
 **Existing docs:** `/site/content/docs/user/working-offline.md` already documents the node image offline workflow. Phase 43 extends it, not replaces it.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where to define the canonical addon image list to avoid import cycles?**
    - What we know: `doctor` imports nothing from `providers/common`; `create.go` imports `doctor`; `providers` are only imported from `create.go`.
    - What's unclear: Whether `pkg/internal/airgap/` is the right package name, or whether to use a simpler approach of defining `var AddonImages []string` in each addon action package and importing them from `common`.
    - Recommendation: Prototype the import graph before committing to a package name. The safest option is `pkg/internal/airgap/images.go` since `pkg/internal/` packages have no internal domain logic. Verify with `go build ./...` after any new import.
+   - RESOLVED: Provider-side uses addon `Images` vars imported by `common/images.go`; doctor-side uses an inline `allAddonImages` list in `offlinereadiness.go`. A sync test in `offlinereadiness_test.go` ensures the counts stay aligned.
 
 2. **Does `kinder doctor` offline-readiness check need the user's cluster config?**
    - What we know: `RunAllChecks()` takes no arguments; all current checks are config-independent.
    - What's unclear: Whether to check ALL known addon images (safe but noisy for minimal-profile users) or to require a `--config` flag on `kinder doctor`.
    - Recommendation: Check ALL known infra images unconditionally; in the output, label which addon each image belongs to so users can determine relevance. A `--config` flag on doctor is out of scope for this phase.
+   - RESOLVED: Check all known addon images unconditionally, labeled by addon name. Users ignore images for addons they don't intend to enable.
 
 3. **Should the non–air-gapped addon image warning be printed before or after node image pull?**
    - What we know: `ensureNodeImages` is called at the start of `Provision`. The warning would be most useful before any work starts.
    - What's unclear: Whether printing before `Provision` clutters the create output.
    - Recommendation: Print before `p.Provision()` is called in `create.go`, at `logger.V(0)` level, so it's always visible unless verbosity is reduced.
+   - RESOLVED: Print before `p.Provision()` in `create.go` at `logger.V(0)` level so it is always visible.
 
 4. **Does `kinder load images` (the `--air-gapped` post-create workflow) need changes?**
    - What we know: `kinder load docker-image` exists at `pkg/cmd/kind/load/docker-image/docker-image.go` and already loads images from host into cluster nodes. It uses `docker save` internally and therefore only supports Docker on the host side.
    - What's unclear: Whether the documentation should clarify that `kinder load docker-image` is the post-create path, and whether podman/nerdctl users need a different command.
    - Recommendation: Document the existing `kinder load docker-image` command in the offline workflow section; note the Docker host-side requirement for post-create loading.
+   - RESOLVED: Document existing `kinder load docker-image` in the offline workflow section; note the Docker host-side requirement for post-create loading.
 
 ## Sources
 

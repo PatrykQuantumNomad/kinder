@@ -496,22 +496,25 @@ func TestExecute(t *testing.T) {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Upstream v0.0.35 manifest location**
+1. **Upstream v0.0.35 manifest location** — RESOLVED
    - What we know: The upstream release is at `https://github.com/rancher/local-path-provisioner/releases/tag/v0.0.35`; the deploy manifest is typically at `https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml`
    - What's unclear: The exact ConfigMap structure in the v0.0.35 manifest (whether `imagePullPolicy` is already present, what the default helper image tag is)
    - Recommendation: Fetch the manifest and inspect before writing the embedded file. The manifest is the source of truth for ConfigMap structure. The project's existing SUMMARY.md confirms "helper image is in the `local-path-config` ConfigMap's `config.json` key" — verify the exact nested YAML structure before editing.
+   - Resolution: Plan 01 Task 1 step 7 specifies the exact ConfigMap structure including helperPod.yaml with busybox:1.37.0 and IfNotPresent. Executor must fetch upstream manifest and verify before writing.
 
-2. **CVE check: how to exec kubectl inside a node container from the doctor context**
+2. **CVE check: how to exec kubectl inside a node container from the doctor context** — RESOLVED
    - What we know: `clusterNodeSkewCheck.realListNodes()` uses `docker ps --filter label=io.x-k8s.kind.cluster=kind` to find nodes, then `docker exec <node> cat /kind/version` for version info.
    - What's unclear: Whether `kubectl --kubeconfig=/etc/kubernetes/admin.conf get deploy -n local-path-storage` can be run via `docker exec` on the control-plane container in the doctor context.
    - Recommendation: Follow the exact same `docker exec` pattern as `clusterskew.go`. The command to run inside the control-plane container: `kubectl --kubeconfig=/etc/kubernetes/admin.conf get deploy local-path-provisioner -n local-path-storage -o jsonpath='{.spec.template.spec.containers[0].image}'`.
+   - Resolution: Plan 03 Task 1 implements realGetProvisionerVersion using docker/podman/nerdctl exec with kubectl jsonpath, following the established clusterskew.go pattern.
 
-3. **Multi-node cluster: does `local-path-provisioner` work on all nodes?**
+3. **Multi-node cluster: does `local-path-provisioner` work on all nodes?** — RESOLVED
    - What we know: local-path-provisioner uses `WaitForFirstConsumer` volume binding mode and schedules storage on the node where the PVC is bound. The Deployment runs on any node (no node affinity to a specific worker). STOR-06 requires single AND multi-node.
    - What's unclear: Whether any additional RBAC or config is needed for multi-node support.
    - Recommendation: The upstream manifest includes `tolerations` for control-plane taints and runs as a single-replica Deployment. For multi-node, `WaitForFirstConsumer` ensures the PV is created on the node where the pod is scheduled. No additional configuration is needed. The STOR-06 success criterion ("PVC transitions to Bound automatically in both single-node and multi-node clusters") is met by the standard manifest.
+   - Resolution: Plan 01 manifest uses upstream RBAC (ClusterRole with PV/PVC/node permissions) and WaitForFirstConsumer. No additional config needed per upstream docs.
 
 ---
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// gsd-hook-version: 1.34.2
 // Context Monitor - PostToolUse/AfterTool hook (Gemini uses AfterTool)
 // Reads context metrics from the statusline bridge file and injects
 // warnings when context usage is high. This makes the AGENT aware of
@@ -27,10 +28,11 @@ const STALE_SECONDS = 60;      // ignore metrics older than 60s
 const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
 
 let input = '';
-// Timeout guard: if stdin doesn't close within 3s (e.g. pipe issues on
-// Windows/Git Bash), exit silently instead of hanging until Claude Code
-// kills the process and reports "hook error". See #775.
-const stdinTimeout = setTimeout(() => process.exit(0), 3000);
+// Timeout guard: if stdin doesn't close within 10s (e.g. pipe issues on
+// Windows/Git Bash, or slow Claude Code piping during large outputs),
+// exit silently instead of hanging until Claude Code kills the process
+// and reports "hook error". See #775, #1162.
+const stdinTimeout = setTimeout(() => process.exit(0), 10000);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => input += chunk);
 process.stdin.on('end', () => {
@@ -41,6 +43,27 @@ process.stdin.on('end', () => {
 
     if (!sessionId) {
       process.exit(0);
+    }
+
+    // Reject session IDs that contain path traversal sequences or path separators.
+    // session_id is used to construct file paths in /tmp — an unsanitized value
+    // could escape the temp directory and read or write arbitrary files.
+    if (/[/\\]|\.\./.test(sessionId)) {
+      process.exit(0);
+    }
+
+    // Check if context warnings are disabled via config
+    const cwd = data.cwd || process.cwd();
+    const configPath = path.join(cwd, '.planning', 'config.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.hooks?.context_warnings === false) {
+          process.exit(0);
+        }
+      } catch (e) {
+        // Ignore config parse errors
+      }
     }
 
     const tmpDir = os.tmpdir();
@@ -101,7 +124,6 @@ process.stdin.on('end', () => {
     fs.writeFileSync(warnPath, JSON.stringify(warnData));
 
     // Detect if GSD is active (has .planning/STATE.md in working directory)
-    const cwd = data.cwd || process.cwd();
     const isGsdActive = fs.existsSync(path.join(cwd, '.planning', 'STATE.md'));
 
     // Build advisory warning message (never use imperative commands that
@@ -112,7 +134,7 @@ process.stdin.on('end', () => {
         ? `CONTEXT CRITICAL: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
           'Context is nearly exhausted. Do NOT start new complex work or write handoff files — ' +
           'GSD state is already tracked in STATE.md. Inform the user so they can run ' +
-          '/gsd:pause-work at the next natural stopping point.'
+          '/gsd-pause-work at the next natural stopping point.'
         : `CONTEXT CRITICAL: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
           'Context is nearly exhausted. Inform the user that context is low and ask how they ' +
           'want to proceed. Do NOT autonomously save state or write handoff files unless the user asks.';

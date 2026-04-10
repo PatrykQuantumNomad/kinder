@@ -348,22 +348,13 @@ func runImport(n nodes.Node, image io.Reader, snapshotter string, allPlatforms b
 - Kind issue #3795 (containerd image store) is OPEN as of April 2026. No upstream fix has been merged. The workaround (disabling containerd image store in Docker Desktop) is the recommended approach upstream, but kinder should implement the automatic fallback.
 - The `docker-image` subcommand in both upstream kind and this codebase hardcodes `docker save`. This is the root cause of LOAD-02 failing for podman/nerdctl.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **`provider.Name()` vs actual binary name for nerdctl/finch**
-   - What we know: `provider.Name()` returns `"nerdctl"` for all nerdctl variants; actual binary may be `"finch"`, `"nerdctl.lima"`, or `"nerdctl"`
-   - What's unclear: Whether `nerdctl save` and `finch save` have the same flags; whether using the wrong binary breaks save
-   - Recommendation: Add a `BinaryName() string` method to `cluster.Provider` that wraps `provider.Name()` for docker/podman but reads `KIND_EXPERIMENTAL_PROVIDER` or the nerdctl internal binary name for nerdctl. OR: accept that `nerdctl save` works when finch is active (finch is nerdctl-compatible). Investigate during implementation.
+1. **`provider.Name()` vs actual binary name for nerdctl/finch** — RESOLVED: `providerBinaryName()` helper in images.go reads `KIND_EXPERIMENTAL_PROVIDER` directly, same logic as runtime.GetDefault. Returns "finch" or "nerdctl.lima" when set.
 
-2. **`podman image inspect -f '{{ .Id }}'` — case sensitivity**
-   - What we know: The existing `docker-image.go` uses `{{ .Id }}`; podman documentation shows `ID`
-   - What's unclear: Whether `{{ .Id }}` works with podman's go template engine in practice
-   - Recommendation: Use `{{ .ID }}` (uppercase) which is universally documented for all three runtimes, and update the test. Alternatively, test with `podman image inspect -f '{{ .Id }}' <image>` before committing.
+2. **`podman image inspect -f '{{ .Id }}'` — case sensitivity** — RESOLVED: Accepted as-is, matching existing docker-image.go template. MEDIUM confidence; verify in integration testing. Acceptable degradation if wrong — inspect error surfaced immediately.
 
-3. **`LoadImageArchiveWithFallback` vs inline fallback logic**
-   - What we know: `LoadImageArchive` is called by both `docker-image` (via the `loadImage` helper) and `image-archive`; these do NOT need the fallback
-   - What's unclear: Whether the fallback should be in `nodeutils` or inline in the new `images.go`
-   - Recommendation: Put fallback in `nodeutils` as `LoadImageArchiveWithFallback` to keep `images.go` clean and make the fallback testable at the right level.
+3. **`LoadImageArchiveWithFallback` vs inline fallback logic** — RESOLVED: Implemented in nodeutils as `LoadImageArchiveWithFallback` per recommendation. Keeps images.go clean and makes fallback testable at the right level.
 
 ## Sources
 
