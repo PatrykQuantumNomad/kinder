@@ -61,12 +61,18 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ ApplySafeMitigations wired into create flow before provisioning — v2.1
 - ✓ Known Issues documentation page on website with all 18 checks — v2.1
 
+- ✓ Multi-version clusters with per-node Kubernetes version, ExplicitImage sentinel, and version-skew config validation — v2.2
+- ✓ `kinder doctor` cluster-node-skew check and VERSION/IMAGE/SKEW columns on `kinder get nodes` — v2.2
+- ✓ Offline/air-gapped cluster creation via `--air-gapped` flag, addon image warnings, fast-fail in all 3 providers — v2.2
+- ✓ `kinder doctor` offline-readiness check + two-mode offline workflow docs — v2.2
+- ✓ local-path-provisioner addon (default on) with CVE-2025-62878 doctor check, busybox:1.37.0 pinned for air-gap — v2.2
+- ✓ Host directory mounting pre-flight validation, propagation platform warning, host-mount-path + docker-desktop-file-sharing doctor checks, two-hop host→pod guide — v2.2
+- ✓ `kinder load images` subcommand with provider-abstracted save/import, smart-load skip, Docker Desktop 27+ containerd fallback — v2.2
+- ✓ Doctor registry expanded from 18 to 23 checks — v2.2
+
 ### Active
 
-- [ ] Offline/air-gapped cluster creation with pre-baked addon images and `kinder load images` for custom image caching
-- [ ] Local storage provider (local-path-provisioner) as a default addon with automatic PV provisioning
-- [ ] Host directory mounting through to pods (host → container → pod via hostPath) configurable in v1alpha4
-- [ ] Multi-version clusters with per-node Kubernetes version in v1alpha4 config for skew testing
+- [ ] TBD — next milestone scope to be defined via `/gsd:new-milestone`
 
 ### Out of Scope
 
@@ -94,7 +100,8 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - Shipped v1.5 with 3 tutorials, 3 CLI reference pages, 7 enriched addon pages, 19-page clean production build
 - Shipped v2.0 with GoReleaser, Homebrew tap, NVIDIA GPU addon
 - Shipped v2.1 with 18 diagnostic checks, create-flow mitigations, Known Issues page
-- Total codebase: ~35,636 LOC Go, ~3,900 LOC site (Astro/MDX/TS/CSS)
+- Shipped v2.2 with multi-version validation, air-gapped clusters, local-path-provisioner, host-mount pre-flight, `kinder load images`; doctor registry expanded from 18 to 23 checks
+- Total codebase: ~38,751 LOC Go (pkg/), ~5,200 LOC site (Astro/MDX/TS/CSS)
 - Tech stack: Go (core), Astro + Starlight (website)
 - Website live at https://kinder.patrykgolabek.dev via GitHub Pages
 - All addons applied at runtime via kubectl (not baked into node image)
@@ -156,5 +163,23 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | WSL2 multi-signal detection | Prevents Azure VM false positives with corroborating evidence | Good |
 | Warn-and-continue mitigations | Mitigation errors never block cluster creation | Good |
 
+| ExplicitImage sentinel captured pre-defaults | SetDefaultsCluster fills Image before conversion; post-defaults detection impossible | ✓ Good |
+| Skip version-skew check on non-semver tags | Preserves backward compat with "latest" in test/dev configs | ✓ Good |
+| AirGapped propagated via ClusterOptions → Config | Matches existing `CreateWithRetain` option pattern; no new trust boundary | ✓ Good |
+| Accumulate-all-missing images (not fail-on-first) | Users get one actionable error listing every pre-load needed | ✓ Good |
+| `RequiredAddonImages` imports addon packages in common | Addon packages do not import common; zero import cycle risk | ✓ Good |
+| Inline allAddonImages in offlinereadiness.go | Importing pkg/cluster/internal creates a doctor import cycle | ✓ Good |
+| LocalPath uses opt-out `boolVal` (default true) | Consistent with MetalLB/CertManager batteries-included pattern | ✓ Good |
+| StorageClass named `local-path` (not `standard`) | Avoids collision with legacy `installstorage` StorageClass | ✓ Good |
+| busybox pinned to 1.37.0 with IfNotPresent | PVC operations work in air-gap where `busybox:latest` can't pull | ✓ Good |
+| CVE threshold v0.0.34 returns ok | v0.0.34 is the fix version; only strictly less-than warns | ✓ Good |
+| `validateExtraMounts` runs between Validate and Provision | Clean rollback-free failure before any container is created | ✓ Good |
+| `mountPathConfigurable` interface (unexported) | Doctor package owns wiring; cmd layer only sees exported SetMountPaths | ✓ Good |
+| `providerBinaryName` reads KIND_EXPERIMENTAL_PROVIDER | `provider.Name()` always returns "nerdctl" — env var distinguishes finch/nerdctl.lima | ✓ Good |
+| `LoadImageArchiveWithFallback` factory pattern | Tar streams cannot be rewound; factory yields fresh reader per attempt | ✓ Good |
+| `stderrors` alias for stdlib errors.As | Avoids conflict with `sigs.k8s.io/kind/pkg/errors` import | ✓ Good |
+| Container-exec kubectl for CVE version probe | Same pattern as realListNodes; avoids pkg/cluster/internal import cycle | ✓ Good |
+| Zero new Go module dependencies in v2.2 | All five features use packages already in go.mod | ✓ Good |
+
 ---
-*Last updated: 2026-04-08 after v2.2 milestone start*
+*Last updated: 2026-04-10 after v2.2 milestone completion*

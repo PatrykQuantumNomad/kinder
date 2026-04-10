@@ -1,5 +1,34 @@
 # Project Milestones: Kinder
 
+## v2.2 Cluster Capabilities (Shipped: 2026-04-10)
+
+**Delivered:** Added four cluster capabilities to kinder — multi-version per-node Kubernetes validation, offline/air-gapped cluster creation, local-path-provisioner dynamic storage, host-directory mounting pre-flight — plus a provider-abstracted `kinder load images` subcommand that ties the offline and multi-version workflows together. All features integrate using packages already in `go.mod` with zero new dependencies.
+
+**Phases completed:** 42-46 (14 plans total)
+
+**Key accomplishments:**
+- Multi-version node validation: ExplicitImage sentinel fixes `--image` flag override bug, config-time version-skew validator rejects HA CP minor mismatches and workers >3 minor behind the control-plane with table-format error output, `cluster-node-skew` doctor check and VERSION/IMAGE/SKEW columns on `kinder get nodes`
+- Air-gapped cluster creation: `--air-gapped` flag plumbed through config + ClusterOptions, 7 addon packages export `var Images []string`, `RequiredAddonImages`/`RequiredAllImages` utilities in `providers/common`, fast-fail accumulate-all-missing path in docker/podman/nerdctl providers, addon image pre-pull warning in create flow, `offline-readiness` doctor check with tabwriter missing-image table, two-mode offline workflow documented
+- Local-path-provisioner addon: `LocalPath *bool` wired through 5-location config pipeline (opt-out, default on), new `installlocalpath` action package with embedded v0.0.35 manifest patched to `busybox:1.37.0`/`IfNotPresent`, StorageClass renamed `local-path`, `installstorage` gated out when enabled, wave1 registration, CVE-2025-62878 (`local-path-cve`) doctor check against v0.0.34 fix version
+- Host-directory mounting: `validateExtraMounts` pre-flight host-path existence check runs before any container is created, `logMountPropagationPlatformWarning` on Docker Desktop for non-None propagation, `host-mount-path` and `docker-desktop-file-sharing` (macOS) doctor checks with `--config` flag wiring via `mountPathConfigurable` interface, two-hop host-to-pod mount guide on the website
+- `kinder load images` subcommand: provider-abstracted `save()`/`imageID()` using `providerBinaryName()` (reads `KIND_EXPERIMENTAL_PROVIDER` for finch/nerdctl.lima variants), `LoadImageArchiveWithFallback` in nodeutils with factory-pattern reader and `isContentDigestError` detection for Docker Desktop 27+ containerd image store two-attempt `ctr import` fallback, smart-load skip (re-tag in place when image ID matches), registered as third `load` subcommand
+- Doctor registry expanded from 18 to 23 checks (added cluster-node-skew, offline-readiness, local-path-cve, host-mount-path, docker-desktop-file-sharing)
+
+**Stats:**
+- 61 code files created/modified (+5,439 / -209 lines)
+  - pkg/ Go: 52 files, +4,426 / -24
+  - kinder-site/ site: 8 files, +1,013 / -10
+- 38,751 total Go LOC in pkg/ (up from 35,636 at v2.1 ship)
+- 5 phases, 14 plans, 25 requirements (all satisfied)
+- 31 feat/fix/test commits (61 total commits including docs)
+- ~2.5 days (2026-04-08 → 2026-04-10)
+
+**Git range:** `test(42-01)` → `docs(phase-46)`
+
+**What's next:** TBD
+
+---
+
 ## v2.1 Known Issues & Proactive Diagnostics (Shipped: 2026-03-06)
 
 **Delivered:** Expanded `kinder doctor` from 3 to 18 diagnostic checks across 8 categories, wired automatic mitigations into cluster creation, and documented all checks on the website's Known Issues page.

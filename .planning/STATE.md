@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: Cluster Capabilities
-status: completed
-stopped_at: Completed 46-02-PLAN.md
-last_updated: "2026-04-10T00:00:00.000Z"
-last_activity: 2026-04-10 — Phase 46 human-approved, milestone v2.2 complete (14/14 plans, 5/5 phases)
+milestone: null
+milestone_name: null
+status: milestone_complete
+stopped_at: v2.2 milestone archived
+last_updated: "2026-04-10T12:00:00.000Z"
+last_activity: 2026-04-10 — v2.2 Cluster Capabilities milestone shipped and archived
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-08)
+See: .planning/PROJECT.md (updated 2026-04-10 after v2.2 milestone)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.2 Cluster Capabilities — COMPLETE (milestone ready to archive)
+**Current focus:** Planning next milestone — run `/gsd:new-milestone` to define scope
 
 ## Current Position
 
-Phase: 46 of 46 (kinder load images Command) — VERIFIED & APPROVED
-Plan: 2/2 complete
-Status: Human verification approved — milestone v2.2 ready for `/gsd:complete-milestone`
-Last activity: 2026-04-10 — Phase 46 human-approved (stale binary rebuilt, --name flag confirmed working)
+Phase: None — milestone v2.2 complete
+Plan: None
+Status: Ready to plan next milestone
+Last activity: 2026-04-10 — v2.2 Cluster Capabilities shipped (14/14 plans, 5 phases, 25 requirements)
 
-Progress: [██████████] 100%
+Progress: Awaiting next milestone scope
 
 ## Performance Metrics
 
@@ -44,6 +44,7 @@ Progress: [██████████] 100%
 - v1.5: 7 plans, 5 phases, 1 day
 - v2.0: 7 plans, 3 phases, 2 days
 - v2.1: 10 plans, 4 phases, 1 day
+- v2.2: 14 plans, 5 phases, ~2.5 days
 
 **By Phase:** Not started
 
@@ -53,49 +54,7 @@ Progress: [██████████] 100%
 
 ### Decisions
 
-- v1.0-v2.1: See PROJECT.md Key Decisions table
-- v2.2 planning: Zero new Go module dependencies — all features use packages already in go.mod
-- v2.2 planning: Phase 43 must be stable before Phase 44 (air-gap image warning lists local-path images)
-- v2.2 planning: Phase 43 is a dependency of Phase 46 (load images supports the offline workflow)
-- v2.2 planning: Phases 43 and 46 flagged for `/gsd-research-phase` during planning (Provider interface change, Docker Desktop 27+ fallback)
-- [Phase 42]: Non-semver image tags (e.g. 'latest') skip version-skew validation to preserve backward compat with test/dev configs
-- [Phase 42]: ExplicitImage captured pre-defaults in encoding/convert.go — SetDefaultsCluster fills empty Image fields before Convertv1alpha4 runs, making post-defaults detection impossible
-- [Phase 42 plan 02]: ComputeSkew always shows cross+delta for any non-zero difference; ok=false only when >3 behind or any ahead of CP
-- [Phase 42 plan 02]: nodeEntry.VersionErr field enables test injection of read-failures without real container runtime
-- [Phase 42]: IMAGE column populated via container inspect CLI (avoids import cycle with cluster package); doctor check realListNodes uses same low-level CLI approach
-- [Phase 43]: RequiredAddonImages imports addon packages into common/images.go; no import cycle since addon packages do not import common
-- [Phase 43]: localregistry Images var references existing private registryImage const rather than duplicating the literal string
-- [Phase 43]: inspectImageFunc package-level var in docker provider enables test injection without requiring a real Docker daemon
-- [Phase 43]: nerdctl formatMissingImagesError takes binaryName parameter for runtime-specific pre-load instructions
-- [Phase 43]: Addon image warning uses addonImages.Len() > 0 guard to avoid empty NOTE when no addons enabled
-- [Phase 43]: Image list defined inline in offlinereadiness.go — no import from pkg/cluster/internal to avoid import cycle
-- [Phase 43]: offlineReadinessCheck skips gracefully when no container runtime found (lookPath detection before inspect)
-- [Phase 44-01]: LocalPath uses boolVal (opt-out, default true) not boolValOptIn — consistent with MetalLB/CertManager pattern
-- [Phase 44-01]: StorageClass named local-path (not standard) to avoid collision with legacy installstorage
-- [Phase 44-01]: installstorage gated behind !LocalPath in sequential pipeline (before kubeadmjoin)
-- [Phase 44-01]: Images var uses docker.io/ prefix for both images (docker.io/rancher/local-path-provisioner:v0.0.35, docker.io/library/busybox:1.37.0)
-- [Phase 44-02]: offlinereadiness entries use docker.io/ prefix matching the Images var declaration in localpathprovisioner.go
-- [Phase 44-02]: AllChecks count tests updated to 21 — feat(44-03) ran out of order adding local-path-cve check before plan 44-02 tests were written
-- [Phase 44-03]: CVE threshold v0.0.34 returns ok (it is the fix version); only strictly less-than triggers warn
-- [Phase 44-03]: realGetProvisionerVersion uses container exec kubectl inside kind control-plane — avoids import cycle with pkg/cluster/internal same as realListNodes in clusterskew.go
-- [Phase 45-01]: validateExtraMounts called after Config.Validate() and before Provision() — host paths verified before any container is created
-- [Phase 45-01]: logMountPropagationPlatformWarning warns once (return after first non-None match) — mirrors logMetalLBPlatformWarning pattern
-- [Phase 45-01]: Relative paths resolved via filepath.Abs before os.Stat — avoids false negatives for CWD-relative paths
-- [Phase 45-01]: Test file reuses existing testLogger from create_addon_test.go (same package) — avoids duplicate type declarations
-- [Phase 45]: isPathCovered uses dir+/ separator to prevent prefix false positives (/Userspace vs /Users)
-- [Phase 45]: dockerDesktopFileSharingCheck falls back to Docker Desktop default dirs when settings-store.json absent
-- [Phase 45-03]: Guide uses absolute hostPath in YAML example (not tilde) because kind config does not perform shell expansion
-- [Phase 45-04]: mountPathConfigurable interface is unexported (internal to doctor package); SetMountPaths is exported for cmd layer
-- [Phase 45-04]: extractMountPaths deduplicates by seen map to handle multi-node configs with shared host paths
-- [Phase 45-04]: SetMountPaths(nil) restores skip behavior for backward compatibility without --config flag
-- [Phase 45-04]: encoding.Load already handles empty path (returns default cluster); doctor skips SetMountPaths when Config is empty string
-- [Phase 46-01]: stderrors alias (stdlib "errors") avoids conflict with sigs.k8s.io/kind/pkg/errors import
-- [Phase 46-01]: openArchive factory pattern required because tar stream is consumed on read and cannot be rewound
-- [Phase 46-01]: isContentDigestError checks RunError.Output before falling back to err.Error() string
-- [Phase 46-01]: LoadImageArchive unchanged to preserve existing public API for image-archive command
-- [Phase 46]: providerBinaryName reads KIND_EXPERIMENTAL_PROVIDER directly for nerdctl variants since provider.Name() always returns nerdctl
-- [Phase 46]: loadImage uses LoadImageArchiveWithFallback with os.Open factory closure — factory called twice for 2-attempt fallback
-- [Phase 46]: save() and imageID() take binaryName parameter — enables docker/podman/finch/nerdctl.lima without hardcoding
+- v1.0-v2.2: See PROJECT.md Key Decisions table (full log including all v2.2 decisions moved there at milestone completion)
 
 ### Pending Todos
 
@@ -107,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-10T00:00:00.000Z
-Stopped at: Phase 46 verified & approved — milestone v2.2 complete
+Last session: 2026-04-10T12:00:00.000Z
+Stopped at: v2.2 milestone archived — ready for `/gsd:new-milestone`
 Resume file: None
