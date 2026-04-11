@@ -242,6 +242,49 @@ Hello from v2!
 
 The rolling update replaced the old pod with one running the new image, with zero downtime.
 
+## Alternative: skip the registry and use `kinder load images`
+
+If you don't want to run a registry at all — or you're working in an air-gapped environment — kinder ships a `kinder load images` subcommand that bypasses the registry entirely. Instead of pushing to `localhost:5001`, you build the image locally and stream it directly into every node in the cluster.
+
+Create the cluster with the local registry disabled if you prefer a leaner footprint:
+
+```yaml
+# cluster.yaml
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+addons:
+  localRegistry: false
+```
+
+```sh
+kinder create cluster --config cluster.yaml
+```
+
+Then the iteration loop becomes:
+
+```sh
+docker build -t myapp:dev .
+kinder load images myapp:dev
+kubectl rollout restart deployment/myapp
+```
+
+Set `imagePullPolicy: IfNotPresent` on your deployment so Kubernetes uses the image already loaded into the node instead of trying to pull it from a remote registry:
+
+```yaml
+containers:
+  - name: myapp
+    image: myapp:dev
+    imagePullPolicy: IfNotPresent
+```
+
+:::tip[When to use each approach]
+**Local Registry (`localhost:5001`)** — best for teams sharing a cluster, multiple images, or when you want a long-running registry you can push to from anywhere.
+
+**`kinder load images`** — best for single-developer dev loops, air-gapped environments, or when you prefer a registry-free footprint. Smart-load skips re-import if the image is already present on all nodes, and the command works identically with docker, podman, nerdctl, finch, and nerdctl.lima.
+:::
+
+`kinder load images` also handles Docker Desktop 27+ containerd image store compatibility automatically via a two-attempt `ctr import` fallback. See the [Load Images CLI reference](/cli-reference/load-images/) for details on flags, provider behavior, and smart-load semantics.
+
 ## Clean up
 
 ```sh

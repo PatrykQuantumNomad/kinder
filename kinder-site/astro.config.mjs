@@ -66,6 +66,8 @@ export default defineConfig({
             { slug: 'addons/headlamp' },
             { slug: 'addons/local-registry' },
             { slug: 'addons/cert-manager' },
+            { slug: 'addons/local-path-provisioner' },
+            { slug: 'addons/nvidia-gpu' },
           ],
         },
         {
@@ -75,6 +77,10 @@ export default defineConfig({
             { slug: 'guides/tls-web-app' },
             { slug: 'guides/hpa-auto-scaling' },
             { slug: 'guides/local-dev-workflow' },
+            { slug: 'guides/dynamic-storage' },
+            { slug: 'guides/host-directory-mounting' },
+            { slug: 'guides/multi-version-clusters' },
+            { slug: 'guides/working-offline' },
           ],
         },
         {
@@ -84,6 +90,7 @@ export default defineConfig({
             { slug: 'cli-reference/profile-comparison' },
             { slug: 'cli-reference/json-output' },
             { slug: 'cli-reference/troubleshooting' },
+            { slug: 'cli-reference/load-images' },
           ],
         },
         { slug: 'known-issues' },
