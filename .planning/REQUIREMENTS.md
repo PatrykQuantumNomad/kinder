@@ -86,33 +86,33 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIFE-01 | TBD | Pending |
-| LIFE-02 | TBD | Pending |
-| LIFE-03 | TBD | Pending |
-| LIFE-04 | TBD | Pending |
-| LIFE-05 | TBD | Pending |
-| LIFE-06 | TBD | Pending |
-| LIFE-07 | TBD | Pending |
-| LIFE-08 | TBD | Pending |
-| DEV-01 | TBD | Pending |
-| DEV-02 | TBD | Pending |
-| DEV-03 | TBD | Pending |
-| DEV-04 | TBD | Pending |
-| DEV-05 | TBD | Pending |
-| DIAG-01 | TBD | Pending |
-| DIAG-02 | TBD | Pending |
-| DIAG-03 | TBD | Pending |
-| DIAG-04 | TBD | Pending |
-| SYNC-01 | TBD | Pending |
-| SYNC-02 | TBD | Pending |
-| SYNC-03 | TBD | Pending |
-| SYNC-04 | TBD | Pending |
+| LIFE-01 | 47 | Pending |
+| LIFE-02 | 47 | Pending |
+| LIFE-03 | 47 | Pending |
+| LIFE-04 | 47 | Pending |
+| LIFE-05 | 48 | Pending |
+| LIFE-06 | 48 | Pending |
+| LIFE-07 | 48 | Pending |
+| LIFE-08 | 48 | Pending |
+| DEV-01 | 49 | Pending |
+| DEV-02 | 49 | Pending |
+| DEV-03 | 49 | Pending |
+| DEV-04 | 49 | Pending |
+| DEV-05 | 49 | Pending |
+| DIAG-01 | 50 | Pending |
+| DIAG-02 | 50 | Pending |
+| DIAG-03 | 50 | Pending |
+| DIAG-04 | 50 | Pending |
+| SYNC-01 | 51 | Pending |
+| SYNC-02 | 51 | Pending |
+| SYNC-03 | 51 | Pending |
+| SYNC-04 | 51 | Pending |
 
 **Coverage:**
 - v2.3 requirements: 21 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-03*
-*Last updated: 2026-05-03 after initial definition*
+*Last updated: 2026-05-03 — traceability mapped by gsd-roadmapper (phases 47-51)*

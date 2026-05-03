@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: defining_requirements
-stopped_at: requirements gathering
+status: ready_to_plan
+stopped_at: roadmap created, ready to plan Phase 47
 last_updated: "2026-05-03T00:00:00.000Z"
-last_activity: 2026-05-03 — Milestone v2.3 Inner Loop started; research synthesized
+last_activity: 2026-05-03 — Milestone v2.3 roadmap created (phases 47-51, 21 requirements)
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — defining requirements
+**Current focus:** v2.3 Inner Loop — Phase 47: Cluster Pause/Resume
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-03 — Milestone v2.3 Inner Loop started; discovery research synthesized into `.planning/research/SUMMARY.md`
+Phase: 47 of 51 (Cluster Pause/Resume)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-05-03 — Milestone v2.3 roadmap created; 5 phases (47-51), 21 requirements mapped
 
 Progress: ░░░░░░░░░░ 0%
 
@@ -55,7 +55,8 @@ Progress: ░░░░░░░░░░ 0%
 ### Decisions
 
 - v1.0–v2.2: See PROJECT.md Key Decisions table (full log moved there at v2.2 milestone completion)
-- 2026-05-03: v2.3 theme chosen as "Inner Loop" over "Modernize & Polish" or "Observability + AI" — strongest user-value-per-day signal; defers pure tech debt and pure differentiator features to v2.4
+- 2026-05-03: v2.3 theme chosen as "Inner Loop" — strongest user-value-per-day signal; defers pure tech debt and pure differentiator features to v2.4
+- 2026-05-03: Phase 49 (kinder dev) may introduce `github.com/fsnotify/fsnotify` as first new module dep since v2.0; poll-based stdlib alternative acceptable to keep zero-dep streak
 
 ### Pending Todos
 
@@ -68,5 +69,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-05-03T00:00:00.000Z
-Stopped at: Defining requirements for v2.3
+Stopped at: Roadmap created for v2.3 Inner Loop (phases 47-51)
 Resume file: None
