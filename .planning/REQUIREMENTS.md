@@ -10,7 +10,7 @@ Requirements for the Inner Loop milestone. Each maps to exactly one phase.
 
 ### LIFE — Cluster Lifecycle
 
-- [ ] **LIFE-01**: User can pause a running cluster via `kinder pause [name]`, freeing CPU/RAM without losing state
+- [x] **LIFE-01**: User can pause a running cluster via `kinder pause [name]`, freeing CPU/RAM without losing state
 - [ ] **LIFE-02**: User can resume a paused cluster via `kinder resume [name]`; pods, PVs, and node state are preserved
 - [ ] **LIFE-03**: Pause-resume orchestrates control-plane and worker stop/start in correct order to preserve etcd quorum on HA clusters
 - [ ] **LIFE-04**: Doctor pre-flight check `cluster-resume-readiness` runs before resume on HA clusters and warns if etcd quorum is at risk
@@ -86,9 +86,9 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIFE-01 | 47 | Pending |
+| LIFE-01 | 47 | Complete (47-02) |
 | LIFE-02 | 47 | Pending |
-| LIFE-03 | 47 | Pending |
+| LIFE-03 | 47 | In progress (47-02 pause-side complete; resume-side pending 47-03) |
 | LIFE-04 | 47 | Pending |
 | LIFE-05 | 48 | Pending |
 | LIFE-06 | 48 | Pending |

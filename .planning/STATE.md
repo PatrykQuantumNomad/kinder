@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
-stopped_at: Phase 47 plan 01 complete; ready to execute plan 47-02 (kinder pause body)
-last_updated: "2026-05-03T19:50:00.000Z"
-last_activity: 2026-05-03 — Phase 47 plan 01 complete (cluster status visibility surface + lifecycle helpers + pause/resume stubs)
+stopped_at: Phase 47 plan 02 complete; ready to execute plan 47-03 (kinder resume body)
+last_updated: "2026-05-03T19:56:23.000Z"
+last_activity: 2026-05-03 — Phase 47 plan 02 complete (kinder pause body wired with quorum-safe ordering, HA snapshot, idempotent no-op, JSON output)
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 21
-  completed_plans: 1
-  percent: 5
+  completed_plans: 2
+  percent: 10
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 ## Current Position
 
 Phase: 47 of 51 (Cluster Pause/Resume)
-Plan: 02 of 04 (next: kinder pause body)
+Plan: 03 of 04 (next: kinder resume body)
 Status: In progress
-Last activity: 2026-05-03 — Plan 47-01 shipped: lifecycle helpers, kinder status command, get clusters Status column (JSON schema migrated), real container state on get nodes, pause/resume stubs registered in root.go
+Last activity: 2026-05-03 — Plan 47-02 shipped: kinder pause body with workers→CP→LB stop ordering, best-effort per-node failures, idempotent no-op when already paused, HA-only /kind/pause-snapshot.json (etcd leader id + UTC timestamp) for plan 04 readiness, --timeout int and --json bool flags
 
-Progress: █░░░░░░░░░ 5% (1 of 21 plans)
+Progress: ██░░░░░░░░ 10% (2 of 21 plans)
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: █░░░░░░░░░ 5% (1 of 21 plans)
 | Phase | Plan | Duration | Tasks | Files | Notes                                                                                                       |
 | ----- | ---- | -------- | ----- | ----- | ----------------------------------------------------------------------------------------------------------- |
 | 47    | 01   | ~4h      | 3     | 11    | TDD cycles for tasks 1+2 (RED→GREEN); 2 auto-fix deviations (lifecycle path move, dead nodeLister cleanup). |
+| 47    | 02   | ~7m      | 2     | 4     | TDD RED→GREEN for both tasks; 1 deviation (parallel-wave conflict with 47-03 — resume_test.go/resume.go redeclared shared symbols, parked aside during test runs). |
 
 *Updated after each plan completion*
 
@@ -64,6 +65,9 @@ Progress: █░░░░░░░░░ 5% (1 of 21 plans)
 - 2026-05-03 (47-01): Shared lifecycle helpers package located at `pkg/internal/lifecycle/` (not `pkg/cluster/internal/lifecycle/` as the plan specified) — Go's internal-package rule blocks `pkg/cmd/kind/...` consumers from `pkg/cluster/internal/`. Plans 47-02/03/04 must update their `files_modified` lists accordingly.
 - 2026-05-03 (47-01): JSON schema for `kinder get clusters --output json` migrated from `[]string` to `[]{name,status}` — intentional breaking change accepted per CONTEXT.md.
 - 2026-05-03 (47-01): Pause/resume command stubs return `errors.New("not yet implemented")` (non-zero exit) rather than success — clearer signal in dev/CI than a silent stub.
+- 2026-05-03 (47-02): `lifecycle.PauseResult` / `lifecycle.NodeResult` struct json: tags ARE the `--json` wire schema — Go API and CLI contract share a single source of truth.
+- 2026-05-03 (47-02): Snapshot capture for HA pause is best-effort — failures log a warning and write `{leaderID:"", pauseTime:...}` rather than aborting the pause. Plan 47-04 readiness check MUST tolerate empty `leaderID`.
+- 2026-05-03 (47-02): Plans 47-02 and 47-03 share the lifecycle package and were scheduled in parallel — 47-03's untracked `resume.go` redeclared `nodeFetcher` and `NodeResult` from my pause.go. Worked around with filesystem park-aside (no commits, no modifications). 47-03 needs to rebase onto `c7952992` and reuse `lifecycle.NodeResult` instead of redeclaring it.
 
 ### Pending Todos
 
@@ -71,10 +75,10 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- 2026-05-03: **Parallel-wave coordination gap** — Plans 47-02 and 47-03 share `pkg/internal/lifecycle/` package and were both scheduled in wave 2 in the same working tree. The 47-03 agent declared `nodeFetcher` and `NodeResult` independently. Plan 47-02 committed first (`ac8c1a16`) so 47-03 must rebase onto these commits and either reuse or rename to avoid duplicate declarations. Suggest the orchestrator either (a) sequence shared-package plans serially, or (b) provide an explicit shared-symbols contract in the wave manifest.
 
 ## Session Continuity
 
-Last session: 2026-05-03T19:50:00.000Z
-Stopped at: Phase 47 plan 01 complete; ready to execute plan 47-02 (kinder pause body)
-Resume file: .planning/phases/47-cluster-pause-resume/47-02-PLAN.md
+Last session: 2026-05-03T19:56:23.000Z
+Stopped at: Phase 47 plan 02 complete; ready to execute plan 47-03 (kinder resume body)
+Resume file: .planning/phases/47-cluster-pause-resume/47-03-PLAN.md
