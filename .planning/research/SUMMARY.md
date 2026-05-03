@@ -1,220 +1,156 @@
-# Project Research Summary
+# Research Summary: v2.3 Inner Loop
 
-**Project:** kinder — v2.2 Cluster Capabilities (offline clusters, local-path-provisioner, host-dir mounts, multi-version nodes)
-**Domain:** Kubernetes local development tooling — kind fork with extended cluster management capabilities
-**Researched:** 2026-04-08
-**Confidence:** HIGH — all four features grounded in direct codebase analysis plus official kind, Kubernetes, and Rancher documentation
+**Project:** kinder — v2.3 Inner Loop (cluster lifecycle, snapshot/restore, hot reload, runtime diagnostics, upstream sync)
+**Researched:** 2026-05-03
+**Discovery method:** Two parallel research streams — ecosystem feature-gap analysis (competitor matrix, kind issue tracker, HN/Reddit pain points) and upstream/addon update audit (kind main branch, K8s 1.35-1.36 release notes, addon changelogs).
+**Overall confidence:** HIGH for ecosystem signals (sourced from issue reactions, recent release notes, comparable tools), HIGH for upstream sync data (verified against kind PRs, K8s release blogs, addon GitHub releases).
 
-## Executive Summary
+## TL;DR
 
-Kinder v2.2 adds four cluster capabilities to an existing kind fork: offline/air-gapped cluster creation, local-path-provisioner dynamic storage, host-to-pod directory mounting, and multi-version per-node Kubernetes. The central research finding is that **zero new Go module dependencies are required** — every feature integrates using packages already present in the codebase. The data models for three of the four features are already partially or fully implemented in the type system; the work is validation logic, new actions, targeted bug fixes, and documentation rather than greenfield infrastructure.
+Kinder v2.2 made cluster *creation* powerful (multi-version, air-gap, host-mount, image-load). v2.3 makes daily *iteration* fast: pause/resume to reclaim laptop resources, snapshot/restore to reset cluster state in seconds, `kinder dev` for inner-loop hot reload, and runtime error decoding that extends v2.1's doctor framework. A deliberate sync phase keeps kinder current with kind upstream's HAProxy→Envoy LB transition and K8s 1.36's default-image bump (avoiding silent IPVS-removal breakage).
 
-The recommended build order prioritizes low-risk, isolated changes first. Multi-version node validation is the least risky starting point (a single new function in `validate.go`). Local-path-provisioner and host-directory mounting are medium-complexity but well-contained within the established addon action pattern. Offline/air-gapped is the most complex feature — it touches all three container runtime providers, requires auditing every addon manifest for image pull policies, and demands a clearly designed two-mode loading workflow (pre-create bake vs. post-create load) — and should be treated as a focused sub-milestone rather than bundled with the other three.
-
-The dominant risk across all four features is the interaction surface between them: offline mode amplifies every image-dependency, the local-path-provisioner busybox helper creates a hidden two-image dependency for offline use, the `--image` flag has a confirmed bug that destroys per-node version configs, and two default StorageClasses will coexist silently if the `installstorage` gate is not wired correctly. Each pitfall has a clear, low-cost prevention strategy, but they must be addressed before rather than after integration testing.
+Every feature builds on existing kinder infrastructure (v2.0 GoReleaser/GPU, v2.1 doctor framework, v2.2 image-load + air-gap). **Zero new module dependencies expected** — fsnotify watching for `kinder dev` is the only new candidate dep, and stdlib `inotify`/`kqueue` wrappers exist if we want to keep the zero-dep streak.
 
 ---
 
-## Key Findings
+## Top Feature Candidates (selected for v2.3)
 
-### Recommended Stack
+### 1. `kinder pause` / `kinder resume` (LIFE category)
 
-No new dependencies are required. Every feature uses packages already in `go.mod`: `sigs.k8s.io/kind/pkg/exec` for shelling out to containerd/docker, `pkg/cluster/nodeutils` for `LoadImageArchive`, `pkg/internal/version` for semver parsing, `encoding/json` for docker inspect output, `_ "embed"` for the local-path-provisioner manifest (pattern already used in 7 addons), and the existing `cobra` command structure for new subcommands. The one rejected pattern that recurs is pulling in Go libraries for OCI operations — all image operations go through the Docker/containerd CLI, which is already the project's established pattern.
+**Pitch:** Stop all node containers without losing state; resume in seconds. Reclaims RAM/CPU on laptops without killing the cluster.
 
-**Core technologies (all pre-existing in go.mod):**
-- `sigs.k8s.io/kind/pkg/exec` — shell out to `docker save`, `ctr images import`, `docker commit` for offline image operations; same pattern as existing load commands
-- `sigs.k8s.io/kind/pkg/cluster/nodeutils.LoadImageArchive` — pre-existing bottleneck function for loading images into nodes; `kinder load images` is a thin wrapper
-- `sigs.k8s.io/kind/pkg/internal/version.ParseSemantic` + `LessThan` — version skew validation for multi-version nodes; no external semver library needed
-- `_ "embed"` (stdlib) — `//go:embed manifests/local-path-storage.yaml` for the local-path-provisioner manifest, identical to cert-manager and MetalLB patterns
-- `rancher/local-path-provisioner:v0.0.35` — latest upstream release (2026-03-10); includes fix for CVE-2025-62878 (CVSS 10.0 path traversal, fixed in v0.0.34); embed as YAML manifest, not as a Go dependency
+**Evidence:** kind issue [#2715](https://github.com/kubernetes-sigs/kind/issues/2715) — 75 reactions, 70 thumbs-up, third-most-reacted enhancement. Currently kind users do `docker stop` manually with no guarantee HA reboot doesn't break.
 
-**Critical manifest note:** Pin the embedded busybox helper to `busybox:1.37.0` and patch `imagePullPolicy: IfNotPresent` in the ConfigMap before embedding. The upstream manifest uses unpinned `busybox:latest` with `imagePullPolicy: Always` — the primary failure mode for offline storage provisioning.
+**Complexity:** LOW. `docker stop`/`start` orchestrated in correct order (control-plane first/last), kubelet/etcd validation post-resume.
 
-### Expected Features
+**Dependencies:** None new. Reuses `pkg/cluster/internal/providers/{docker,podman,nerdctl}/provider.go` for stop/start primitives. Optional: doctor pre-flight check for HA reboot risk (kind issue [#1689](https://github.com/kubernetes-sigs/kind/issues/1689)).
 
-**Must have (table stakes):**
-- `--air-gapped` flag on `kinder create cluster` that errors immediately on missing images instead of retrying pulls — without explicit opt-in there is no way to distinguish intentional offline from network failure
-- Per-node `image:` field in v1alpha4 config that is NOT overridden by the global `--image` flag — confirmed bug in `fixupOptions()` that destroys multi-version cluster configs today
-- Version-skew validation before provisioning — without it, invalid configurations surface as cryptic `kubeadm join` failures after node containers are already provisioned
-- `local-path` as the default StorageClass replacing the legacy non-dynamic `standard` StorageClass — dynamic PVC provisioning is the expected behavior for any stateful workload
-- `ExtraMounts` host-path existence validation pre-flight — missing host directory gives an obscure Docker container creation error rather than a clear kinder message
+**Risk:** HA cluster restart order; etcd quorum must form. Mitigation: explicit pre-flight check in v2.1 doctor framework.
 
-**Should have (differentiators):**
-- `kinder doctor` offline readiness check — lists which required images are missing before a multi-minute cluster create fails
-- `kinder doctor` CVE-2025-62878 check — warns if local-path-provisioner version in a running cluster is below v0.0.34
-- Platform warning when `propagation: HostToContainer` or `Bidirectional` is specified on macOS/Windows — silently broken on Docker Desktop; emit an explicit warning and default to `propagation: None`
-- `kinder get nodes` output extended with per-node K8s version column — makes multi-version cluster topology visible at a glance
-- `--node-image role=image` per-node CLI flag for ad-hoc multi-version without a config file
+**Synergy:** Doctor checks (v2.1) gate the resume; pairs with snapshot (#2) for "freeze a known-good state."
 
-**Defer to v2.3+:**
-- `kinder images pull/load` commands (enumerate and pull all addon images in one shot) — high value but scope-creep for v2.2; per-addon `kinder load docker-image` is sufficient for initial release
-- `--profile upgrade-test` preset — useful after core multi-version works and is stable
-- Offline profile preset (`--profile offline`) — depends on offline feature being complete and well-tested first
-- Auto-PV creation from `extraMounts.createPV` — the documentation-plus-doctor approach is sufficient for v2.2; auto-PV adds type system complexity for limited immediate gain
+### 2. `kinder snapshot` / `kinder restore` (LIFE category)
 
-**Anti-features (explicitly excluded):**
-- Bundling addon images into the kinder binary — binary would become multi-GB and break Homebrew distribution
-- Auto-detecting internet availability and switching modes silently — unreliable on VPNs/proxies and causes confusing silent behavior
-- Auto-rolling upgrades via multi-version clusters — out of scope; kubeadm covers this already
-- Allowing HA control-plane version skew > 1 minor version — kubeadm refuses it; kinder must validate and reject upfront
+**Pitch:** Snapshot a cluster's full state (etcd + loaded images + PV contents) to a named local archive; restore it in seconds when integration tests pollute state.
 
-### Architecture Approach
+**Evidence:** kind issue [#3508](https://github.com/kubernetes-sigs/kind/issues/3508) — open since Feb 2024 with no native solution. Reset-time is the dominant inner-loop cost for integration testers; v2.2's `kinder load images` cuts cold-start; snapshots cut warm-start to near zero.
 
-All four features follow the established config pipeline pattern: a 5-location change set (v1alpha4 types, defaults, deepcopy, internal types, conversion) followed by behavior gating in `create.go`. New addon actions live in dedicated packages under `pkg/cluster/internal/create/actions/` and use `//go:embed` for manifests plus `kubectl apply` via the control plane node's command runner — identical to MetalLB, Metrics Server, and cert-manager. The air-gapped feature is the architectural outlier: it introduces a `ProvisionOptions` struct on the `Provider` interface to carry a runtime-only flag without polluting the serialized cluster config YAML (same precedent as `--retain`, `--wait`).
+**Complexity:** MEDIUM. etcd `etcdctl snapshot save/restore` is well-documented (kubeadm uses it). Need to capture loaded images + local-path-provisioner PV contents.
 
-**Major components and integration points:**
-1. **`pkg/cluster/internal/providers/*/images.go` (3 files)** — air-gapped gate added to `ensureNodeImages()`; changes from retry-pull to fail-fast-with-clear-error when `AirGapped=true`; uses new `ProvisionOptions` struct on `provider.go` interface
-2. **`pkg/cluster/internal/create/actions/installlocalpath/`** (new package) — local-path-provisioner addon action following `installmetricsserver` template exactly; `//go:embed manifests/local-path-storage.yaml` with patched `imagePullPolicy: IfNotPresent` and pinned busybox
-3. **`pkg/cluster/internal/create/create.go`** — `installstorage` gated out when `LocalPath=true`; `installlocalpath` added to wave1; `AirGapped` flag threaded to provider via `ProvisionOptions`; `installhostmounts` added to sequential pipeline after `waitforready` (deferred to v2.3 if auto-PV is out of scope)
-4. **`pkg/internal/apis/config/validate.go`** — new `validateNodeVersionSkew()` function; parses Kubernetes version from node image tags; validates all control-plane nodes at same version; workers within 3-minor-version skew of control-plane
-5. **`fixupOptions()` in `create.go`** — targeted one-line bug fix: only override `node.Image` when the field is empty, preserving explicit per-node image specifications when `--image` flag is set globally
+**Dependencies:** Uses existing local-path-provisioner addon (v2.2), existing etcd in node containers. Zero new Go module deps.
 
-**5-location config pipeline checklist (required for every new config field):**
-Every new field must atomically touch: `v1alpha4/types.go` → `v1alpha4/default.go` → `v1alpha4/zz_generated.deepcopy.go` → `internal/apis/config/types.go` → `internal/apis/config/convert_v1alpha4.go`. Partial state is a runtime bug. The `Addons.LocalPath *bool` field is the only new config field in v2.2 scope (auto-PV `Mount.CreatePV` deferred to v2.3).
+**Risk:** Snapshot becomes stale across kube versions — must enforce version-matching on restore. Disk usage — gate behind `kinder snapshot prune` and quota warnings.
 
-### Critical Pitfalls
+**Synergy:** Compounds v2.2's image-loading and air-gap story — a snapshot can include the offline image bundle, making "offline reproducible cluster fixtures" a kinder superpower.
 
-1. **busybox helper image not pre-loaded breaks all PVC operations in offline clusters** — the local-path-provisioner uses a busybox helper pod at PVC create/delete time; the upstream manifest uses `imagePullPolicy: Always` for `busybox:latest`. The provisioner pod shows `Running` but PVCs never bind. Patch the embedded manifest to `IfNotPresent` and pin to `busybox:1.37.0` before the `go:embed`. This must happen in the manifest file; it cannot be patched at runtime.
+### 3. `kinder dev` — inner-loop hot reload (DEV category)
 
-2. **`ctr images import --all-platforms` fails on Docker Desktop 27+ with the containerd image store enabled** — Docker Desktop 27+ exports multi-platform manifests with attestation layers; `ctr import` rejects them with `content digest: not found`. Implement a fallback: attempt `--local` mode (containerd 2.x) or drop `--all-platforms` in favour of the current host platform only. Do not ship `kinder load images` without this fallback tested against Docker Desktop 27+.
+**Pitch:** Watch a directory, build an image, import via existing `kinder load images`, and roll the target Deployment — Tilt/Skaffold ergonomics with zero YAML/DSL.
 
-3. **Two default StorageClasses if `installstorage` is not gated out** — `installstorage` installs `standard` (annotated as default) unconditionally. `local-path-provisioner` also installs a default-annotated StorageClass. On Kubernetes 1.26+ the admission webhook blocks the second default; on older versions both exist and PVC binding is non-deterministic. Fix: add a conditional in `create.go` that skips `installstorage` when `LocalPath=true`. Define this ownership model before writing the addon action.
+**Evidence:** Inner-loop tooling is the #1 friction area for K8s dev ([Northflank Tilt-alternatives](https://northflank.com/blog/tilt-alternatives), [DevSpace's "95% iteration-time reduction"](https://www.vcluster.com/blog/skaffold-vs-tilt-vs-devspace)). None of kind/k3d/minikube ship this. DevSpace/Skaffold/Tilt all require YAML/DSL setup; the kinder pitch is "single command, no config."
 
-4. **`--image` flag overrides per-node images, destroying multi-version configs** — `fixupOptions()` currently iterates all nodes and sets every node's image to the flag value. Fix: only override nodes where `node.Image == ""`. This is a one-line targeted fix but must land before any multi-version testing begins.
+**Complexity:** MEDIUM-HIGH. fsnotify watcher, debounced builds, image digest tracking, `kubectl rollout restart` shim.
 
-5. **Mount propagation silently broken on macOS/Windows** — Docker Desktop uses virtioFS/gRPC FUSE and cannot propagate kernel mount events across the VM boundary. `propagation: HostToContainer` and `Bidirectional` are silently dropped with no error. Default to `propagation: None`; emit an explicit platform warning (check `runtime.GOOS`) when a non-None propagation is requested on non-Linux hosts.
+**Dependencies:** Reuses `kinder load images` (v2.2). The fsnotify dep (`github.com/fsnotify/fsnotify`) is a candidate new dep — small, ubiquitous, MIT-licensed. Alternative: poll-based watcher in stdlib (lower fidelity).
 
----
+**Risk:** Easy to overscope into a Tilt clone. Keep deliberately minimal: single-deployment, single watch-dir, no Tiltfile DSL, no helm-chart awareness.
 
-## Implications for Roadmap
+**Synergy:** Makes v2.2's image-loading work pay rent on every code save, not just on cluster create. Differentiates kinder from kind hard.
 
-Based on research, the four features decompose into a five-phase build that respects dependencies, isolates risk, and addresses critical pitfalls at the correct layer.
+### 4. `kinder doctor decode` — runtime error decoder (DIAG category)
 
-### Phase 1: Multi-Version Node Validation
+**Pitch:** A built-in dictionary that maps cryptic Docker/kubeadm/kubelet/containerd errors to plain-English fixes, with `--auto-fix` for known-safe remediations. Wraps `docker logs` and `kubectl get events` into one curated stream.
 
-**Rationale:** Lowest code risk of any feature in this milestone. Isolated to a single new function in `validate.go` with no new files and no full config pipeline changes. Also fixes the confirmed `--image` flag override bug which is a prerequisite for any multi-version testing or accurate CI use. Delivers immediate, standalone value.
+**Evidence:** kind issue [#3795](https://github.com/kubernetes-sigs/kind/issues/3795) (containerd image loading) has 64 comments of users debugging the same handful of errors. v2.1 already has 23 doctor checks — extending to runtime/post-create errors is the obvious next step. Reddit 2026 pain point: "diagnosing Kubernetes is like drinking from an angry firehose."
 
-**Delivers:** Version-skew validation at config parse time with clear error messages instead of cryptic kubeadm join failures; `--image` flag bug fix preserving per-node image specifications; optional `kinder doctor` version-skew check; optional `kinder get nodes` K8s version column extension.
+**Complexity:** MEDIUM. Error-pattern catalog (regex → remediation), event watcher, formatter.
 
-**Addresses:** FEATURES.md table-stakes — per-node image support working correctly, version-skew validation, clear preflight error surface. FEATURES.md differentiators — `kinder doctor` skew check, extended node output.
+**Dependencies:** None new. Direct extension of v2.1 doctor framework.
 
-**Avoids:** Pitfall 9 (version skew surfaces at kubeadm join — caught at validation instead); Pitfall 6 (document KubeletConfiguration patch limitation for workers — upstream kubeadm design, not a kinder bug); Pitfall 7 (add warning for v1beta3/v1beta4 boundary if node versions span Kubernetes 1.31+).
+**Risk:** Catalog needs upkeep. Mitigation: source patterns from v2.1 checks, integration-test failures, and existing kind issue triage. Start narrow (top 10-15 patterns), expand based on user reports.
 
-**Research flag:** Standard patterns; skip `/gsd-research-phase`. Semver parsing uses `pkg/internal/version` already in use throughout the codebase; validation logic is straightforward.
+**Synergy:** Direct extension of v2.1 doctor framework; turns one-shot pre-flight into continuous diagnostics.
 
-### Phase 2: Air-Gapped Cluster Creation
+### 5. Upstream Sync — Envoy LB + K8s 1.36 default + IPVS warn (SYNC category)
 
-**Rationale:** Second because it touches the widest surface (all three provider implementations) and must be stable before local-path-provisioner references it for its offline image warning. The `ProvisionOptions` struct introduced here establishes the correct architecture for runtime-only provider flags.
+**Pitch:** Adopt kind's HAProxy→Envoy load-balancer transition, bump default node image to K8s 1.36 ("Haru"), reject `kubeProxyMode: ipvs` on 1.36+ (silent breakage otherwise), and ship a recipe for User Namespaces (GA in 1.36) + In-Place Pod Resize (GA in 1.36).
 
-**Delivers:** `--air-gapped` CLI flag on `kinder create cluster`; fail-fast behavior in all three providers when required images are absent; addon image warning output listing all images that need pre-loading before creation; `kinder doctor` offline readiness check; documented two-mode design (pre-create bake via privileged container commit vs. post-create load via `kinder load docker-image`).
+**Evidence:**
+- [kind PR #4127](https://github.com/kubernetes-sigs/kind/pull/4127) merged 2026-04-03 — replaces HAProxy with Envoy in providers + loadbalancer; +400/-276 lines well-isolated. Future kinder→kind syncs will conflict if not adopted.
+- [K8s 1.36 release blog](https://kubernetes.io/blog/2026/04/22/kubernetes-v1-36-release/) (2026-04-22): User Namespaces GA, In-Place Pod Resize GA, IPVS removed from kube-proxy, `gitRepo` volume removed.
+- [kind issue #4131](https://github.com/kubernetes-sigs/kind/issues/4131): K8s 1.35.0/1.35.1 ship with `MaxUnavailableStatefulSet` regression — fix in 1.35.4.
 
-**Addresses:** FEATURES.md table-stakes — explicit offline opt-in, clear error surfacing. FEATURES.md anti-features — no bundled images, no auto-detection.
+**Complexity:** LOW-MEDIUM. Envoy LB sync is a focused port of #4127. Image bump is hours; recipes a couple of days.
 
-**Avoids:** Pitfall 8 (addon manifests reference images not present — warn with full image list at creation time); Pitfall 5 (image pre-baking requires privileged container commit, not Dockerfile — design this decision explicitly before implementation); Integration Pitfall 1 (two-phase image dependency — document pre-create vs. post-create load modes before writing any code).
+**Dependencies:** None new. Drops `kindest/haproxy` image dependency.
 
-**Research flag:** Needs `/gsd-research-phase` during planning. The `Provider` interface change (`ProvisionOptions`) must be reviewed for backward compatibility with test infrastructure that mocks `Provider`. The two-mode image loading architectural decision must be documented and agreed before code is written.
+**Risk:** Envoy LB config differs subtly from HAProxy — must regression-test HA cluster create flow. K8s 1.36 may surface kubeadm v1beta3 deprecation warnings (not yet blocking; v1beta4 generator deferred to v2.4).
 
-### Phase 3: Local-Path-Provisioner Addon
-
-**Rationale:** Third because the air-gapped warning in phase 2 will include busybox and the provisioner image — making the interaction explicit before the addon is written. The addon itself follows a known pattern but the StorageClass ownership decision must be made upfront to avoid the collision pitfall.
-
-**Delivers:** `installlocalpath` addon action package; patched manifest with `imagePullPolicy: IfNotPresent` and pinned `busybox:1.37.0`; `installstorage` gate in `create.go` skipped when `LocalPath=true`; `local-path` as the default StorageClass; full 5-location config pipeline for `Addons.LocalPath *bool`; `kinder doctor` CVE-2025-62878 check; documentation of `/opt/local-path-provisioner` as reserved path and PV orphan behavior on cluster delete.
-
-**Addresses:** FEATURES.md table-stakes — dynamic PVC provisioning, `local-path` as default StorageClass, predictable node storage path, single and multi-node topology support. FEATURES.md differentiators — configurable base path via config, doctor CVE check.
-
-**Avoids:** Pitfall 1 (busybox helper image — patch before `go:embed`, not at runtime); Pitfall 3 (StorageClass collision — gate out `installstorage`, define ownership model first); Integration Pitfall 3 (document `/opt/local-path-provisioner` as reserved; validate user mounts do not shadow it).
-
-**Research flag:** Standard patterns; skip `/gsd-research-phase`. The addon action pattern is identical to existing addons. The StorageClass ownership model is answered by research: `local-path-provisioner` replaces `installstorage` when enabled.
-
-### Phase 4: Host-Directory Mounting
-
-**Rationale:** Fourth because the ExtraMounts type system already works end-to-end; the remaining work is pre-flight validation, doctor checks, platform warnings, and documentation. Benefits from local-path-provisioner being installed (phase 3) since the most powerful mounting pattern is: host dir → node extraMount → local-path-provisioner configurable `nodePath` as PV backing.
-
-**Delivers:** Pre-flight `hostPath` existence validation before node provisioning; platform warning for non-None propagation modes on macOS/Windows; two `kinder doctor` checks (path exists, Docker Desktop file sharing on macOS); documentation and example YAML for the two-hop mount pattern (host → node extraMount → pod hostPath PV).
-
-**Addresses:** FEATURES.md table-stakes — end-to-end ExtraMounts working with clear errors, two-layer pattern documented. FEATURES.md differentiators — doctor path/sharing checks, propagation mode guidance.
-
-**Avoids:** Pitfall 4 (propagation silent on macOS/Windows — platform warning via `runtime.GOOS` check + default to `propagation: None`); Pitfall 12 (missing host directory obscure error — pre-flight `os.Stat` validation with clear message).
-
-**Research flag:** Standard patterns; skip `/gsd-research-phase`. ExtraMounts infrastructure is complete; work is validation and documentation. Auto-PV (`CreatePV` field on `Mount`) is explicitly deferred to v2.3 to keep scope contained and avoid adding complexity to the `Mount` type in this milestone.
-
-### Phase 5: kinder load images Command
-
-**Rationale:** Last because it is the utility that supports offline and multi-version workflows. Building it last means the consumer features (offline in phase 2, local-path in phase 3) are stable and their image requirements are known. The multi-platform Docker Desktop containerd store pitfall is the hardest technical problem in this milestone and should not block the four primary features.
-
-**Delivers:** `kinder load images` subcommand; provider-abstracted image saving (no hardcoded `docker save`; uses `runtime.GetDefault()` provider); fallback import strategy for Docker Desktop 27+ containerd image store (`--local` flag or drop `--all-platforms`); documentation of expected load times for multi-node clusters.
-
-**Addresses:** FEATURES.md differentiators — `kinder images load` wrapping the per-image loop; supports offline workflow completion; supports multi-node cluster image pre-seeding.
-
-**Avoids:** Pitfall 2 (multi-platform ctr import failure on Docker Desktop 27+ — implement and test `--local` fallback before declaring complete); Pitfall 11 (slow load for multi-node — leverage existing smart-load that skips already-present images; document expected times); Pitfall 13 (hardcoded `docker save` breaking podman/nerdctl — use provider abstraction from the start).
-
-**Research flag:** Needs `/gsd-research-phase` during planning. The containerd 2.x `--local` flag availability and exact version requirements need verification against the Docker Desktop 27+ version matrix before implementation begins. The exact `getSnapshotter()` version-awareness strategy in `pkg/cluster/nodeutils/util.go` needs review for extension.
-
-### Phase Ordering Rationale
-
-- Phase 1 first: fixes a confirmed regression bug (`--image` override) and adds pure validation with zero risk of breaking existing clusters. The fix is a prerequisite for any multi-version testing in all later phases.
-- Phase 2 before phase 3: the air-gapped image warning list in `create.go` must enumerate addon images including those from local-path-provisioner. Writing that warning while the addon is being built in the same phase creates merge risk and ordering ambiguity.
-- Phase 3 before phase 4: the most powerful host-mounting use case (host dir as PV backing via configurable `nodePath`) depends on local-path-provisioner being installed and its storage path being settable.
-- Phase 5 last: it is a support utility; all consumer features work without it (using raw `kinder load docker-image` per image) and the Docker Desktop 27+ compatibility problem is the most uncertain technical challenge in the milestone.
-- Phases 3 and 4 could be merged if schedule pressure exists; their config pipeline changes touch different structs (`Addons` vs `Mount`) and have no code conflicts.
-
-### Research Flags
-
-Phases needing deeper research during planning:
-- **Phase 2 (Air-Gapped):** The `ProvisionOptions`/`Provider` interface change is a breaking change to the internal provider interface. Needs review of all three provider implementations and test infrastructure that mocks `Provider`. Also: the pre-create bake vs. post-create load architectural decision must be documented before any code is written.
-- **Phase 5 (kinder load images):** The Docker Desktop 27+ containerd image store compatibility problem (Pitfall 2) needs a test matrix. The exact `--local` flag availability in the installed containerd 2.x version must be verified before implementation.
-
-Phases with standard patterns (skip research-phase):
-- **Phase 1 (Multi-Version Validation):** `validate.go` pattern is established; `pkg/internal/version` semver utilities are documented and in active use.
-- **Phase 3 (Local-Path-Provisioner):** Addon action pattern is identical to `installmetricsserver`; 5-location config pipeline is documented and mechanical.
-- **Phase 4 (Host-Directory Mounting):** ExtraMounts infrastructure is complete; doctor check pattern is established. Only new work is validation logic and documentation.
+**Synergy:** Avoids accumulating drift; positions kinder for next year's K8s releases without forced migrations.
 
 ---
 
-## Confidence Assessment
+## Out of scope for v2.3 (explicitly deferred)
 
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | HIGH | Direct `go.mod` verification; confirmed zero new dependencies; all packages in active use in the codebase |
-| Features | HIGH | Verified against kind official docs, K8s version-skew policy, Rancher release notes; MEDIUM for offline UX tradeoffs (multiple sources but some community-only) |
-| Architecture | HIGH | Direct codebase analysis of all relevant files; config pipeline pattern confirmed across 5+ existing fields; provider pattern confirmed in all three providers |
-| Pitfalls | HIGH | Critical pitfalls 1-4 verified against kind issue tracker and official docs; MEDIUM for Pitfall 7 (v1beta4 removal timeline — single source, exact Kubernetes version TBD) |
+| Feature | Why deferred |
+|---|---|
+| `kinder fleet` multi-cluster | High value but vind/k3d coverage exists; doesn't fit "inner loop" theme |
+| `kinder observe` LGTM stack preset | Fits "Observability" theme (Option C); resource-heavy on dev laptops |
+| `kinder gpu ollama` | Fits "AI" theme (Option C); narrower audience than inner loop |
+| `kinder gitops` Argo/Flux preset | Niche; defer until requested by users |
+| `kinder runner` GitHub Actions | Niche; defer until requested by users |
+| Provider de-duplication refactor | Pure tech debt; v2.4 milestone candidate |
+| context.Context cancellation through Create | Pure tech debt; v2.4 milestone candidate |
+| kubeadm v1beta4 generator | Not yet blocking; v2.4 milestone candidate |
+| cert-manager v1.16.3 → v1.20.x | UID change requires audit; defer to v2.4 |
+| Envoy Gateway v1.3.1 → v1.7 | 4-major bump needs staged testing; defer to v2.4 |
+| Cluster pause for podman/nerdctl providers | Start with docker; expand based on demand |
 
-**Overall confidence:** HIGH
+## Anti-features (won't pursue)
 
-### Gaps to Address
+| Anti-feature | Reason |
+|---|---|
+| Cilium-by-default CNI swap | Kernel/Docker Desktop pain; blast radius too large; opt-in only |
+| Tiltfile-style DSL for `kinder dev` | Compete-with-Tilt = lose; stay imperative-CLI |
+| Velero bundle for backup/restore | Overkill for laptops; lightweight `kinder snapshot` covers actual dev pain |
+| Web UI for cluster management | Headlamp covers it; UX treadmill |
+| Apple Containerization runtime support | Unstable surface; revisit in 6-12 months |
 
-- **kubeadm v1beta3/v1beta4 removal timeline (Pitfall 7):** Research identifies that v1beta3 support will be removed "in Kubernetes 1.34 or later." The exact version is not confirmed. During Phase 1 planning, add a validation warning for node version combinations that include a node at Kubernetes 1.31+ but treat this as a soft warning rather than a hard error until the upstream removal version is confirmed.
-- **Docker Desktop 27+ containerd store `--local` flag availability:** Research confirms the failure mode (Pitfall 2) and proposes `--local` as the fix, but the exact flag name and the minimum containerd 2.x minor version that supports it need verification against a live Docker Desktop 27+ environment before Phase 5 implementation begins.
-- **`installstorage` StorageClass name assumption:** `installstorage` reads from `/kind/manifests/default-storage.yaml` inside the node image (falls back to a hardcoded StorageClass). If a custom node image ships a different StorageClass name, the gate logic in `create.go` may skip `installstorage` but leave a ghost StorageClass. During Phase 3, validate the StorageClass name against the current default node image before relying on it in the gate.
-- **busybox helper image location in local-path-provisioner manifest:** Research confirms the helper image is in the `local-path-config` ConfigMap's `config.json` key, not the Deployment spec. The pinned `busybox:1.37.0` substitution must be applied to the ConfigMap key. Verify the exact ConfigMap structure against the v0.0.35 manifest before writing the embedded manifest patch.
+---
+
+## Stack additions
+
+**No new module dependencies expected** for pause/resume, snapshot/restore, doctor decode, or upstream sync. Only candidate: `github.com/fsnotify/fsnotify` for `kinder dev` file watching — small, MIT, ubiquitous. Alternative: poll-based watcher in stdlib (acceptable trade-off if zero-dep is preserved).
+
+**Image dependencies dropped:** `kindest/haproxy:v20260131-7181c60a` (replaced by Envoy LB image already used elsewhere in kinder).
+
+**Image dependencies bumped:** `kindest/node:v1.35.x` → `kindest/node:v1.36.x` (default; older versions still selectable via `image:` config).
+
+## Watch out for
+
+1. **HA reboot fragility (kind #1689):** Pause/resume on HA clusters can leave etcd in a bad state if quorum doesn't reform. Mitigation: doctor pre-flight check before resume.
+2. **Snapshot version drift:** Restoring a snapshot with mismatched Kubernetes versions silently corrupts state. Mitigation: store version in snapshot metadata; refuse restore on mismatch.
+3. **fsnotify on macOS Docker Desktop:** Volume-mount fsnotify events on Docker Desktop for Mac are flaky. Mitigation: poll-fallback flag + clear docs.
+4. **Envoy LB regression on HA:** Subtle differences from HAProxy may surface as healthcheck timing changes. Mitigation: HA integration test in CI before ship.
+5. **K8s 1.36 IPVS removal:** Anyone with `kubeProxyMode: ipvs` in their config gets silent broken nodes on 1.36. Mitigation: validation rejects ipvs on 1.36+; clear error message points to iptables migration.
+6. **`gitRepo` volume removal:** Audit all kinder docs/examples; remove any gitRepo references.
+7. **Doctor decode catalog upkeep:** Pattern catalog rots without active triage. Mitigation: source patterns from v2.1 checks, CI failures, kind issue tracker.
 
 ---
 
-## Sources
+## Source URLs
 
-### Primary (HIGH confidence)
-- Kinder codebase direct reads: `pkg/build/nodeimage/imageimporter.go`, `buildcontext.go`, `const_storage.go`, `pkg/cmd/kind/load/docker-image/docker-image.go`, `pkg/cluster/nodeutils/util.go`, `pkg/cluster/internal/create/create.go`, `pkg/apis/config/v1alpha4/types.go`, `pkg/internal/apis/config/convert_v1alpha4.go`, `pkg/cluster/internal/providers/docker/images.go`, `pkg/cluster/internal/create/actions/installstorage/storage.go` — direct source of truth for all architecture findings
-- [Kind Working Offline docs](https://kind.sigs.k8s.io/docs/user/working-offline/) — confirmed pre-built node image + `kind load` approach
-- [Kind Configuration docs](https://kind.sigs.k8s.io/docs/user/configuration/) — confirmed `Node.Image` per-node field + `ExtraMounts`
-- [Kind Local Registry](https://kind.sigs.k8s.io/docs/user/local-registry/) — registry mirror pattern
-- [Kind known issues](https://kind.sigs.k8s.io/docs/user/known-issues/) — mount propagation macOS limitation
-- [Kubernetes Version Skew Policy](https://kubernetes.io/releases/version-skew-policy/) — kubelet up to 3 minor versions older than kube-apiserver (since K8s 1.28)
-- [rancher/local-path-provisioner v0.0.35 release](https://github.com/rancher/local-path-provisioner/releases/tag/v0.0.35) — latest release 2026-03-10, CVE-2025-62878 fix confirmed
-- Kind issue tracker: #3795, #3996, #2402 (image loading failures); #2576, #2400, #2700 (mount propagation macOS); #2697, #3191 (local-path-provisioner); #1424 (per-node kubeadm patches — upstream limitation)
-
-### Secondary (MEDIUM confidence)
-- [CVE-2025-62878 advisory — Orca Security](https://orca.security/resources/blog/cve-2025-62878-rancher-local-path-provisioner/) — CVSS 10.0, path traversal fixed in v0.0.34; third-party source but consistent with upstream release notes
-- [iximiuz.com — KIND: How I Wasted a Day Loading Local Docker Images](https://iximiuz.com/en/posts/kubernetes-kind-load-docker-image/) — imagePullPolicy pitfall; single source but consistent with kind docs
-- [maelvls.dev — Pull-through Docker registry on Kind clusters](https://maelvls.dev/docker-proxy-registry-kind/) — registry mirror pattern for offline use
-- [DEV.to — Addressing Limitations of Local Path Provisioner](https://dev.to/frosnerd/addressing-the-limitations-of-local-path-provisioner-in-kubernetes-3g12) — PV orphan and node-local storage limitations
-- [blog.andygol.co.ua — Getting access to host filesystem for PV in Kind](https://blog.andygol.co.ua/en/2025/04/05/host-fs-to-backup-pv-in-kind/) — two-layer mount pattern
-- k3s-io/k3s#1908, k3s-io/k3s#2391 — busybox helper air-gap failure in local-path-provisioner (behavior consistent with official docs)
-- [minikube local-path-provisioner tutorial](https://minikube.sigs.k8s.io/docs/tutorials/local_path_provisioner/) — provisioner behavior in a similar local K8s tool
-
-### Tertiary (LOW confidence)
-- [Kubernetes 1.31 blog — kubeadm v1beta4](https://kubernetes.io/blog/2024/08/23/kubernetes-1-31-kubeadm-v1beta4/) — v1beta3 removal timeline stated as "1.34 or later"; exact version unconfirmed, needs monitoring against upstream kind releases
+- [kind issue #2715 — start/stop](https://github.com/kubernetes-sigs/kind/issues/2715)
+- [kind issue #3508 — snapshot/restore](https://github.com/kubernetes-sigs/kind/issues/3508)
+- [kind issue #3795 — containerd image loading errors](https://github.com/kubernetes-sigs/kind/issues/3795)
+- [kind issue #1689 — HA reboot](https://github.com/kubernetes-sigs/kind/issues/1689)
+- [kind PR #4127 — Envoy LB](https://github.com/kubernetes-sigs/kind/pull/4127)
+- [Kubernetes 1.36 release blog](https://kubernetes.io/blog/2026/04/22/kubernetes-v1-36-release/)
+- [palark 1.36 deep-dive](https://palark.com/blog/kubernetes-1-36-release-features/)
+- [Northflank Tilt alternatives 2026](https://northflank.com/blog/tilt-alternatives)
+- [vCluster Skaffold vs Tilt vs DevSpace](https://www.vcluster.com/blog/skaffold-vs-tilt-vs-devspace)
+- [DevSpace](https://www.devspace.sh/)
 
 ---
-*Research completed: 2026-04-08*
-*Ready for roadmap: yes*
+
+*Research synthesized: 2026-05-03 from two discovery streams (ecosystem gap analysis + upstream/addon audit).*

@@ -72,7 +72,24 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-- [ ] TBD — next milestone scope to be defined via `/gsd:new-milestone`
+## Current Milestone: v2.3 Inner Loop
+
+**Goal:** Make daily iteration on a kinder cluster as fast as creating one — pause/resume to reclaim laptop resources, snapshot/restore for instant clean state, hot-reload for code changes, and runtime error decoding extending the v2.1 doctor framework. Includes a sync phase to adopt kind upstream's HAProxy→Envoy LB transition and bump the default node image to K8s 1.36 ("Haru").
+
+**Target features:**
+- `kinder pause` / `kinder resume` — stop/start cluster without losing state
+- `kinder snapshot` / `kinder restore` — capture and replay full cluster state
+- `kinder dev` — watch a directory and hot-reload a Deployment
+- `kinder doctor decode` — runtime error explainer extending v2.1 doctor checks
+- Upstream sync — adopt kind PR #4127 (Envoy LB), bump default to K8s 1.36, reject IPVS on 1.36+
+
+**Active requirements:**
+
+- [ ] LIFE: pause/resume cluster without losing state, with HA pre-flight doctor check
+- [ ] LIFE: snapshot/restore full cluster state (etcd + images + PV contents) with version-matching enforcement
+- [ ] DEV: hot-reload a target Deployment from a watched directory via existing image-load pipeline
+- [ ] DIAG: runtime error decoder catalog with optional auto-fix for safe remediations
+- [ ] SYNC: adopt HAProxy→Envoy LB, default to K8s 1.36, reject IPVS on 1.36+, ship User Namespaces + In-Place Pod Resize recipes
 
 ### Out of Scope
 
@@ -182,4 +199,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Zero new Go module dependencies in v2.2 | All five features use packages already in go.mod | ✓ Good |
 
 ---
-*Last updated: 2026-04-10 after v2.2 milestone completion*
+*Last updated: 2026-05-03 — milestone v2.3 Inner Loop started*

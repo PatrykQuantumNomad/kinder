@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: milestone_complete
-stopped_at: v2.2 milestone archived
-last_updated: "2026-04-10T12:00:00.000Z"
-last_activity: 2026-04-10 — v2.2 Cluster Capabilities milestone shipped and archived
+milestone: v2.3
+milestone_name: Inner Loop
+status: defining_requirements
+stopped_at: requirements gathering
+last_updated: "2026-05-03T00:00:00.000Z"
+last_activity: 2026-05-03 — Milestone v2.3 Inner Loop started; research synthesized
 progress:
   total_phases: 0
   completed_phases: 0
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-10 after v2.2 milestone)
+See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** Planning next milestone — run `/gsd:new-milestone` to define scope
+**Current focus:** v2.3 Inner Loop — defining requirements
 
 ## Current Position
 
-Phase: None — milestone v2.2 complete
-Plan: None
-Status: Ready to plan next milestone
-Last activity: 2026-04-10 — v2.2 Cluster Capabilities shipped (14/14 plans, 5 phases, 25 requirements)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-03 — Milestone v2.3 Inner Loop started; discovery research synthesized into `.planning/research/SUMMARY.md`
 
-Progress: Awaiting next milestone scope
+Progress: ░░░░░░░░░░ 0%
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Progress: Awaiting next milestone scope
 - v2.1: 10 plans, 4 phases, 1 day
 - v2.2: 14 plans, 5 phases, ~2.5 days
 
-**By Phase:** Not started
+**By Phase:** Not started for v2.3
 
 *Updated after each plan completion*
 
@@ -54,7 +54,8 @@ Progress: Awaiting next milestone scope
 
 ### Decisions
 
-- v1.0-v2.2: See PROJECT.md Key Decisions table (full log including all v2.2 decisions moved there at milestone completion)
+- v1.0–v2.2: See PROJECT.md Key Decisions table (full log moved there at v2.2 milestone completion)
+- 2026-05-03: v2.3 theme chosen as "Inner Loop" over "Modernize & Polish" or "Observability + AI" — strongest user-value-per-day signal; defers pure tech debt and pure differentiator features to v2.4
 
 ### Pending Todos
 
@@ -66,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-10T12:00:00.000Z
-Stopped at: v2.2 milestone archived — ready for `/gsd:new-milestone`
+Last session: 2026-05-03T00:00:00.000Z
+Stopped at: Defining requirements for v2.3
 Resume file: None
