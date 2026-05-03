@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"sigs.k8s.io/kind/pkg/cluster"
+	"sigs.k8s.io/kind/pkg/internal/lifecycle"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/cmd"
@@ -164,12 +165,13 @@ func collectNodeInfos(allNodes []nodes.Node) []nodeInfo {
 		return []nodeInfo{}
 	}
 
-	// First pass: collect roles and versions.
+	// First pass: collect roles, versions, container states.
 	type raw struct {
 		name    string
 		role    string
 		version string
 		image   string
+		state   string // container runtime state (e.g. "running", "exited")
 	}
 	// Detect container runtime for image inspect.
 	var binaryName string
@@ -202,11 +204,20 @@ func collectNodeInfos(allNodes []nodes.Node) []nodeInfo {
 				image = strings.TrimSpace(lines[0])
 			}
 		}
+		// Get container runtime state via shared lifecycle helper.
+		// Replaces the previous hardcoded `status := "Ready"` literal.
+		var state string
+		if binaryName != "" {
+			if s, err := lifecycle.ContainerState(binaryName, n.String()); err == nil {
+				state = s
+			}
+		}
 		raws = append(raws, raw{
 			name:    n.String(),
 			role:    role,
 			version: ver,
 			image:   image,
+			state:   state,
 		})
 	}
 
@@ -227,7 +238,22 @@ func collectNodeInfos(allNodes []nodes.Node) []nodeInfo {
 	// Second pass: build nodeInfo with skew.
 	infos := make([]nodeInfo, 0, len(raws))
 	for _, r := range raws {
-		status := "Ready"
+		// Map container runtime state to a user-facing Status value.
+		// "running" → "Ready" (the container is up; existing column semantics)
+		// "exited"/"created" → "Stopped" (kinder pause exits containers)
+		// "paused" → "Paused" (docker freeze; rare but distinct)
+		// anything else (or empty after error) → "Unknown"
+		var status string
+		switch r.state {
+		case "running":
+			status = "Ready"
+		case "exited", "created":
+			status = "Stopped"
+		case "paused":
+			status = "Paused"
+		default:
+			status = "Unknown"
+		}
 		skewDisplay := ""
 		skewOK := true
 
