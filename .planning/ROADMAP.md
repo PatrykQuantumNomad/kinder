@@ -105,7 +105,7 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   3. On a multi-control-plane cluster, pause/resume orchestrates container stop/start in quorum-safe order (workers before control-plane nodes on pause; reverse on resume)
   4. Before resuming an HA cluster, `kinder doctor` emits a `cluster-resume-readiness` warning if etcd quorum is at risk
 **Plans**: 4 plans
-- [ ] 47-01-PLAN.md — Cluster status surface: container-state helpers, `kinder status [name]`, Status column on `kinder get clusters` (JSON schema migration), real container state on `kinder get nodes`, register pause/resume stub commands in root.go
+- [x] 47-01-PLAN.md — Cluster status surface: container-state helpers, `kinder status [name]`, Status column on `kinder get clusters` (JSON schema migration), real container state on `kinder get nodes`, register pause/resume stub commands in root.go
 - [ ] 47-02-PLAN.md — `kinder pause`: quorum-safe stop (workers→CP→LB), best-effort errors, idempotent no-op, `--timeout`/`--json` flags, HA pre-pause etcd snapshot to `/kind/pause-snapshot.json`
 - [ ] 47-03-PLAN.md — `kinder resume`: quorum-safe start (LB→CP→workers), best-effort errors, idempotent no-op, `--wait`/`--timeout`/`--json` flags, all-nodes-Ready gate via kubectl with K8s 1.24 selector fallback
 - [ ] 47-04-PLAN.md — `cluster-resume-readiness` doctor check: registered in v2.1 doctor catalog, HA-only with skip on single-CP, warn-and-continue on unhealthy etcd members, gracefully skip when etcdctl missing, inline invocation between CP-start and worker-start in `lifecycle.Resume`
