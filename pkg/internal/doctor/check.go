@@ -77,9 +77,10 @@ var allChecks = []Check{
 	newRootfsDeviceCheck(),
 	// Category: Network (Phase 41)
 	newSubnetClashCheck(),
-	// Category: Cluster (Phase 42)
+	// Category: Cluster (Phase 42 + 47)
 	newClusterNodeSkewCheck(),
 	newLocalPathCVECheck(),
+	newClusterResumeReadinessCheck(), // Phase 47: HA quorum probe before resume
 	// Category: Offline (Phase 43)
 	newOfflineReadinessCheck(),
 	// Category: Mounts (Phase 45)
