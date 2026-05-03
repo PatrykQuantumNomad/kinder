@@ -32,6 +32,9 @@ import (
 	"sigs.k8s.io/kind/pkg/cmd/kind/export"
 	"sigs.k8s.io/kind/pkg/cmd/kind/get"
 	"sigs.k8s.io/kind/pkg/cmd/kind/load"
+	"sigs.k8s.io/kind/pkg/cmd/kind/pause"
+	"sigs.k8s.io/kind/pkg/cmd/kind/resume"
+	"sigs.k8s.io/kind/pkg/cmd/kind/status"
 	"sigs.k8s.io/kind/pkg/cmd/kind/version"
 	"sigs.k8s.io/kind/pkg/internal/kindversion"
 	"sigs.k8s.io/kind/pkg/log"
@@ -83,6 +86,11 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	cmd.AddCommand(load.NewCommand(logger, streams))
 	cmd.AddCommand(env.NewCommand(logger, streams))
 	cmd.AddCommand(doctor.NewCommand(logger, streams))
+	// Phase 47 cluster lifecycle commands. The pause and resume bodies are
+	// scaffolds wired here so plans 02 and 03 only edit their own packages.
+	cmd.AddCommand(pause.NewCommand(logger, streams))
+	cmd.AddCommand(resume.NewCommand(logger, streams))
+	cmd.AddCommand(status.NewCommand(logger, streams))
 	return cmd
 }
 
