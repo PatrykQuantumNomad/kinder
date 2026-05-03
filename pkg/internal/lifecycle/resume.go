@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/errors"
 	"sigs.k8s.io/kind/pkg/exec"
+	"sigs.k8s.io/kind/pkg/internal/doctor"
 	"sigs.k8s.io/kind/pkg/internal/version"
 	"sigs.k8s.io/kind/pkg/log"
 )
@@ -74,6 +75,35 @@ var defaultReadinessProber ReadinessProber = WaitForNodesReady
 // podman/nerdctl) without touching $PATH. Production callers reach
 // ProviderBinaryName directly.
 var resumeBinaryName = ProviderBinaryName
+
+// ResumeReadinessHook is invoked AFTER all CP containers have started but
+// BEFORE worker containers start, ONLY on HA clusters (≥2 control-plane
+// nodes). The hook MUST NEVER block resume — warnings flow through opts.Logger
+// only, and the hook returns no error. The default impl runs the
+// `cluster-resume-readiness` doctor check (LIFE-04, plan 47-04). Tests
+// inject a fake to assert invocation order/args. Per CONTEXT.md decision
+// "warn and continue".
+var ResumeReadinessHook = defaultResumeReadinessHook
+
+// defaultResumeReadinessHook runs the doctor.NewClusterResumeReadinessCheck
+// inline and forwards its results to opts.Logger. Warnings appear at V(0),
+// skips at V(2), oks at V(1). Errors are intentionally swallowed — the hook
+// never affects Resume's exit code.
+func defaultResumeReadinessHook(_ string, _ string, logger log.Logger) {
+	check := doctor.NewClusterResumeReadinessCheck()
+	for _, r := range check.Run() {
+		switch r.Status {
+		case "warn", "fail":
+			// "fail" is documented as never-emitted by this check, but log it
+			// the same way as warn just in case future code paths add it.
+			logger.Warnf("⚠ %s: %s — %s", r.Name, r.Message, r.Reason)
+		case "skip":
+			logger.V(2).Infof(" • %s: %s (skipped)", r.Name, r.Message)
+		case "ok":
+			logger.V(1).Infof(" ✓ %s: %s", r.Name, r.Message)
+		}
+	}
+}
 
 // Resume starts every container in a paused kinder cluster in quorum-safe
 // order (external-load-balancer → control-plane → workers) and waits for all
@@ -139,46 +169,66 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 		return nil, errors.Errorf("cluster %q has no control-plane nodes", opts.ClusterName)
 	}
 
-	// Build start order: LB → all CPs → all workers (reverse of pause).
-	toStart := make([]nodes.Node, 0, len(allNodes))
-	if lb != nil {
-		toStart = append(toStart, lb)
-	}
-	toStart = append(toStart, cp...)
-	toStart = append(toStart, workers...)
-
-	results := make([]NodeResult, 0, len(toStart))
+	// Three-phase start order (reverse of pause):
+	//   Phase 1: LB (if present)
+	//   Phase 2: control-plane nodes
+	//   Phase 3 (HA only, post-CP / pre-workers): inline cluster-resume-readiness
+	//   Phase 4: workers
+	//
+	// Each phase appends to results/startErrs via startNodes(). The inline
+	// readiness hook is called only when both:
+	//   (a) the cluster is HA (≥2 CPs), AND
+	//   (b) every prior start succeeded (len(startErrs)==0)
+	// matching CONTEXT.md "warn and continue" + "no point probing a known-
+	// incomplete cluster".
+	results := make([]NodeResult, 0, len(allNodes))
 	startErrs := []error{}
-	for _, node := range toStart {
-		// Honor cancellation between starts.
-		select {
-		case <-opts.Context.Done():
-			startErrs = append(startErrs, opts.Context.Err())
-			break
-		default:
-		}
 
-		role := classifyRole(node)
-		nodeStart := time.Now()
-		cmd := defaultCmder(binaryName, "start", node.String())
-		runErr := cmd.Run()
-		nodeDuration := time.Since(nodeStart).Seconds()
+	startNodes := func(group []nodes.Node) {
+		for _, node := range group {
+			// Honor cancellation between starts.
+			select {
+			case <-opts.Context.Done():
+				startErrs = append(startErrs, opts.Context.Err())
+				return
+			default:
+			}
 
-		nr := NodeResult{
-			Name:     node.String(),
-			Role:     role,
-			Success:  runErr == nil,
-			Duration: nodeDuration,
+			role := classifyRole(node)
+			nodeStart := time.Now()
+			cmd := defaultCmder(binaryName, "start", node.String())
+			runErr := cmd.Run()
+			nodeDuration := time.Since(nodeStart).Seconds()
+
+			nr := NodeResult{
+				Name:     node.String(),
+				Role:     role,
+				Success:  runErr == nil,
+				Duration: nodeDuration,
+			}
+			if runErr != nil {
+				nr.Error = runErr.Error()
+				startErrs = append(startErrs, errors.Wrapf(runErr, "failed to start %s", node.String()))
+				opts.Logger.V(0).Infof(" • ✗ %s (role=%s, %.1fs): %v", node.String(), role, nodeDuration, runErr)
+			} else {
+				opts.Logger.V(0).Infof(" • ✓ %s (role=%s, %.1fs)", node.String(), role, nodeDuration)
+			}
+			results = append(results, nr)
 		}
-		if runErr != nil {
-			nr.Error = runErr.Error()
-			startErrs = append(startErrs, errors.Wrapf(runErr, "failed to start %s", node.String()))
-			opts.Logger.V(0).Infof(" • ✗ %s (role=%s, %.1fs): %v", node.String(), role, nodeDuration, runErr)
-		} else {
-			opts.Logger.V(0).Infof(" • ✓ %s (role=%s, %.1fs)", node.String(), role, nodeDuration)
-		}
-		results = append(results, nr)
 	}
+
+	// Phase 1: LB
+	if lb != nil {
+		startNodes([]nodes.Node{lb})
+	}
+	// Phase 2: control-plane
+	startNodes(cp)
+	// Phase 3: inline readiness hook (HA only, no prior failures, hook installed)
+	if len(cp) >= 2 && len(startErrs) == 0 && ResumeReadinessHook != nil {
+		ResumeReadinessHook(binaryName, cp[0].String(), opts.Logger)
+	}
+	// Phase 4: workers
+	startNodes(workers)
 
 	res := &ResumeResult{
 		Cluster: opts.ClusterName,
