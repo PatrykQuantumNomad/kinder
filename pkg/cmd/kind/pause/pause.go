@@ -18,19 +18,22 @@ limitations under the License.
 // stops every container in a kinder cluster in quorum-safe order so the host
 // can reclaim CPU and RAM. Cluster state survives the pause and is restored
 // by `kinder resume`.
-//
-// This file currently scaffolds the command surface and flag set. The full
-// orchestration body is implemented in plan 47-02.
 package pause
 
 import (
+	"encoding/json"
+	"fmt"
+	"time"
+
 	"github.com/spf13/cobra"
 
+	"sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cmd"
-	"sigs.k8s.io/kind/pkg/errors"
+	"sigs.k8s.io/kind/pkg/internal/lifecycle"
 	"sigs.k8s.io/kind/pkg/log"
 
 	"sigs.k8s.io/kind/pkg/internal/cli"
+	"sigs.k8s.io/kind/pkg/internal/runtime"
 )
 
 // flagpole holds the parsed flag values for `kinder pause`.
@@ -40,6 +43,22 @@ type flagpole struct {
 	Timeout int
 	// JSON enables JSON output for scripted consumers.
 	JSON bool
+}
+
+// pauseFn is the test-injection point for the orchestration call. Production
+// code calls lifecycle.Pause; tests substitute a fake to avoid spinning a
+// real cluster.
+var pauseFn = lifecycle.Pause
+
+// resolveClusterName is the test-injection point for cluster name resolution.
+// Production code wires it to lifecycle.ResolveClusterName backed by a real
+// *cluster.Provider; tests substitute a closure that returns a fixed name.
+var resolveClusterName = func(args []string) (string, error) {
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(log.NoopLogger{}),
+		runtime.GetDefault(log.NoopLogger{}),
+	)
+	return lifecycle.ResolveClusterName(args, provider)
 }
 
 // NewCommand returns a new cobra.Command for `kinder pause [cluster-name]`.
@@ -52,17 +71,52 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 		Long: "Pauses a running kinder cluster by gracefully stopping every node container.\n" +
 			"Workers stop before control-plane nodes to keep etcd quorum safe.\n" +
 			"If no cluster name is given and exactly one cluster exists, it is auto-selected.",
-		// IMPLEMENTED IN: 47-02-PLAN.md
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cli.OverrideDefaultName(cmd.Flags())
-			_ = flags // silence unused-write linter until plan 02 wires the body
-			_ = logger
-			_ = streams
-			_ = args
-			return errors.New("kinder pause: not yet implemented (phase 47 plan 02)")
+			return runE(logger, streams, flags, args)
 		},
 	}
 	c.Flags().IntVar(&flags.Timeout, "timeout", 30, "graceful stop timeout in seconds before SIGKILL")
 	c.Flags().BoolVar(&flags.JSON, "json", false, "output JSON")
 	return c
+}
+
+func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []string) error {
+	if flags.Timeout < 0 {
+		return fmt.Errorf("invalid --timeout %d: must be >= 0", flags.Timeout)
+	}
+
+	name, err := resolveClusterName(args)
+	if err != nil {
+		return err
+	}
+
+	// Resolve a provider for the orchestration call. Production lifecycle.Pause
+	// uses this to enumerate nodes; tests stub pauseFn entirely so the provider
+	// it receives is never dereferenced.
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+		runtime.GetDefault(logger),
+	)
+
+	result, pauseErr := pauseFn(lifecycle.PauseOptions{
+		ClusterName: name,
+		Timeout:     time.Duration(flags.Timeout) * time.Second,
+		Logger:      logger,
+		Provider:    provider,
+	})
+
+	// Render output regardless of pauseErr so partial-failure data is visible.
+	if result != nil {
+		if flags.JSON {
+			if encErr := json.NewEncoder(streams.Out).Encode(result); encErr != nil {
+				return encErr
+			}
+		} else if result.AlreadyPaused {
+			logger.Warn(fmt.Sprintf("cluster %q is already paused; no action taken", result.Cluster))
+		} else {
+			fmt.Fprintf(streams.Out, "Cluster paused. Total time: %.1fs\n", result.Duration)
+		}
+	}
+	return pauseErr
 }
