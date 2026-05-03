@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/gsd-check-update.js"
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" .claude/hooks/gsd-check-update.js"
           }
         ]
       },
@@ -16,6 +16,14 @@
             "command": "bash .claude/hooks/gsd-session-state.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-update-banner.js"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -23,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/gsd-context-monitor.js",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" .claude/hooks/gsd-context-monitor.js",
             "timeout": 10
           }
         ],
@@ -38,6 +46,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gsd-read-injection-scanner.js",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -46,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/gsd-prompt-guard.js",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" .claude/hooks/gsd-prompt-guard.js",
             "timeout": 5
           }
         ]
@@ -56,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/gsd-read-guard.js",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" .claude/hooks/gsd-read-guard.js",
             "timeout": 5
           }
         ]
@@ -66,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/gsd-workflow-guard.js",
+            "command": "\"/Users/patrykattc/.nvm/versions/node/v24.11.1/bin/node\" .claude/hooks/gsd-workflow-guard.js",
             "timeout": 5
           }
         ]

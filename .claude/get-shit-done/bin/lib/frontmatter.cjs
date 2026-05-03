@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, normalizeMd, output, error } = require('./core.cjs');
+const { safeReadFile, normalizeMd, output, error, atomicWriteFileSync } = require('./core.cjs');
 
 // ─── Parsing engine ───────────────────────────────────────────────────────────
 
@@ -42,11 +42,9 @@ function splitInlineArray(body) {
 
 function extractFrontmatter(content) {
   const frontmatter = {};
-  // Find ALL frontmatter blocks at the start of the file.
-  // If multiple blocks exist (corruption from CRLF mismatch), use the LAST one
-  // since it represents the most recent state sync.
-  const allBlocks = [...content.matchAll(/(?:^|\n)\s*---\r?\n([\s\S]+?)\r?\n---/g)];
-  const match = allBlocks.length > 0 ? allBlocks[allBlocks.length - 1] : null;
+  // Match frontmatter only at byte 0 — a `---` block later in the document
+  // body (YAML examples, horizontal rules) must never be treated as frontmatter.
+  const match = content.match(/^---\r?\n([\s\S]+?)\r?\n---/);
   if (!match) return frontmatter;
 
   const yaml = match[1];
@@ -244,17 +242,26 @@ function parseMustHavesBlock(content, blockName) {
       // Only treat as a top-level list item if at the expected indent
       if (indent === listItemIndent) {
         if (current) items.push(current);
-        current = {};
         const afterDash = trimmed.slice(2);
+        const trimmedAfterDash = afterDash.trim();
+        // Check if it's a fully-quoted string (may contain ':' inside the quotes)
+        if ((trimmedAfterDash.startsWith('"') && trimmedAfterDash.endsWith('"')) ||
+            (trimmedAfterDash.startsWith("'") && trimmedAfterDash.endsWith("'"))) {
+          current = trimmedAfterDash.slice(1, -1);
         // Check if it's a simple string item (no colon means not a key-value)
-        if (!afterDash.includes(':')) {
+        } else if (!afterDash.includes(':')) {
           current = afterDash.replace(/^["']|["']$/g, '');
         } else {
           // Key-value on same line as dash: "- path: value"
-          const kvMatch = afterDash.match(/^(\w+):\s*"?([^"]*)"?\s*$/);
+          // YAML KV always has at least one space after the colon: "key: value"
+          // Requiring \s+ rejects "Class::Method" and "db:seed" (no space after colon)
+          const kvMatch = afterDash.match(/^(\w+):\s+"?([^"]*)"?\s*$/);
           if (kvMatch) {
             current = {};
             current[kvMatch[1]] = kvMatch[2];
+          } else {
+            // Looks like KV but doesn't match — treat as plain string (#2757)
+            current = afterDash.replace(/^["']|["']$/g, '');
           }
         }
         continue;
@@ -337,7 +344,7 @@ function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
   try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
   fm[field] = parsedValue;
   const newContent = spliceFrontmatter(content, fm);
-  fs.writeFileSync(fullPath, normalizeMd(newContent), 'utf-8');
+  atomicWriteFileSync(fullPath, normalizeMd(newContent));
   output({ updated: true, field, value: parsedValue }, raw, 'true');
 }
 
@@ -351,7 +358,7 @@ function cmdFrontmatterMerge(cwd, filePath, data, raw) {
   try { mergeData = JSON.parse(data); } catch { error('Invalid JSON for --data'); return; }
   Object.assign(fm, mergeData);
   const newContent = spliceFrontmatter(content, fm);
-  fs.writeFileSync(fullPath, normalizeMd(newContent), 'utf-8');
+  atomicWriteFileSync(fullPath, normalizeMd(newContent));
   output({ merged: true, fields: Object.keys(mergeData) }, raw, 'true');
 }
 
