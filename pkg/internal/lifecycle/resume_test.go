@@ -570,3 +570,205 @@ func TestResumeResult_JSONSchema_AlreadyRunning(t *testing.T) {
 		t.Errorf("expected alreadyRunning:true in JSON %s", string(b))
 	}
 }
+
+// --- Inline cluster-resume-readiness hook tests (plan 47-04) ---
+
+// recordedHookInvocation captures one call to ResumeReadinessHook so tests can
+// assert it ran (or didn't), with what args, in the right order vs. start calls.
+type recordedHookInvocation struct {
+	binaryName  string
+	bootstrapCP string
+	calledAfter []string // snapshot of startOrder at time of call
+}
+
+// withResumeReadinessHook swaps the package-level hook for the duration of the
+// test and restores it on cleanup. Used by tests to assert invocation; the
+// production default is exercised by TestResume_InlineReadinessHook_DefaultIsRealCheck.
+func withResumeReadinessHook(t *testing.T, h func(binaryName, bootstrapCP string, logger log.Logger)) {
+	t.Helper()
+	prev := ResumeReadinessHook
+	ResumeReadinessHook = h
+	t.Cleanup(func() { ResumeReadinessHook = prev })
+}
+
+func TestResume_InlineReadinessHook_HA(t *testing.T) {
+	// HA cluster: hook MUST be invoked exactly once between CP start and worker start,
+	// receiving the bootstrap CP container name.
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+		&fakeNode{name: "w1", role: "worker"},
+		&fakeNode{name: "lb", role: "external-load-balancer"},
+	}
+	rec := &startCallRecorder{
+		inspectMap: pausedInspectMap("cp1", "cp2", "cp3", "w1", "lb"),
+	}
+	withCmder(t, rec.Cmder())
+	withReadinessProber(t, alwaysReadyProber())
+
+	var invocations []recordedHookInvocation
+	withResumeReadinessHook(t, func(binaryName, bootstrap string, _ log.Logger) {
+		// snapshot startOrder at hook-time
+		rec.mu.Lock()
+		snap := append([]string(nil), rec.startOrder...)
+		rec.mu.Unlock()
+		invocations = append(invocations, recordedHookInvocation{
+			binaryName:  binaryName,
+			bootstrapCP: bootstrap,
+			calledAfter: snap,
+		})
+	})
+
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+	if _, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(invocations) != 1 {
+		t.Fatalf("expected exactly 1 hook invocation, got %d", len(invocations))
+	}
+	inv := invocations[0]
+	if inv.bootstrapCP != "cp1" && inv.bootstrapCP != "cp2" && inv.bootstrapCP != "cp3" {
+		t.Errorf("hook bootstrap = %q; expected one of the CP names", inv.bootstrapCP)
+	}
+	// Must be called after lb + all 3 CPs but before any worker.
+	cpStarted := 0
+	for _, name := range inv.calledAfter {
+		if strings.HasPrefix(name, "cp") {
+			cpStarted++
+		}
+		if strings.HasPrefix(name, "w") {
+			t.Errorf("worker %q started before hook ran; calledAfter=%v", name, inv.calledAfter)
+		}
+	}
+	if cpStarted != 3 {
+		t.Errorf("expected all 3 CPs started before hook, got %d (calledAfter=%v)", cpStarted, inv.calledAfter)
+	}
+}
+
+func TestResume_InlineReadinessHook_SingleCP_Skipped(t *testing.T) {
+	// Single-CP cluster: hook MUST NOT be called.
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "w1", role: "worker"},
+	}
+	rec := &startCallRecorder{
+		inspectMap: pausedInspectMap("cp1", "w1"),
+	}
+	withCmder(t, rec.Cmder())
+	withReadinessProber(t, alwaysReadyProber())
+
+	called := false
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {
+		called = true
+	})
+
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+	if _, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Error("expected hook NOT to be called on single-CP cluster")
+	}
+}
+
+func TestResume_InlineReadinessHook_WarnDoesNotBlock(t *testing.T) {
+	// HA cluster, hook simulates a doctor warn (logs, but no error). Resume must
+	// proceed: workers start, readiness probe runs, no error returned, exit code
+	// unchanged. Per CONTEXT.md "warn and continue".
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "w1", role: "worker"},
+	}
+	rec := &startCallRecorder{
+		inspectMap: pausedInspectMap("cp1", "cp2", "w1"),
+	}
+	withCmder(t, rec.Cmder())
+	withReadinessProber(t, alwaysReadyProber())
+
+	withResumeReadinessHook(t, func(_, _ string, logger log.Logger) {
+		// emulate warn — logger receives it; hook returns no error
+		logger.Warnf("simulated etcd quorum at risk")
+	})
+
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+	res, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("warn must not block resume; got error: %v", err)
+	}
+	if res == nil || len(res.Nodes) != 3 {
+		t.Fatalf("expected 3 NodeResults, got %#v", res)
+	}
+	for _, n := range res.Nodes {
+		if !n.Success {
+			t.Errorf("expected all nodes to succeed despite hook warn; got node %s success=%v", n.Name, n.Success)
+		}
+	}
+}
+
+func TestResume_InlineReadinessHook_DefaultIsRealCheck(t *testing.T) {
+	// The package-level ResumeReadinessHook MUST default to a non-nil function
+	// so the production code path actually runs the doctor check. We don't call
+	// it (would require a real cluster) — just assert it's wired.
+	if ResumeReadinessHook == nil {
+		t.Fatal("ResumeReadinessHook should default to a non-nil function (defaultResumeReadinessHook)")
+	}
+}
+
+func TestResume_InlineReadinessHook_SkippedOnPartialStartFailure(t *testing.T) {
+	// HA cluster but a CP fails to start → hook MUST NOT be called (no point
+	// probing etcd quorum when containers didn't come up).
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "w1", role: "worker"},
+	}
+	rec := &startCallRecorder{
+		inspectMap: pausedInspectMap("cp1", "cp2", "w1"),
+		startErrs:  map[string]error{"cp2": fmt.Errorf("simulated CP failure")},
+	}
+	withCmder(t, rec.Cmder())
+	withReadinessProber(t, alwaysReadyProber())
+
+	called := false
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {
+		called = true
+	})
+
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+	if _, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	}); err == nil {
+		t.Fatal("expected aggregated start error, got nil")
+	}
+	if called {
+		t.Error("hook MUST NOT be called when a CP failed to start")
+	}
+}
