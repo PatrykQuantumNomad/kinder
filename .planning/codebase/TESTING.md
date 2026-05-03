@@ -1,342 +1,360 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-04-08
+**Analysis Date:** 2026-05-03
 
 ## Test Framework
 
 **Runner:**
-- Framework: Go's built-in `testing` package
-- Test command: `go test ./...`
-- Config: Configured via `hack/make-rules/test.sh`
+- Go testing: built-in `testing` package (no external framework)
+- Test discovery: standard `*_test.go` file convention
+- Tool: `gotestsum` for JUnit XML output and test summary
+- Config: none (uses standard Go testing flags)
 
 **Assertion Library:**
-- Internal: `sigs.k8s.io/pkg/internal/assert` (DeepEqual pattern)
-- Standard: `testing.T` methods (`Errorf`, `Run`, `Parallel`)
-- No external assertion library (standard Go testing patterns)
+- Minimal assertions: mostly `if` statements and `t.Error()` / `t.Errorf()`
+- Some tests use `assert.DeepEqual()` from `sigs.k8s.io/kind/pkg/internal/assert` — custom assertion helper
+- Standard Go `testing.T` methods: `t.Fatal()`, `t.Errorf()`, `t.Run()`, `t.Parallel()`
 
 **Run Commands:**
 ```bash
-make test              # Run all tests (unit + integration)
-make unit              # Run only unit tests (hermetic)
-make integration       # Run only integration tests
-make test-race         # Run race detector (CGO_ENABLED=1)
-hack/make-rules/test.sh  # Direct test execution
+make test                  # Run all unit + integration tests with coverage
+make unit                  # Run only unit tests (short mode, nointegration tag)
+make integration          # Run only integration tests (TestIntegration* matching)
+make test-race            # Run race detector (requires CGO_ENABLED=1)
+go test ./...             # Direct test invocation
 ```
 
-**Build Tools:**
-- Test runner: `gotest.tools/gotestsum` (provides JUnit XML output)
-- Coverage tool: `go tool cover` (HTML reports)
-- Located in: `hack/tools/` (built on demand)
+**Coverage:**
+- Mode: `count` (default)
+- Package scope: `sigs.k8s.io/kind/...` (all packages)
+- Output: HTML report generated to `bin/{mode}-filtered.html`
+- Artifacts copied to CI upload location when running under CI (via `ARTIFACTS` env var)
+- Generated files excluded from coverage: `zz_generated*` files filtered out
 
 ## Test File Organization
 
 **Location:**
-- Co-located: Test files in same directory as implementation
-- Pattern: `<module>.go` paired with `<module>_test.go`
-- Example: `/Users/patrykattc/work/git/kinder/pkg/cmd/kind/load/docker-image/docker-image.go` and `docker-image_test.go`
+- Co-located: `*_test.go` files in the same package as code under test
+- Example: `pkg/cluster/provider.go` paired with `pkg/cluster/provider_test.go`
+- Shared test helpers: `testhelpers_test.go` file in the same package (e.g., `pkg/internal/doctor/testhelpers_test.go`)
 
 **Naming:**
-- Test files: `*_test.go` (Go standard)
-- Test functions: `Test<FunctionName>(t *testing.T)` for exported functions
-- Private function tests: `Test_<functionName>(t *testing.T)` for unexported functions
+- Test functions: `Test{FeatureName}` or `Test{FunctionName}_{Scenario}` (PascalCase, starts with `Test`)
+- Sub-tests: conventional `t.Run("scenario-name", func(t *testing.T) {...})`
+- Table-driven test cases: `tests` variable with slice of anonymous structs named `tt` in loop
+- Mock/fake types: `mock{Type}` or `fake{Type}` (lowercase prefix)
 
 **Structure:**
 ```
-pkg/
-├── cmd/
-│   └── kind/
-│       └── load/
-│           └── docker-image/
-│               ├── docker-image.go
-│               └── docker-image_test.go
-├── cluster/
-│   ├── provider.go
-│   └── provider_test.go
-└── errors/
-    ├── aggregate.go
-    └── errors_test.go
+pkg/cluster/
+├── provider.go
+├── provider_test.go              # Tests for provider.go
+├── createoption.go
+├── nodeutils/
+│   ├── util.go
+│   ├── util_test.go              # Tests for util.go
+│   └── ...
+└── internal/providers/
+    ├── docker/
+    │   ├── images.go
+    │   ├── images_test.go         # Tests for images.go
+    │   └── ...
 ```
 
 ## Test Structure
 
 **Suite Organization:**
-Use table-driven tests with subtests:
+Tests in this codebase do NOT use external test suites (no ginkgo, no testify suites). Each test is independent using `func Test*(t *testing.T)`.
 
+**Example single test (from `check_test.go`):**
 ```go
-func Test_removeDuplicates(t *testing.T) {
-	tests := []struct {
-		name  string
-		slice []string
-		want  []string
-	}{
-		{
-			name:  "empty",
-			slice: []string{},
-			want:  []string{},
-		},
-		{
-			name:  "all different",
-			slice: []string{"one", "two"},
-			want:  []string{"one", "two"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := removeDuplicates(tt.slice)
-			// ... assertions
-		})
+func TestAllChecks_ReturnsNonNilSlice(t *testing.T) {
+	t.Parallel()
+	checks := AllChecks()
+	if checks == nil {
+		t.Fatal("AllChecks() returned nil, expected non-nil slice")
 	}
 }
 ```
 
 **Patterns:**
 
-**Setup Pattern:**
-- Variable capture in loop: Declare `tc := tc` or similar to capture loop variable
-```go
-for _, tc := range cases {
-	tc := tc  // Capture for t.Run
-	t.Run("name="+tc.name, func(t *testing.T) {
-		// test code
-	})
-}
-```
+1. **Parallel execution:** Nearly all tests call `t.Parallel()` at the start (290+ tests in pkg/ use it)
+   - Enables concurrent test execution for faster CI builds
+   - Each test must be isolation-safe
+   ```go
+   func TestXxx(t *testing.T) {
+   	t.Parallel()
+   	// test body
+   }
+   ```
 
-**Parallel execution:**
-```go
-func TestFunction(t *testing.T) {
-	t.Parallel()  // Run multiple tests in parallel
-	// ...
-}
-```
+2. **Setup/Teardown:** Use `defer` for cleanup, global state mutations, or function patching
+   ```go
+   original := allChecks
+   defer func() { allChecks = original }()
+   
+   allChecks = []Check{...}  // patch for test
+   ```
 
-**Teardown Pattern:**
-- Not explicitly used in examined tests
-- Cleanup handled by test-specific local variables
+3. **Assertions:** Direct `if` checks with `t.Error()` or `t.Errorf()` for non-fatal, `t.Fatal()` for early exit
+   ```go
+   if got != expected {
+   	t.Errorf("got %v, want %v", got, expected)
+   }
+   ```
 
-**Assertion Pattern:**
-- Direct comparison with error messages
-- `reflect.DeepEqual()` for comparing slices/complex types
-- `assert.DeepEqual(t, expected, result)` from internal assert package
+4. **Table-driven tests:** Standard Go pattern with loop and sub-tests
+   ```go
+   tests := []struct {
+   	name     string
+   	input    string
+   	expected int
+   }{
+   	{"case1", "data1", 1},
+   	{"case2", "data2", 2},
+   }
+   
+   for _, tt := range tests {
+   	t.Run(tt.name, func(t *testing.T) {
+   		t.Parallel()
+   		got := Function(tt.input)
+   		if got != tt.expected {
+   			t.Errorf("got %d, want %d", got, tt.expected)
+   		}
+   	})
+   }
+   ```
 
-```go
-if got != tt.sanitizedImage {
-	t.Errorf("sanitizeImage(%s) = %s, want %s", tt.image, got, tt.sanitizedImage)
-}
-```
+5. **Variable shadowing in table-driven tests:** Explicit copy to avoid closure issues
+   ```go
+   for _, tc := range cases {
+   	tc := tc  // shadow to avoid closure bug
+   	t.Run("name="+tc.name, func(t *testing.T) {
+   		t.Parallel()
+   		// tc is now safe to use
+   	})
+   }
+   ```
 
 ## Mocking
 
-**Framework:** Manual mocking (no external mock library)
+**Framework:** No external mocking library. Handwritten mocks using interface implementation.
 
 **Patterns:**
-Define mock structs that implement the interface:
 
-```go
-type mockProvider struct {
-	lastListNodesName string
-}
+1. **Interface mocks:** Struct implementing interface for test use
+   ```go
+   type mockProvider struct {
+   	lastListNodesName string
+   }
+   
+   var _ internalproviders.Provider = (*mockProvider)(nil)
+   
+   func (m *mockProvider) ListNodes(cluster string) ([]nodes.Node, error) {
+   	m.lastListNodesName = cluster
+   	return nil, nil
+   }
+   
+   func (m *mockProvider) Provision(_ *cli.Status, _ *config.Cluster) error { return nil }
+   // ... other required methods as stubs
+   ```
 
-var _ internalproviders.Provider = (*mockProvider)(nil)
+2. **Fake command execution:** `fakeCmd` and `newFakeExecCmd` for testing command-line operations
+   ```go
+   type fakeCmd struct {
+   	output string
+   	err    error
+   	stdout io.Writer
+   }
+   
+   func (f *fakeCmd) Run() error {
+   	if f.stdout != nil && f.output != "" {
+   		fmt.Fprint(f.stdout, f.output)
+   	}
+   	return f.err
+   }
+   
+   func (f *fakeCmd) SetStdout(w io.Writer) exec.Cmd { f.stdout = w; return f }
+   // ... other methods
+   
+   // Usage:
+   execOutput := map[string]fakeExecResult{
+   	"docker version": {lines: "Docker version 24.0.7\n"},
+   	"podman version": {lines: "podman version 4.9.0\n"},
+   }
+   check.execCmd = newFakeExecCmd(execOutput)
+   ```
 
-func (m *mockProvider) ListNodes(cluster string) ([]nodes.Node, error) {
-	m.lastListNodesName = cluster
-	return nil, nil
-}
-```
+3. **Function patching for tests:** Replace package-level functions via deferred restoration
+   ```go
+   lookPath := func(name string) (string, error) {
+   	if name == "docker" {
+   		return "/usr/bin/docker", nil
+   	}
+   	return "", errors.New("not found")
+   }
+   check := &containerRuntimeCheck{
+   	lookPath: tt.lookPath,
+   	execCmd:  newFakeExecCmd(tt.execOutput),
+   }
+   ```
+
+4. **Compile-time verification:** Ensure mock implements interface
+   ```go
+   var _ exec.Cmd = &fakeCmd{}
+   ```
 
 **What to Mock:**
-- External dependencies (providers, loggers)
-- Interfaces with multiple implementations
-- Components that have side effects (file I/O, network)
+- External command execution (`exec.Cmd`)
+- External system calls (fs, network) via custom abstractions
+- Dependency injection via constructor options
 
 **What NOT to Mock:**
-- Standard library functions
-- Helper functions in the same package
-- Value types (use real instances)
-- Error types (create real error values)
-
-**Function callback mocking:**
-Pass function types as parameters:
-
-```go
-type imageTagFetcher func(nodes.Node, string) (map[string]bool, error)
-
-func checkIfImageReTagRequired(
-	node nodes.Node,
-	imageID string,
-	imageName string,
-	fetcher imageTagFetcher,  // Inject behavior
-) (bool, bool, string) {
-	// Use fetcher() to get tags
-	tags, err := fetcher(node, imageName)
-	// ...
-}
-```
-
-In test:
-```go
-exists, reTagRequired, sanitizedImage := checkIfImageReTagRequired(
-	nil,
-	tc.imageID,
-	tc.imageName,
-	func(n nodes.Node, s string) (map[string]bool, error) {
-		return tc.imageTags.tags, tc.imageTags.err
-	},
-)
-```
+- Built-in Go types (strings, slices, maps, etc.)
+- Logging (use real logger or `log.NoopLogger{}`)
+- Internal types within the same package
 
 ## Fixtures and Factories
 
 **Test Data:**
-Inline in test table structs:
 
+Table-driven test cases define data inline:
 ```go
 tests := []struct {
 	name  string
-	input string
-	want  string
+	slice []string
+	want  []string
 }{
 	{
-		name:  "basic case",
-		input: "ubuntu:18.04",
-		want:  "docker.io/library/ubuntu:18.04",
+		name:  "empty",
+		slice: []string{},
+		want:  []string{},
+	},
+	{
+		name:  "all different",
+		slice: []string{"one", "two"},
+		want:  []string{"one", "two"},
 	},
 }
 ```
 
+Map-based fixtures for command output:
+```go
+files := map[string]string{
+	"/etc/docker/daemon.json": `{"init": true}`,
+}
+
+results := []Result{
+	{Name: "check-a", Category: "Zebra", Status: "ok", Message: "a"},
+	{Name: "check-b", Category: "Aardvark", Status: "warn", Message: "b"},
+}
+```
+
+Helper functions for common test setup (from `testhelpers_test.go`):
+```go
+func captureOutput() *bytes.Buffer {
+	return &bytes.Buffer{}
+}
+
+func newFakeExecCmd(results map[string]fakeExecResult) func(name string, args ...string) exec.Cmd {
+	return func(name string, args ...string) exec.Cmd {
+		// map command strings to fakeExecResult values
+	}
+}
+```
+
 **Location:**
+- Test data: inline in test function or test file (`*_test.go`)
+- Shared helpers: `testhelpers_test.go` file in same package (e.g., `pkg/internal/doctor/testhelpers_test.go`)
 - No separate fixtures directory
-- Data defined directly in test functions
-- Reusable mock types in test package (e.g., `mockProvider`)
 
 ## Coverage
 
-**Requirements:**
-- Not enforced via CI/coverage gates
-- Targets: Higher is better, no minimum enforced
+**Requirements:** No explicit target enforced in CI. Coverage reports generated for visibility.
 
 **View Coverage:**
 ```bash
-make unit  # Generates bin/unit-filtered.html
-go tool cover -html=bin/unit-filtered.cov -o bin/coverage.html
+make unit                    # Generates bin/unit-filtered.cov and bin/unit-filtered.html
+make integration            # Generates bin/integration-filtered.cov and bin/integration-filtered.html
+go tool cover -html=<file>  # View any coverage file
 ```
-
-**Coverage Configuration:**
-- Mode: `count` (track how many times code is executed)
-- Package: All `sigs.k8s.io/kind/...`
-- Filtered: Generated code excluded (`zz_generated/` removed)
 
 ## Test Types
 
 **Unit Tests:**
-- Scope: Single function/package
-- Execution: Hermetic (no external dependencies unless mocked)
-- Build tag: `-short -tags=nointegration` filters these
-- Example: `Test_sanitizeImage`, `Test_removeDuplicates`
+- Scope: Individual functions or methods in isolation
+- Location: `*_test.go` files in same package
+- Setup: Minimal, mostly table-driven test cases
+- Dependencies mocked or injected
+- Run with: `make unit` (includes `-short` flag and `nointegration` build tag)
+- Examples: `pkg/cluster/provider_test.go`, `pkg/errors/errors_test.go`, `pkg/internal/doctor/check_test.go`
 
 **Integration Tests:**
-- Scope: Multiple components working together
-- Execution: May require container runtime or external tools
-- Build tag: `-run '^TestIntegration'` or no `-short` flag
-- Identified by: May reference real providers, actual cluster operations
-- Example: Race detector tests in `test-race` target
+- Scope: Multi-component interaction, often with real system calls
+- Location: Marked with `// +build integration` or `-run '^TestIntegration'` naming convention
+- Run with: `make integration`
+- Examples: Tests calling actual `os/exec` or filesystem operations
 
 **E2E Tests:**
-- Framework: Shell scripts in `/Users/patrykattc/work/git/kinder/hack/ci/`
-- Location: `hack/ci/e2e.sh`, `hack/ci/e2e-k8s.sh`
-- Scope: Full CLI workflow against real Kubernetes
-- Not unit test framework
+- Not observed: No E2E test framework found
+- Kind is designed for testing Kubernetes, not for automated end-to-end tests itself
+- Manual testing via `kind create cluster`, `kind delete cluster`, etc.
 
 ## Common Patterns
 
-**Parallel Subtests:**
-```go
-func TestListInternalNodes_DefaultName(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		inputName    string
-		expectedName string
-	}{
-		{inputName: "", expectedName: DefaultName},
-		{inputName: "custom", expectedName: "custom"},
-	}
-
-	for _, tc := range cases {
-		tc := tc  // Capture loop variable
-		t.Run("name="+tc.inputName, func(t *testing.T) {
-			t.Parallel()
-			// Test code
-		})
-	}
-}
-```
+**Async Testing:**
+- `context.Context` propagated through test setup
+- Example from `exec/default.go`: `CommandContext(ctx context.Context, command string, args ...string) Cmd`
+- Tests using context: rarely spawn goroutines; context used for cancellation when needed
 
 **Error Testing:**
-Test error cases in table-driven tests using error struct:
-
 ```go
-type testCase struct {
-	name  string
-	input string
-	want  string
-	err   error  // Expected error
+tests := []struct {
+	name     string
+	input    string
+	wantErr  bool
+	wantMsg  string
+}{
+	{
+		name:    "invalid input",
+		input:   "bad",
+		wantErr: true,
+		wantMsg: "some error message",
+	},
 }
 
-// In test:
-if (got != nil) != (tc.err != nil) {
-	t.Errorf("unexpected error: got %v, want %v", got, tc.err)
+for _, tt := range tests {
+	t.Run(tt.name, func(t *testing.T) {
+		t.Parallel()
+		got, err := Function(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+		}
+		if tt.wantMsg != "" && !strings.Contains(err.Error(), tt.wantMsg) {
+			t.Errorf("error message = %q, want containing %q", err.Error(), tt.wantMsg)
+		}
+	})
 }
 ```
 
-**Nil return handling:**
+**Output Capture:**
 ```go
-func (m *mockProvider) ListClusters() ([]string, error) {
-	return nil, nil  // Nil slice, nil error
+// From format_test.go
+var buf bytes.Buffer
+FormatHumanReadable(&buf, results)
+output := buf.String()
+
+if !strings.Contains(output, "expected text") {
+	t.Error("missing expected text in output")
 }
 ```
 
-## Test Tags and Build Constraints
-
-**Unit Tests:**
-- Build flag: `-tags=nointegration` to exclude integration tests
-- Hermetic execution without external resources
-
-**Integration Tests:**
-- Require full container runtime
-- Slower execution
-- Optional in CI, run separately via `make integration`
-
-**Race Detector:**
-```bash
-make test-race  # CGO_ENABLED=1 go test -race ./pkg/cluster/internal/create/... -count=1
-```
-- Requires CGO
-- Checks for data races
-- Limited to specific packages (cluster creation)
-
-## CI Integration
-
-**JUnit Output:**
-Generated during test runs for CI systems:
-- File: `bin/unit-junit.xml` or `bin/integration-junit.xml`
-- Artifact upload location: `${ARTIFACTS}/junit.xml` (in CI environment)
-
-**Coverage Reports:**
-- HTML: `bin/unit-filtered.html`, `bin/integration-filtered.html`
-- Artifact upload: `${ARTIFACTS}/filtered.html` (in CI environment)
-
-## Known Testing Gaps
-
-**Documented in code:**
-
-`/Users/patrykattc/work/git/kinder/pkg/cmd/kind/delete/clusters/deleteclusters_test.go`:
-- Note: The `deleteClusters` function creates concrete providers (not interfaces)
-- Makes unit testing error propagation impractical
-- Recommends: Refactor to accept provider interface
-- Workaround: Integration tests against real container runtime
+**File System Testing:**
+- Mock file operations via dependency injection
+- Example: map-based file fixture (e.g., `files := map[string]string{path: content}`)
+- Use `defer func()` to restore permissions or cleanup temporary state
 
 ---
 
-*Testing analysis: 2026-04-08*
+*Testing analysis: 2026-05-03*
