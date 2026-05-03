@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
-stopped_at: Phase 47 plan 03 complete; ready to execute plan 47-04 (cluster-resume-readiness doctor check)
-last_updated: "2026-05-03T20:02:51Z"
-last_activity: 2026-05-03 — Phase 47 plan 03 complete (kinder resume body wired with LB→CP→workers ordering, idempotent no-op, best-effort failure handling, ALL-nodes readiness gate, JSON output)
+stopped_at: Phase 47 COMPLETE (LIFE-01..LIFE-04 delivered); ready to plan phase 48 (cluster snapshot/restore)
+last_updated: "2026-05-03T20:14:35Z"
+last_activity: 2026-05-03 — Phase 47 plan 04 complete (cluster-resume-readiness doctor check + inline ResumeReadinessHook in lifecycle.Resume; HA-only quorum probe; warn-and-continue; LIFE-04 delivered; Phase 47 fully complete)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 21
-  completed_plans: 3
-  percent: 14
+  completed_plans: 4
+  percent: 19
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 ## Current Position
 
-Phase: 47 of 51 (Cluster Pause/Resume)
-Plan: 04 of 04 (next: cluster-resume-readiness doctor check)
-Status: In progress
-Last activity: 2026-05-03 — Plan 47-03 shipped: kinder resume body with LB→CP→workers start ordering, best-effort per-node failures, idempotent no-op when already running, ALL-nodes readiness gate (kubectl with no --selector) and K8s 1.24 selector fallback retained for callers, --timeout int (default 30s), --wait int (default 300s), --json bool flags
+Phase: 48 of 51 (next: Cluster Snapshot/Restore — needs context + planning)
+Plan: 01 (not yet planned)
+Status: Phase 47 complete; ready to start phase 48 context-gathering
+Last activity: 2026-05-03 — Plan 47-04 shipped: cluster-resume-readiness doctor check (HA-only, warn-and-continue, gracefully skips when etcdctl missing or single-CP) registered in v2.1 doctor catalog as the 24th check; inline invocation between CP-start and worker-start in lifecycle.Resume via ResumeReadinessHook package var; three-phase Resume ordering refactor (LB→CP→hook→workers). Phase 47 fully delivers LIFE-01..LIFE-04.
 
-Progress: ███░░░░░░░ 14% (3 of 21 plans)
+Progress: ████░░░░░░ 19% (4 of 21 plans)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: ███░░░░░░░ 14% (3 of 21 plans)
 | 47    | 01   | ~4h      | 3     | 11    | TDD cycles for tasks 1+2 (RED→GREEN); 2 auto-fix deviations (lifecycle path move, dead nodeLister cleanup). |
 | 47    | 02   | ~7m      | 2     | 4     | TDD RED→GREEN for both tasks; 1 deviation (parallel-wave conflict with 47-03 — resume_test.go/resume.go redeclared shared symbols, parked aside during test runs). |
 | 47    | 03   | ~25m     | 2     | 4     | TDD RED→GREEN for both tasks (4 commits); 2 auto-fix deviations (lifecycle path correction from plan frontmatter, removed redundant NodeResult/nodeFetcher declarations after 47-02 landed first). |
+| 47    | 04   | ~30m     | 2     | 7     | TDD RED→GREEN for both tasks (4 commits); 2 auto-fix deviations (lifecycle path correction pre-flagged by orchestrator, both registry tests in gpu_test.go + socket_test.go updated for 23→24 check count). LIFE-04 delivered; Phase 47 complete. |
 
 *Updated after each plan completion*
 
@@ -73,6 +74,10 @@ Progress: ███░░░░░░░ 14% (3 of 21 plans)
 - 2026-05-03 (47-03): K8s 1.24 selector fallback (`control-plane` ↔ `master` label) retained inside `WaitForNodesReady` for completeness even though Resume itself doesn't use a selector — keeps the helper reusable by any future caller (plan 47-04 doctor check) that wants to filter by role.
 - 2026-05-03 (47-03): Skip readiness probe entirely if any container failed to start (no point waiting for a known-incomplete cluster). Aggregated start errors are returned directly. Idempotent fast-path also skips probe when `ClusterStatus="Running"`.
 - 2026-05-03 (47-03): Resolved 47-02's blocker by reusing `NodeResult` and `nodeFetcher` from `pause.go` (same package); resume.go references them by name without redeclaration. Pattern for future Wave-2 shared-package plans: the plan that lands first owns the declaration; the second plan references by name.
+- 2026-05-03 (47-04): Doctor checks can be invoked cross-package via exported per-check constructors. `doctor.NewClusterResumeReadinessCheck()` is the first such export — lifecycle.Resume calls it inline. Verified pkg/internal/doctor does not import pkg/internal/lifecycle or pkg/cluster (no cycle); pkg/cluster/internal/create already imports doctor for ApplySafeMitigations, proving this direction works in production.
+- 2026-05-03 (47-04): Orchestration extension via package-level hook var (`lifecycle.ResumeReadinessHook`) keeps the public ResumeOptions surface stable while enabling inter-phase injection. Default impl wraps doctor.NewClusterResumeReadinessCheck. Tests swap via t.Cleanup like other lifecycle injection points.
+- 2026-05-03 (47-04): Resume's start logic refactored from a single monolithic loop into three explicit phases (LB → CP → readiness hook → workers) using a closure-based startNodes helper. Hook is gated by HA-only AND no-prior-failures AND hook-installed (three guards). Single-CP clusters incur zero overhead.
+- 2026-05-03 (47-04): cluster-resume-readiness check NEVER returns fail — only ok/warn/skip. Matches CONTEXT.md "warn and continue" semantics: warnings flow through opts.Logger, Resume's exit code is independent of hook output. defaultResumeReadinessHook still defensively handles a fail status (logs as warn) in case future code paths add it.
 
 ### Pending Todos
 
@@ -80,10 +85,10 @@ None.
 
 ### Blockers/Concerns
 
-None. (47-02's parallel-wave coordination concern was resolved during 47-03 by removing the duplicate declarations rather than renaming.)
+None. Phase 47 fully delivers LIFE-01..LIFE-04.
 
 ## Session Continuity
 
-Last session: 2026-05-03T20:02:51Z
-Stopped at: Phase 47 plan 03 complete; ready to execute plan 47-04 (cluster-resume-readiness doctor check)
-Resume file: .planning/phases/47-cluster-pause-resume/47-04-PLAN.md
+Last session: 2026-05-03T20:14:35Z
+Stopped at: Phase 47 COMPLETE (LIFE-01..LIFE-04 delivered); ready to plan phase 48 (cluster snapshot/restore)
+Resume file: .planning/phases/48-cluster-snapshot-restore/ (does not yet exist — needs `gsd discuss-phase 48` to gather context)
