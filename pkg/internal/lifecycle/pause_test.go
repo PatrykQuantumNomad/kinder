@@ -639,3 +639,123 @@ func mapKeys2(m map[string]interface{}) []string {
 
 // silence "imported and not used" if io is unreferenced once helpers move.
 var _ = io.Discard
+
+// --- readEtcdLeaderID unit tests ---
+
+// commandCallbackNode is a nodes.Node that routes Command calls through a
+// per-call callback keyed by "name args..." so individual tests can program
+// specific responses for crictl and etcdctl invocations.
+type commandCallbackNode struct {
+	fakeNode
+	// lookup maps "name arg1 arg2 ..." → (stdout, err)
+	lookup func(name string, args []string) (string, error)
+}
+
+func (n *commandCallbackNode) Command(c string, a ...string) exec.Cmd {
+	stdout := ""
+	var err error
+	if n.lookup != nil {
+		stdout, err = n.lookup(c, a)
+	}
+	return &fakeCmd{stdout: stdout, err: err}
+}
+
+func (n *commandCallbackNode) CommandContext(_ context.Context, c string, a ...string) exec.Cmd {
+	return n.Command(c, a...)
+}
+
+// TestReadEtcdLeaderID_CrictlMissing_ReturnsError: the ONLY command issued by
+// readEtcdLeaderID should be `crictl ps --name etcd -q`. If that call fails,
+// readEtcdLeaderID must return a non-nil error wrapping crictl. Any other first
+// command name (e.g. "etcdctl") means the implementation still uses the old
+// candidate-loop path — that is also a failure.
+func TestReadEtcdLeaderID_CrictlMissing_ReturnsError(t *testing.T) {
+	t.Parallel()
+	gotANonCrictlCall := false
+	node := &commandCallbackNode{
+		fakeNode: fakeNode{name: "cp1", role: "control-plane"},
+		lookup: func(name string, args []string) (string, error) {
+			if name != "crictl" {
+				gotANonCrictlCall = true
+				return "", fmt.Errorf("unexpected non-crictl command %q %v", name, args)
+			}
+			// Match crictl ps by args[0] to avoid ambiguity with "--endpoints=https://..."
+			// which contains "ps" as a substring.
+			if len(args) > 0 && args[0] == "ps" {
+				return "", fmt.Errorf("exit status 127: crictl not found")
+			}
+			return "", fmt.Errorf("unexpected crictl subcommand: %v", args)
+		},
+	}
+	leaderID, err := readEtcdLeaderID(node)
+	if gotANonCrictlCall {
+		t.Errorf("readEtcdLeaderID issued a non-crictl command; implementation still uses old candidate-loop path")
+	}
+	if err == nil {
+		t.Fatalf("expected non-nil error when crictl ps fails; got leaderID=%q", leaderID)
+	}
+	if leaderID != "" {
+		t.Errorf("expected empty leaderID on error; got %q", leaderID)
+	}
+}
+
+// TestReadEtcdLeaderID_NoEtcdContainer_ReturnsError: crictl ps succeeds but
+// returns no container id (etcd static pod not running) → readEtcdLeaderID
+// returns non-nil error mentioning etcd container.
+func TestReadEtcdLeaderID_NoEtcdContainer_ReturnsError(t *testing.T) {
+	t.Parallel()
+	node := &commandCallbackNode{
+		fakeNode: fakeNode{name: "cp1", role: "control-plane"},
+		lookup: func(name string, args []string) (string, error) {
+			// Match crictl ps by args[0] rather than substring to avoid matching
+			// "--endpoints=https://..." which contains "ps" as a substring.
+			if name == "crictl" && len(args) > 0 && args[0] == "ps" {
+				// Empty output — no running etcd container.
+				return "", nil
+			}
+			return "", fmt.Errorf("unexpected command %q %v", name, args)
+		},
+	}
+	leaderID, err := readEtcdLeaderID(node)
+	if err == nil {
+		t.Fatalf("expected non-nil error when crictl ps returns empty; got leaderID=%q", leaderID)
+	}
+	if leaderID != "" {
+		t.Errorf("expected empty leaderID on error; got %q", leaderID)
+	}
+	if !strings.Contains(err.Error(), "etcd container") {
+		t.Errorf("expected error to mention etcd container; got %q", err.Error())
+	}
+}
+
+// TestReadEtcdLeaderID_HealthyHA_ReturnsLeaderID: crictl ps returns a container
+// id, then crictl exec etcdctl endpoint status returns a valid JSON response →
+// readEtcdLeaderID returns the non-empty leader id and nil error.
+func TestReadEtcdLeaderID_HealthyHA_ReturnsLeaderID(t *testing.T) {
+	t.Parallel()
+	const containerID = "etcd-id-xyz"
+	const expectedLeader = "12345"
+	statusJSON := `[{"Endpoint":"https://127.0.0.1:2379","Status":{"header":{"member_id":1},"leader":` + expectedLeader + `}}]`
+	node := &commandCallbackNode{
+		fakeNode: fakeNode{name: "cp1", role: "control-plane"},
+		lookup: func(name string, args []string) (string, error) {
+			// Use len(args) + args[0] to distinguish crictl ps from crictl exec —
+			// avoid substring matching on the full joined string because
+			// "--endpoints=https://..." contains "ps" as a substring ("https" → "tps").
+			if name == "crictl" && len(args) > 0 && args[0] == "ps" {
+				return containerID + "\n", nil
+			}
+			if name == "crictl" && len(args) > 0 && args[0] == "exec" {
+				return statusJSON + "\n", nil
+			}
+			return "", fmt.Errorf("unexpected command %q %v", name, args)
+		},
+	}
+	leaderID, err := readEtcdLeaderID(node)
+	if err != nil {
+		t.Fatalf("expected nil error; got %v", err)
+	}
+	if leaderID != expectedLeader {
+		t.Errorf("leaderID = %q, want %q", leaderID, expectedLeader)
+	}
+}
