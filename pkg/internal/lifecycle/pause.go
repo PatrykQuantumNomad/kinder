@@ -245,15 +245,35 @@ func captureHASnapshot(logger log.Logger, bootstrap nodes.Node) {
 	}
 }
 
-// readEtcdLeaderID runs etcdctl inside the bootstrap CP container to discover
-// the current etcd leader's member id. The returned string is empty when no
-// leader is identifiable.
+// readEtcdLeaderID discovers the current etcd leader's member id by running
+// etcdctl inside the etcd static-pod container via crictl exec. This approach
+// works on real kinder clusters where etcdctl ships only inside the etcd
+// container image (registry.k8s.io/etcd:VERSION), not in the kindest/node
+// rootfs. crictl is available on kindest/node (used by the container runtime).
 //
-// The function tries /usr/local/bin/etcdctl first (the path used by all
-// recent kindest/node images) and falls back to a bare etcdctl in $PATH if
-// the absolute path fails. Either invocation receives the standard etcd
-// peer cert paths.
+// Best-effort: any failure (crictl missing, no etcd container, etcdctl error,
+// parse error) returns ("", err) so captureHASnapshot can log a warning and
+// still write the snapshot with an empty leaderID.
 func readEtcdLeaderID(bootstrap nodes.Node) (string, error) {
+	// 1. Discover the running etcd static-pod container id via crictl.
+	idOut, err := exec.OutputLines(bootstrap.Command("crictl", "ps", "--name", "etcd", "-q"))
+	if err != nil {
+		return "", errors.Wrap(err, "crictl ps for etcd container failed")
+	}
+	var etcdContainerID string
+	for _, line := range idOut {
+		if id := strings.TrimSpace(line); id != "" {
+			etcdContainerID = id
+			break
+		}
+	}
+	if etcdContainerID == "" {
+		return "", errors.New("etcd container not running on bootstrap CP")
+	}
+
+	// 2. Run etcdctl endpoint status inside the etcd container via crictl exec.
+	// The etcd container has etcdctl on its PATH and /etc/kubernetes/pki/etcd/
+	// bind-mounted by kubelet — the same cert paths as in the kindest/node rootfs.
 	etcdctlArgs := []string{
 		"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
 		"--cert=/etc/kubernetes/pki/etcd/peer.crt",
@@ -261,32 +281,16 @@ func readEtcdLeaderID(bootstrap nodes.Node) (string, error) {
 		"--endpoints=https://127.0.0.1:2379",
 		"endpoint", "status", "--cluster", "--write-out=json",
 	}
-	candidates := []string{"/usr/local/bin/etcdctl", "etcdctl"}
-	var lastErr error
-	for _, bin := range candidates {
-		args := append([]string{bin}, etcdctlArgs...)
-		cmd := bootstrap.Command(args[0], args[1:]...)
-		out, err := exec.OutputLines(cmd)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		joined := strings.Join(out, "")
-		if joined == "" {
-			lastErr = errors.New("empty etcdctl output")
-			continue
-		}
-		leader, parseErr := parseEtcdLeader(joined)
-		if parseErr != nil {
-			lastErr = parseErr
-			continue
-		}
-		return leader, nil
+	cmdArgs := append([]string{"crictl", "exec", etcdContainerID, "etcdctl"}, etcdctlArgs...)
+	out, err := exec.OutputLines(bootstrap.Command(cmdArgs[0], cmdArgs[1:]...))
+	if err != nil {
+		return "", errors.Wrap(err, "etcdctl endpoint status via crictl exec failed")
 	}
-	if lastErr == nil {
-		lastErr = errors.New("no etcdctl candidate succeeded")
+	joined := strings.Join(out, "")
+	if joined == "" {
+		return "", errors.New("empty etcdctl output")
 	}
-	return "", lastErr
+	return parseEtcdLeader(joined)
 }
 
 // parseEtcdLeader extracts the leader member id from etcdctl's
