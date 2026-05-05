@@ -214,6 +214,48 @@ func TestClusterNodeSkew_NoConfigDrift_OK(t *testing.T) {
 	}
 }
 
+// TestClusterNodeSkew_NonDefaultClusterName_Discovered verifies that
+// clusterNodeSkewCheck works with any cluster name when listNodes is injected
+// (regression coverage for the presence-only filter refactor).
+func TestClusterNodeSkew_NonDefaultClusterName_Discovered(t *testing.T) {
+	t.Parallel()
+	// Simulate a cluster named "verify47" with non-default name containers.
+	entries := makeNodeEntries([]nodeEntry{
+		{Name: "verify47-control-plane", Role: "control-plane", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+		{Name: "verify47-worker", Role: "worker", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+	})
+	check := newTestClusterNodeSkewCheck(entries, nil)
+	results := check.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "ok" {
+		t.Errorf("Status = %q, want %q (Message=%q Reason=%q)", r.Status, "ok", r.Message, r.Reason)
+	}
+}
+
+// TestClusterNodeSkew_RealListFilter_NoValuePin verifies that clusterFilter()
+// returns a presence-only label filter (no "=kind" suffix). This test fails
+// until the GREEN refactor extracts clusterFilter() and removes the =kind pin.
+func TestClusterNodeSkew_RealListFilter_NoValuePin(t *testing.T) {
+	t.Parallel()
+	// clusterFilter() must exist (factored out in GREEN) and must NOT contain =kind.
+	args := clusterFilter()
+	found := false
+	for _, a := range args {
+		if a == "label=io.x-k8s.kind.cluster" {
+			found = true
+		}
+		if a == "label=io.x-k8s.kind.cluster=kind" {
+			t.Errorf("clusterFilter() returned the pinned =kind filter — breaks non-default cluster names")
+		}
+	}
+	if !found {
+		t.Errorf("clusterFilter() args %v do not contain the presence-only label filter %q", args, "label=io.x-k8s.kind.cluster")
+	}
+}
+
 func TestImageTagVersion(t *testing.T) {
 	t.Parallel()
 

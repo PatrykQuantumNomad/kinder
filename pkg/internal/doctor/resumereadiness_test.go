@@ -32,6 +32,9 @@ type fakeReadinessOpts struct {
 	execResults  map[string]fakeExecLines
 	snapshotID   string
 	snapshotOK   bool
+	// inspectStates maps container name → runtime state ("running", "exited", etc).
+	// NEW (47-06): used by the running-CP bootstrap selector. If absent, default "running".
+	inspectStates map[string]string
 }
 
 type fakeExecLines struct {
@@ -381,6 +384,113 @@ func TestClusterResumeReadiness_NoSnapshot_OK(t *testing.T) {
 	}
 	if results[0].Status != "ok" {
 		t.Errorf("Status = %q, want %q (without snapshot, healthy etcd is still ok)", results[0].Status, "ok")
+	}
+}
+
+// TestClusterResumeReadiness_HA_StoppedCPs_Detected verifies that when the HA
+// topology declares 3 CPs but cp1 and cp2 are exited, the check selects cp3
+// (running) as bootstrap, probes etcd, and returns warn with "1/3" and "quorum".
+// This fails until GREEN adds the inspectState field + running-CP bootstrap selector.
+func TestClusterResumeReadiness_HA_StoppedCPs_Detected(t *testing.T) {
+	t.Parallel()
+	const etcdContainerID = "etcd-container-id-cp3"
+	// 1/3 healthy JSON
+	oneOfThree := `[` +
+		`{"endpoint":"https://127.0.0.1:2379","health":true,"took":"1ms"},` +
+		`{"endpoint":"https://10.0.0.2:2379","health":false,"error":"connection refused"},` +
+		`{"endpoint":"https://10.0.0.3:2379","health":false,"error":"connection refused"}` +
+		`]`
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		// All 3 CPs declared (docker ps -a includes stopped containers).
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		inspectStates: map[string]string{
+			"cp1": "exited",
+			"cp2": "exited",
+			"cp3": "running",
+		},
+		execResults: map[string]fakeExecLines{
+			// bootstrap selection picks cp3 (first running CP)
+			"cp3|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp3|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+				lines: []string{oneOfThree},
+			},
+		},
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d (%v)", len(results), results)
+	}
+	r := results[0]
+	if r.Status == "skip" {
+		t.Errorf("Status must NOT be skip — degraded HA cluster should warn, not skip")
+	}
+	if r.Status == "fail" {
+		t.Errorf("Status must NOT be fail — CONTEXT.md warn-and-continue")
+	}
+	if r.Status != "warn" {
+		t.Errorf("Status = %q, want %q (Message=%q Reason=%q)", r.Status, "warn", r.Message, r.Reason)
+	}
+	if !strings.Contains(r.Message, "1/3") {
+		t.Errorf("Message = %q, want to contain %q (must report topology-relative health)", r.Message, "1/3")
+	}
+	if !strings.Contains(r.Reason, "quorum") {
+		t.Errorf("Reason = %q, want to mention %q", r.Reason, "quorum")
+	}
+}
+
+// TestClusterResumeReadiness_HA_AllCPsStopped_WarnNoEtcd verifies that when all
+// 3 CPs are exited, the check returns warn (not skip) with a clear "all
+// control-plane containers stopped" message.
+// This fails until GREEN adds the running-CP bootstrap selector + all-stopped edge case.
+func TestClusterResumeReadiness_HA_AllCPsStopped_WarnNoEtcd(t *testing.T) {
+	t.Parallel()
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		inspectStates: map[string]string{
+			"cp1": "exited",
+			"cp2": "exited",
+			"cp3": "exited",
+		},
+		execResults: map[string]fakeExecLines{}, // no exec results expected
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d (%v)", len(results), results)
+	}
+	r := results[0]
+	if r.Status == "skip" {
+		t.Errorf("Status must NOT be skip — completely stopped HA cluster should warn with context")
+	}
+	if r.Status == "fail" {
+		t.Errorf("Status must NOT be fail — CONTEXT.md warn-and-continue")
+	}
+	if r.Status != "warn" {
+		t.Errorf("Status = %q, want %q", r.Status, "warn")
+	}
+	if !strings.Contains(r.Message, "all control-plane containers stopped") {
+		t.Errorf("Message = %q, want to contain %q", r.Message, "all control-plane containers stopped")
+	}
+	if !strings.Contains(r.Reason, "cannot probe etcd") {
+		t.Errorf("Reason = %q, want to mention %q", r.Reason, "cannot probe etcd")
+	}
+}
+
+// TestClusterResumeReadiness_RealListCPNodesIncludesA verifies that cpNodeFilter()
+// includes "-a" in its argument list so stopped CPs (the failure mode this check
+// exists to detect) appear in the declared topology.
+// This fails until GREEN factors cpNodeFilter() out of realListCPNodes.
+func TestClusterResumeReadiness_RealListCPNodesIncludesA(t *testing.T) {
+	t.Parallel()
+	args := cpNodeFilter()
+	foundA := false
+	for _, a := range args {
+		if a == "-a" {
+			foundA = true
+			break
+		}
+	}
+	if !foundA {
+		t.Errorf("cpNodeFilter() args %v do not include \"-a\" — stopped CPs are invisible to the HA gate", args)
 	}
 }
 
