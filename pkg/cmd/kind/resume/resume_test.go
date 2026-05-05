@@ -223,8 +223,8 @@ func TestResumeCmd_ReadinessTimeoutExitNonZero(t *testing.T) {
 	}
 }
 
-// TestResumeCmd_WaitFlagPropagated: --wait=600 → fake resumeFn captures
-// WaitTimeout = 600 * time.Second.
+// TestResumeCmd_WaitFlagPropagated: --wait=10m → fake resumeFn captures
+// WaitTimeout = 10 * time.Minute (duration string syntax after DurationVar migration).
 func TestResumeCmd_WaitFlagPropagated(t *testing.T) {
 	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
 	var captured time.Duration
@@ -235,18 +235,18 @@ func TestResumeCmd_WaitFlagPropagated(t *testing.T) {
 
 	streams, _, _ := newStreams()
 	c := NewCommand(log.NoopLogger{}, streams)
-	c.SetArgs([]string{"--wait=600"})
+	c.SetArgs([]string{"--wait=10m"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	want := 600 * time.Second
+	want := 10 * time.Minute
 	if captured != want {
 		t.Errorf("expected WaitTimeout=%v, got %v", want, captured)
 	}
 }
 
-// TestResumeCmd_TimeoutFlagPropagated: --timeout=45 → fake resumeFn captures
-// StartTimeout = 45 * time.Second.
+// TestResumeCmd_TimeoutFlagPropagated: --timeout=45s → fake resumeFn captures
+// StartTimeout = 45 * time.Second (duration string syntax after DurationVar migration).
 func TestResumeCmd_TimeoutFlagPropagated(t *testing.T) {
 	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
 	var captured time.Duration
@@ -257,7 +257,7 @@ func TestResumeCmd_TimeoutFlagPropagated(t *testing.T) {
 
 	streams, _, _ := newStreams()
 	c := NewCommand(log.NoopLogger{}, streams)
-	c.SetArgs([]string{"--timeout=45"})
+	c.SetArgs([]string{"--timeout=45s"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -267,8 +267,8 @@ func TestResumeCmd_TimeoutFlagPropagated(t *testing.T) {
 	}
 }
 
-// TestResumeCmd_NegativeWaitRejected: --wait=-1 → command exits non-zero with
-// a clear error message.
+// TestResumeCmd_NegativeWaitRejected: --wait=-1s → command exits non-zero with
+// a clear error message (duration syntax after DurationVar migration).
 func TestResumeCmd_NegativeWaitRejected(t *testing.T) {
 	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
 	called := false
@@ -279,7 +279,7 @@ func TestResumeCmd_NegativeWaitRejected(t *testing.T) {
 
 	streams, _, _ := newStreams()
 	c := NewCommand(log.NoopLogger{}, streams)
-	c.SetArgs([]string{"--wait=-1"})
+	c.SetArgs([]string{"--wait=-1s"})
 	err := c.Execute()
 	if err == nil {
 		t.Fatalf("expected error for negative --wait, got nil")
@@ -289,7 +289,8 @@ func TestResumeCmd_NegativeWaitRejected(t *testing.T) {
 	}
 }
 
-// TestResumeCmd_NegativeTimeoutRejected: --timeout=-1 → command exits non-zero.
+// TestResumeCmd_NegativeTimeoutRejected: --timeout=-1s → command exits non-zero
+// (duration syntax after DurationVar migration).
 func TestResumeCmd_NegativeTimeoutRejected(t *testing.T) {
 	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
 	called := false
@@ -300,13 +301,38 @@ func TestResumeCmd_NegativeTimeoutRejected(t *testing.T) {
 
 	streams, _, _ := newStreams()
 	c := NewCommand(log.NoopLogger{}, streams)
-	c.SetArgs([]string{"--timeout=-1"})
+	c.SetArgs([]string{"--timeout=-1s"})
 	err := c.Execute()
 	if err == nil {
 		t.Fatalf("expected error for negative --timeout, got nil")
 	}
 	if called {
 		t.Errorf("resumeFn must not be called when --timeout validation fails")
+	}
+}
+
+// TestResumeCmd_BareIntegerWaitRejected: --wait=600 (bare integer, no unit suffix)
+// must be rejected after DurationVar migration. This is an intentional breaking
+// change: the flag now requires Go duration syntax (600s, 10m, etc.). There is no
+// install base since this flag was introduced in Phase 47 and accepting bare ints
+// is not worth a custom flag type.
+func TestResumeCmd_BareIntegerWaitRejected(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	called := false
+	withResumeFn(t, func(_ lifecycle.ResumeOptions) (*lifecycle.ResumeResult, error) {
+		called = true
+		return &lifecycle.ResumeResult{Cluster: "kind", State: "resumed", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{"--wait=600"}) // bare integer — no unit suffix
+	err := c.Execute()
+	if err == nil {
+		t.Fatalf("expected error for bare integer --wait=600 after DurationVar migration, got nil")
+	}
+	if called {
+		t.Errorf("resumeFn must not be called when flag parse fails")
 	}
 }
 

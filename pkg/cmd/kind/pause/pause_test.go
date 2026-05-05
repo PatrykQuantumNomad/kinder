@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/internal/lifecycle"
@@ -224,6 +225,74 @@ func TestPauseCmd_PartialFailureExitNonZero(t *testing.T) {
 	}
 	if success, _ := n2["success"].(bool); success {
 		t.Errorf("expected nodes[1].success=false, got true")
+	}
+}
+
+// TestPauseCmd_TimeoutFlagPropagated: --timeout=45s → fake pauseFn captures
+// Timeout = 45 * time.Second (duration string syntax after DurationVar migration).
+func TestPauseCmd_TimeoutFlagPropagated(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	var captured time.Duration
+	withPauseFn(t, func(opts lifecycle.PauseOptions) (*lifecycle.PauseResult, error) {
+		captured = opts.Timeout
+		return &lifecycle.PauseResult{Cluster: "kind", State: "paused", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{"--timeout=45s"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	want := 45 * time.Second
+	if captured != want {
+		t.Errorf("expected Timeout=%v, got %v", want, captured)
+	}
+}
+
+// TestPauseCmd_NegativeTimeoutRejected: --timeout=-1s → command exits non-zero
+// (duration syntax after DurationVar migration).
+func TestPauseCmd_NegativeTimeoutRejected(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	called := false
+	withPauseFn(t, func(_ lifecycle.PauseOptions) (*lifecycle.PauseResult, error) {
+		called = true
+		return &lifecycle.PauseResult{Cluster: "kind", State: "paused", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{"--timeout=-1s"})
+	err := c.Execute()
+	if err == nil {
+		t.Fatalf("expected error for negative --timeout, got nil")
+	}
+	if called {
+		t.Errorf("pauseFn must not be called when --timeout validation fails")
+	}
+}
+
+// TestPauseCmd_BareIntegerTimeoutRejected: --timeout=30 (bare integer, no unit)
+// must be rejected after DurationVar migration. Intentional breaking change —
+// flag was introduced in Phase 47 with no install base; bare ints not worth
+// a custom flag type.
+func TestPauseCmd_BareIntegerTimeoutRejected(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	called := false
+	withPauseFn(t, func(_ lifecycle.PauseOptions) (*lifecycle.PauseResult, error) {
+		called = true
+		return &lifecycle.PauseResult{Cluster: "kind", State: "paused", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{"--timeout=30"}) // bare integer — no unit suffix
+	err := c.Execute()
+	if err == nil {
+		t.Fatalf("expected error for bare integer --timeout=30 after DurationVar migration, got nil")
+	}
+	if called {
+		t.Errorf("pauseFn must not be called when flag parse fails")
 	}
 }
 
