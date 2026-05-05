@@ -30,7 +30,7 @@ Plan: 01 (not yet planned)
 Status: Phase 47 complete including gap closure 47-05; ready to start phase 48 context-gathering
 Last activity: 2026-05-05 — Plan 47-05 shipped (gap closure LIFE-04): replaced unreachable which-etcdctl probe in cluster-resume-readiness doctor check and pause.go readEtcdLeaderID with crictl exec-based probe. Doctor check now actually evaluates etcd health on real HA clusters (was always skip before). Pause snapshots now capture real leaderID. 5 new tests (2 doctor + 3 pause). Phase 47 fully delivers LIFE-01..LIFE-04 including production-verified code path.
 
-Progress: ████░░░░░░ 19% (4 of 21 plans)
+Progress: ████░░░░░░ 24% (5 of 21 plans)
 
 ## Performance Metrics
 
