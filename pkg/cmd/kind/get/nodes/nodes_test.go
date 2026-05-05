@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"sigs.k8s.io/kind/pkg/cluster"
+	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/log"
 )
@@ -37,7 +38,7 @@ func withResolveClusterName(t *testing.T, fn func(args []string, p *cluster.Prov
 }
 
 // withListNodes swaps the package-level listNodes injection for the duration of t.
-func withListNodes(t *testing.T, fn func(name string) (string, error)) {
+func withListNodes(t *testing.T, fn func(name string) ([]nodes.Node, error)) {
 	t.Helper()
 	prev := listNodes
 	listNodes = fn
@@ -91,9 +92,9 @@ func TestGetNodesCmd_PositionalArg_Resolves(t *testing.T) {
 				return wantResolve, nil
 			})
 			var listedName string
-			withListNodes(t, func(name string) (string, error) {
+			withListNodes(t, func(name string) ([]nodes.Node, error) {
 				listedName = name
-				return "", nil // empty JSON: node list empty is fine for this test
+				return nil, nil // empty node list is fine for this test
 			})
 			streams, _, _ := newTestStreams()
 			c := NewCommand(log.NoopLogger{}, streams)
@@ -145,9 +146,9 @@ func TestGetNodesCmd_NoArgsNoFlag_AutoDetect(t *testing.T) {
 		return "auto-cluster", nil
 	})
 	var listedName string
-	withListNodes(t, func(name string) (string, error) {
+	withListNodes(t, func(name string) ([]nodes.Node, error) {
 		listedName = name
-		return "", nil
+		return nil, nil
 	})
 	streams, _, _ := newTestStreams()
 	c := NewCommand(log.NoopLogger{}, streams)

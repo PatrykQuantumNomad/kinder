@@ -56,17 +56,31 @@ type nodeInfo struct {
 	SkewOK bool   `json:"skewOk"`
 }
 
+// resolveClusterName is the test-injection point for cluster name resolution.
+// Production code wires it to lifecycle.ResolveClusterName backed by a real
+// *cluster.Provider; tests substitute a closure that returns a fixed name.
+var resolveClusterName = func(args []string, p *cluster.Provider) (string, error) {
+	return lifecycle.ResolveClusterName(args, p)
+}
+
+// listNodes is the test-injection point for provider.ListNodes. When non-nil,
+// it is called instead of provider.ListNodes(name) — tests use this to capture
+// which cluster name was resolved without spinning a real cluster.
+// When nil (default), production code calls provider.ListNodes(name) directly.
+var listNodes func(name string) ([]nodes.Node, error)
+
 // NewCommand returns a new cobra.Command for getting the list of nodes for a given cluster
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	flags := &flagpole{}
 	cmd := &cobra.Command{
-		Args:  cobra.NoArgs,
-		Use:   "nodes",
+		Args:  cobra.MaximumNArgs(1),
+		Use:   "nodes [cluster-name]",
 		Short: "Lists existing kind nodes by their name",
-		Long:  "Lists existing kind nodes by their name",
+		Long: "Lists existing kind nodes by their name. If no cluster name is given and exactly\n" +
+			"one cluster exists, it is auto-selected (matches kinder pause/resume convention).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cli.OverrideDefaultName(cmd.Flags())
-			return runE(logger, streams, flags)
+			return runE(logger, streams, flags, args)
 		},
 	}
 	cmd.Flags().StringVarP(
@@ -92,7 +106,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	return cmd
 }
 
-func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
+func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []string) error {
 	// Validate output format
 	if flags.Output != "" && flags.Output != "json" {
 		return fmt.Errorf("unsupported output format %q: supported values are \"\", \"json\"", flags.Output)
@@ -107,6 +121,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 	var allNodes []nodes.Node
 	var err error
 	if flags.AllClusters {
+		// --all-clusters takes precedence over both positional arg and --name.
 		clusters, err := provider.List()
 		if err != nil {
 			return err
@@ -119,7 +134,17 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole) error {
 			allNodes = append(allNodes, clusterNodes...)
 		}
 	} else {
-		allNodes, err = provider.ListNodes(flags.Name)
+		// Resolve the target cluster: positional arg > --name > auto-detect.
+		targetName, resolveErr := resolveClusterName(args, provider)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if listNodes != nil {
+			// Test injection path: captures which name was resolved.
+			allNodes, err = listNodes(targetName)
+		} else {
+			allNodes, err = provider.ListNodes(targetName)
+		}
 		if err != nil {
 			return err
 		}
