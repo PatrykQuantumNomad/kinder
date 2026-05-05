@@ -4,14 +4,14 @@ milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
 stopped_at: Phase 47 COMPLETE (LIFE-01..LIFE-04 delivered); ready to plan phase 48 (cluster snapshot/restore)
-last_updated: "2026-05-03T20:14:35Z"
-last_activity: 2026-05-03 — Phase 47 plan 04 complete (cluster-resume-readiness doctor check + inline ResumeReadinessHook in lifecycle.Resume; HA-only quorum probe; warn-and-continue; LIFE-04 delivered; Phase 47 fully complete)
+last_updated: "2026-05-05T10:05:00Z"
+last_activity: 2026-05-05 — Phase 47 plan 05 complete (gap closure LIFE-04: replaced which-etcdctl probe with crictl exec-based probe in cluster-resume-readiness doctor check and pause.go readEtcdLeaderID; 5 new tests; real-cluster smoke pending manual verification)
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 21
-  completed_plans: 4
-  percent: 19
+  completed_plans: 5
+  percent: 24
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 Phase: 48 of 51 (next: Cluster Snapshot/Restore — needs context + planning)
 Plan: 01 (not yet planned)
-Status: Phase 47 complete; ready to start phase 48 context-gathering
-Last activity: 2026-05-03 — Plan 47-04 shipped: cluster-resume-readiness doctor check (HA-only, warn-and-continue, gracefully skips when etcdctl missing or single-CP) registered in v2.1 doctor catalog as the 24th check; inline invocation between CP-start and worker-start in lifecycle.Resume via ResumeReadinessHook package var; three-phase Resume ordering refactor (LB→CP→hook→workers). Phase 47 fully delivers LIFE-01..LIFE-04.
+Status: Phase 47 complete including gap closure 47-05; ready to start phase 48 context-gathering
+Last activity: 2026-05-05 — Plan 47-05 shipped (gap closure LIFE-04): replaced unreachable which-etcdctl probe in cluster-resume-readiness doctor check and pause.go readEtcdLeaderID with crictl exec-based probe. Doctor check now actually evaluates etcd health on real HA clusters (was always skip before). Pause snapshots now capture real leaderID. 5 new tests (2 doctor + 3 pause). Phase 47 fully delivers LIFE-01..LIFE-04 including production-verified code path.
 
 Progress: ████░░░░░░ 19% (4 of 21 plans)
 
@@ -54,6 +54,7 @@ Progress: ████░░░░░░ 19% (4 of 21 plans)
 | 47    | 02   | ~7m      | 2     | 4     | TDD RED→GREEN for both tasks; 1 deviation (parallel-wave conflict with 47-03 — resume_test.go/resume.go redeclared shared symbols, parked aside during test runs). |
 | 47    | 03   | ~25m     | 2     | 4     | TDD RED→GREEN for both tasks (4 commits); 2 auto-fix deviations (lifecycle path correction from plan frontmatter, removed redundant NodeResult/nodeFetcher declarations after 47-02 landed first). |
 | 47    | 04   | ~30m     | 2     | 7     | TDD RED→GREEN for both tasks (4 commits); 2 auto-fix deviations (lifecycle path correction pre-flagged by orchestrator, both registry tests in gpu_test.go + socket_test.go updated for 23→24 check count). LIFE-04 delivered; Phase 47 complete. |
+| 47    | 05   | ~25m     | 2     | 4     | TDD RED→GREEN for both tasks (4 commits); 1 auto-fix deviation (test lookup false substring match on "ps" inside "--endpoints=https://"). Gap closure: crictl exec probe replaces unreachable which-etcdctl path in doctor check and pause.go. |
 
 *Updated after each plan completion*
 
@@ -78,6 +79,8 @@ Progress: ████░░░░░░ 19% (4 of 21 plans)
 - 2026-05-03 (47-04): Orchestration extension via package-level hook var (`lifecycle.ResumeReadinessHook`) keeps the public ResumeOptions surface stable while enabling inter-phase injection. Default impl wraps doctor.NewClusterResumeReadinessCheck. Tests swap via t.Cleanup like other lifecycle injection points.
 - 2026-05-03 (47-04): Resume's start logic refactored from a single monolithic loop into three explicit phases (LB → CP → readiness hook → workers) using a closure-based startNodes helper. Hook is gated by HA-only AND no-prior-failures AND hook-installed (three guards). Single-CP clusters incur zero overhead.
 - 2026-05-03 (47-04): cluster-resume-readiness check NEVER returns fail — only ok/warn/skip. Matches CONTEXT.md "warn and continue" semantics: warnings flow through opts.Logger, Resume's exit code is independent of hook output. defaultResumeReadinessHook still defensively handles a fail status (logs as warn) in case future code paths add it.
+- 2026-05-05 (47-05): etcdctl must be reached via `crictl exec <id>` into the etcd static-pod container — NOT via direct invocation in kindest/node rootfs. etcdctl ships only inside registry.k8s.io/etcd:VERSION. crictl is available on kindest/node (used by container runtime). Cert paths are identical because kubelet bind-mounts /etc/kubernetes/pki/etcd/ into the etcd container.
+- 2026-05-05 (47-05): Test lookup conditions must use args[0] (exact subcommand match) not joined-string substring when args may contain URLs. "--endpoints=https://..." contains "ps" as a substring ("https" → "tps") — substring match caused false match in test fakes.
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04.
 
 ## Session Continuity
 
-Last session: 2026-05-03T20:14:35Z
-Stopped at: Phase 47 COMPLETE (LIFE-01..LIFE-04 delivered); ready to plan phase 48 (cluster snapshot/restore)
+Last session: 2026-05-05T10:05:00Z
+Stopped at: Phase 47 COMPLETE including gap closure 47-05 (LIFE-01..LIFE-04 fully delivered with working production probe path); ready to plan phase 48 (cluster snapshot/restore)
 Resume file: .planning/phases/48-cluster-snapshot-restore/ (does not yet exist — needs `gsd discuss-phase 48` to gather context)
