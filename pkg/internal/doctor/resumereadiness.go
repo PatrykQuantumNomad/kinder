@@ -42,6 +42,11 @@ type clusterResumeReadinessCheck struct {
 	// stdout split into lines. Used for crictl discovery and the two
 	// etcdctl invocations (endpoint health, endpoint status) via crictl exec.
 	execInContainer func(binaryName, container string, cmd ...string) ([]string, error)
+	// inspectState returns the runtime State.Status (e.g. "running", "exited")
+	// for the named container. Used by the running-CP bootstrap selector
+	// (47-06 gap closure) so the HA gate counts declared topology (docker ps -a)
+	// while only probing etcd through a running CP.
+	inspectState func(binaryName, container string) (string, error)
 	// readSnapshot returns the leader id captured at pause time from
 	// /kind/pause-snapshot.json, plus a presence bool. ok=false means the
 	// file is absent or unparseable — treated as "no prior leader info"
@@ -56,6 +61,7 @@ func newClusterResumeReadinessCheck() Check {
 	return &clusterResumeReadinessCheck{
 		listClusterNodes: realListCPNodes,
 		execInContainer:  realExecInContainer,
+		inspectState:     realInspectState,
 		readSnapshot:     realReadPauseSnapshot,
 	}
 }
@@ -110,7 +116,27 @@ func (c *clusterResumeReadinessCheck) Run() []Result {
 		}}
 	}
 
-	bootstrap := cpNodeNames[0]
+	// Select the first running CP as bootstrap for etcd probing.
+	// cpNodeNames includes ALL declared CPs (including stopped ones, because
+	// realListCPNodes uses docker ps -a). We need a running container to exec into.
+	var bootstrap string
+	for _, name := range cpNodeNames {
+		state, inspErr := c.inspectState(binaryName, name)
+		if inspErr == nil && state == "running" {
+			bootstrap = name
+			break
+		}
+	}
+	if bootstrap == "" {
+		return []Result{{
+			Name:     c.Name(),
+			Category: c.Category(),
+			Status:   "warn",
+			Message:  "all control-plane containers stopped",
+			Reason:   "cannot probe etcd: every control-plane container is stopped or paused",
+			Fix:      "Start at least one control-plane: docker start <cluster>-control-plane (or kinder resume <cluster>)",
+		}}
+	}
 
 	// 1. Discover the running etcd static-pod container id via crictl.
 	etcdIDLines, err := c.execInContainer(binaryName, bootstrap, "crictl", "ps", "--name", "etcd", "-q")
@@ -269,9 +295,22 @@ func parseEtcdStatusLeader(rawJSON string) (string, error) {
 	return "", nil
 }
 
-// realListCPNodes discovers control-plane containers in the default kind
-// cluster using the same low-level CLI pattern as clusterskew.go (avoids
-// importing the cluster package, which would create an import cycle).
+// cpNodeFilter returns the docker/podman ps args for listing ALL kind
+// control-plane containers, including stopped ones.
+// "-a" so stopped CPs (the exact failure mode this check exists to detect) appear in the topology.
+func cpNodeFilter() []string {
+	return []string{"ps", "-a",
+		"--filter", "label=io.x-k8s.kind.cluster",
+		"--format", `{{.Names}}|{{.Label "io.x-k8s.kind.role"}}`,
+	}
+}
+
+// realListCPNodes discovers control-plane containers in any kind cluster using
+// the same low-level CLI pattern as clusterskew.go (avoids importing the cluster
+// package, which would create an import cycle).
+//
+// Uses docker ps -a so stopped CPs (the exact failure mode this check exists
+// to detect) appear in the declared topology.
 //
 // Returns the sorted CP container names, the detected runtime binary, and
 // nil/error. An empty slice with no error is the "no cluster found" sentinel
@@ -287,11 +326,9 @@ func realListCPNodes() ([]string, string, error) {
 	if binaryName == "" {
 		return nil, "", nil
 	}
-	// List all kind cluster containers, filtering by role label.
+	// List ALL kind cluster containers (including stopped), filtering by role label.
 	lines, err := exec.OutputLines(exec.Command(
-		binaryName, "ps",
-		"--filter", "label=io.x-k8s.kind.cluster",
-		"--format", `{{.Names}}|{{.Label "io.x-k8s.kind.role"}}`,
+		binaryName, cpNodeFilter()...,
 	))
 	if err != nil {
 		return nil, binaryName, err
@@ -317,6 +354,17 @@ func realListCPNodes() ([]string, string, error) {
 func realExecInContainer(binaryName, container string, cmd ...string) ([]string, error) {
 	args := append([]string{"exec", container}, cmd...)
 	return exec.OutputLines(exec.Command(binaryName, args...))
+}
+
+// realInspectState returns the runtime State.Status (e.g. "running", "exited")
+// for the named container. It inlines the equivalent of lifecycle.ContainerState
+// to avoid importing pkg/internal/lifecycle (which imports doctor — cycle).
+func realInspectState(binaryName, container string) (string, error) {
+	lines, err := exec.OutputLines(exec.Command(binaryName, "inspect", "--format", "{{.State.Status}}", container))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.Join(lines, "")), nil
 }
 
 // realReadPauseSnapshot reads /kind/pause-snapshot.json from inside the named

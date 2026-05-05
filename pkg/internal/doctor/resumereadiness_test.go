@@ -64,6 +64,14 @@ func newFakeResumeReadinessCheck(opts fakeReadinessOpts) *clusterResumeReadiness
 			}
 			return nil, errors.New("fake exec: no result for key " + key)
 		},
+		inspectState: func(_, container string) (string, error) {
+			if s, ok := opts.inspectStates[container]; ok {
+				return s, nil
+			}
+			// Default to "running" so existing tests that do not set inspectStates
+			// continue to work without modification.
+			return "running", nil
+		},
 		readSnapshot: func(_ string, _ string) (string, bool) {
 			return opts.snapshotID, opts.snapshotOK
 		},

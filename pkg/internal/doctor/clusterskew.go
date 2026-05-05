@@ -53,7 +53,14 @@ func newClusterNodeSkewCheck() Check {
 	}
 }
 
-// realListNodes discovers nodes from the default kind cluster and collects
+// clusterFilter returns the docker/podman ps args for the presence-only kind
+// cluster label match.
+// Presence-only label match — fix for gap closure 47-06; previously hardcoded =kind broke discovery for non-default cluster names.
+func clusterFilter() []string {
+	return []string{"--filter", "label=io.x-k8s.kind.cluster", "--format", "{{.Names}}"}
+}
+
+// realListNodes discovers nodes from any kind cluster and collects
 // live version information using low-level container CLI commands.
 // It avoids importing the cluster package (which would create an import cycle
 // since cluster/internal/create imports doctor).
@@ -70,12 +77,9 @@ func realListNodes() ([]nodeEntry, error) {
 		return nil, nil // no runtime → skip
 	}
 
-	// List kind cluster containers by label.
-	// The format outputs "name|role|image" per container.
+	// List kind cluster containers by label (presence-only — any cluster name).
 	lines, err := exec.OutputLines(exec.Command(
-		binaryName, "ps",
-		"--filter", "label=io.x-k8s.kind.cluster=kind",
-		"--format", `{{.Names}}`,
+		binaryName, append([]string{"ps"}, clusterFilter()...)...,
 	))
 	if err != nil || len(lines) == 0 {
 		return nil, nil // no cluster running → skip
