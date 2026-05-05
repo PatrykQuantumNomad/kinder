@@ -38,9 +38,9 @@ import (
 
 // flagpole holds the parsed flag values for `kinder pause`.
 type flagpole struct {
-	// Timeout is the per-container graceful stop timeout, in seconds, before
-	// SIGKILL is sent. Generous default leaves room for kubelet/etcd flush.
-	Timeout int
+	// Timeout is the per-container graceful stop timeout before SIGKILL is sent.
+	// Generous default leaves room for kubelet/etcd flush.
+	Timeout time.Duration
 	// JSON enables JSON output for scripted consumers.
 	JSON bool
 }
@@ -76,14 +76,14 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 			return runE(logger, streams, flags, args)
 		},
 	}
-	c.Flags().IntVar(&flags.Timeout, "timeout", 30, "graceful stop timeout in seconds before SIGKILL")
+	c.Flags().DurationVar(&flags.Timeout, "timeout", 30*time.Second, "graceful stop timeout before SIGKILL (e.g. 30s, 2m)")
 	c.Flags().BoolVar(&flags.JSON, "json", false, "output JSON")
 	return c
 }
 
 func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []string) error {
 	if flags.Timeout < 0 {
-		return fmt.Errorf("invalid --timeout %d: must be >= 0", flags.Timeout)
+		return fmt.Errorf("invalid --timeout %v: must be >= 0", flags.Timeout)
 	}
 
 	name, err := resolveClusterName(args)
@@ -101,7 +101,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []stri
 
 	result, pauseErr := pauseFn(lifecycle.PauseOptions{
 		ClusterName: name,
-		Timeout:     time.Duration(flags.Timeout) * time.Second,
+		Timeout:     flags.Timeout,
 		Logger:      logger,
 		Provider:    provider,
 	})

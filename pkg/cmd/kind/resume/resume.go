@@ -37,12 +37,12 @@ import (
 
 // flagpole holds the parsed flag values for `kinder resume`.
 type flagpole struct {
-	// Timeout is the per-container graceful start timeout, in seconds. Rarely
-	// matters for `docker start` but threaded through for parity with `pause`.
-	Timeout int
-	// WaitSecs is the maximum number of seconds to wait for every node to
-	// report Ready via the Kubernetes API after containers are running.
-	WaitSecs int
+	// Timeout is the per-container graceful start timeout. Rarely matters for
+	// `docker start` but threaded through for parity with `pause`.
+	Timeout time.Duration
+	// WaitTimeout is the maximum duration to wait for every node to report
+	// Ready via the Kubernetes API after containers are running.
+	WaitTimeout time.Duration
 	// JSON enables JSON output for scripted consumers.
 	JSON bool
 }
@@ -79,18 +79,18 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 			return runE(logger, streams, flags, args)
 		},
 	}
-	c.Flags().IntVar(&flags.Timeout, "timeout", 30, "graceful start timeout in seconds")
-	c.Flags().IntVar(&flags.WaitSecs, "wait", 300, "max seconds to wait for all nodes Ready")
+	c.Flags().DurationVar(&flags.Timeout, "timeout", 30*time.Second, "graceful start timeout (e.g. 30s, 2m)")
+	c.Flags().DurationVar(&flags.WaitTimeout, "wait", 5*time.Minute, "max time to wait for all nodes Ready (e.g. 5m, 600s)")
 	c.Flags().BoolVar(&flags.JSON, "json", false, "output JSON")
 	return c
 }
 
 func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []string) error {
-	if flags.WaitSecs < 0 {
-		return fmt.Errorf("invalid --wait %d: must be >= 0", flags.WaitSecs)
+	if flags.WaitTimeout < 0 {
+		return fmt.Errorf("invalid --wait %v: must be >= 0", flags.WaitTimeout)
 	}
 	if flags.Timeout < 0 {
-		return fmt.Errorf("invalid --timeout %d: must be >= 0", flags.Timeout)
+		return fmt.Errorf("invalid --timeout %v: must be >= 0", flags.Timeout)
 	}
 
 	name, err := resolveClusterName(args)
@@ -108,8 +108,8 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []stri
 
 	result, resumeErr := resumeFn(lifecycle.ResumeOptions{
 		ClusterName:  name,
-		StartTimeout: time.Duration(flags.Timeout) * time.Second,
-		WaitTimeout:  time.Duration(flags.WaitSecs) * time.Second,
+		StartTimeout: flags.Timeout,
+		WaitTimeout:  flags.WaitTimeout,
 		Logger:       logger,
 		Provider:     provider,
 	})
