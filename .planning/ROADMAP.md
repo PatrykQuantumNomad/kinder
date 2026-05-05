@@ -104,12 +104,13 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   2. User runs `kinder resume [name]` and the cluster becomes fully operational; pods, PVs, and services are in the same state as before pause
   3. On a multi-control-plane cluster, pause/resume orchestrates container stop/start in quorum-safe order (workers before control-plane nodes on pause; reverse on resume)
   4. Before resuming an HA cluster, `kinder doctor` emits a `cluster-resume-readiness` warning if etcd quorum is at risk
-**Plans**: 5 plans
+**Plans**: 6 plans
 - [x] 47-01-PLAN.md — Cluster status surface: container-state helpers, `kinder status [name]`, Status column on `kinder get clusters` (JSON schema migration), real container state on `kinder get nodes`, register pause/resume stub commands in root.go
 - [x] 47-02-PLAN.md — `kinder pause`: quorum-safe stop (workers→CP→LB), best-effort errors, idempotent no-op, `--timeout`/`--json` flags, HA pre-pause etcd snapshot to `/kind/pause-snapshot.json`
 - [x] 47-03-PLAN.md — `kinder resume`: quorum-safe start (LB→CP→workers), best-effort errors, idempotent no-op, `--wait`/`--timeout`/`--json` flags, all-nodes-Ready gate via kubectl with K8s 1.24 selector fallback
 - [x] 47-04-PLAN.md — `cluster-resume-readiness` doctor check: registered in v2.1 doctor catalog, HA-only with skip on single-CP, warn-and-continue on unhealthy etcd members, gracefully skip when etcdctl missing, inline invocation between CP-start and worker-start in `lifecycle.Resume`
 - [x] 47-05-PLAN.md — Gap closure (LIFE-04): replace unreachable `which etcdctl` probe in `cluster-resume-readiness` and `readEtcdLeaderID` with `crictl exec <etcd-id> etcdctl ...` so SC4's "warn if quorum at risk" is actually delivered on real HA clusters; mirror the same probe in pause snapshot capture so leader ID is non-empty post-fix
+- [x] 47-06-PLAN.md — Gap closure (UAT 3, 9, 12, 13, 14): doctor cluster-discovery (presence-only filter + docker ps -a + running-CP bootstrap), `--wait`/`--timeout` migrate IntVar→DurationVar on pause/resume CLIs, `kinder get nodes` accepts positional cluster name matching pause/resume convention
 
 ### Phase 48: Cluster Snapshot/Restore
 **Goal**: Users can capture a complete cluster state as a named snapshot and restore it in seconds, enabling instant reset between development cycles
@@ -175,7 +176,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 35-37. v2.0 phases | v2.0 | 7/7 | Complete | 2026-03-05 |
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
-| 47. Cluster Pause/Resume | v2.3 | 5/5 | Complete (real-cluster smoke pending manual verification) | 2026-05-05 |
+| 47. Cluster Pause/Resume | v2.3 | 5/6 | Complete pending gap closure 47-06 (UAT 3/9/12/13/14 fixes + rebuild) | 2026-05-05 |
 | 48. Cluster Snapshot/Restore | v2.3 | 0/TBD | Not started | - |
 | 49. Inner-Loop Hot Reload | v2.3 | 0/TBD | Not started | - |
 | 50. Runtime Error Decoder | v2.3 | 0/TBD | Not started | - |
