@@ -176,7 +176,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 35-37. v2.0 phases | v2.0 | 7/7 | Complete | 2026-03-05 |
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
-| 47. Cluster Pause/Resume | v2.3 | 5/6 | Complete pending gap closure 47-06 (UAT 3/9/12/13/14 fixes + rebuild) | 2026-05-05 |
+| 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
 | 48. Cluster Snapshot/Restore | v2.3 | 0/TBD | Not started | - |
 | 49. Inner-Loop Hot Reload | v2.3 | 0/TBD | Not started | - |
 | 50. Runtime Error Decoder | v2.3 | 0/TBD | Not started | - |
