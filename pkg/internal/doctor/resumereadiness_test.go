@@ -134,13 +134,14 @@ func TestClusterResumeReadiness_SingleCP_Skip(t *testing.T) {
 	}
 }
 
-func TestClusterResumeReadiness_EtcdctlMissing_Skip(t *testing.T) {
+// TestClusterResumeReadiness_CrictlMissing_Skip: crictl ps errors (e.g. exit
+// 127 — crictl not on PATH) → skip with "crictl unavailable" message.
+func TestClusterResumeReadiness_CrictlMissing_Skip(t *testing.T) {
 	t.Parallel()
-	// `which etcdctl` fails → skip "etcdctl unavailable"
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {err: errors.New("exit status 1")},
+			"cp1|crictl ps --name etcd -q": {err: errors.New("exit 127")},
 		},
 	})
 	results := c.Run()
@@ -151,8 +152,32 @@ func TestClusterResumeReadiness_EtcdctlMissing_Skip(t *testing.T) {
 	if r.Status != "skip" {
 		t.Errorf("Status = %q, want %q", r.Status, "skip")
 	}
-	if !strings.Contains(r.Message, "etcdctl unavailable") {
-		t.Errorf("Message = %q, want to contain %q", r.Message, "etcdctl unavailable")
+	if !strings.Contains(r.Message, "crictl unavailable") {
+		t.Errorf("Message = %q, want to contain %q", r.Message, "crictl unavailable")
+	}
+}
+
+// TestClusterResumeReadiness_NoEtcdContainer_Skip: crictl ps succeeds but
+// returns empty output (no running etcd container) → skip with message
+// mentioning etcd container not running.
+func TestClusterResumeReadiness_NoEtcdContainer_Skip(t *testing.T) {
+	t.Parallel()
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		execResults: map[string]fakeExecLines{
+			"cp1|crictl ps --name etcd -q": {lines: []string{}},
+		},
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "skip" {
+		t.Errorf("Status = %q, want %q", r.Status, "skip")
+	}
+	if !strings.Contains(r.Message, "etcd container not running") {
+		t.Errorf("Message = %q, want to contain %q", r.Message, "etcd container not running")
 	}
 }
 
@@ -181,14 +206,15 @@ func statusEtcdJSON(leader string, n int) string {
 func TestClusterResumeReadiness_HealthyHA_OK(t *testing.T) {
 	t.Parallel()
 	const leader = "12345"
+	const etcdContainerID = "etcd-container-id-abc"
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{healthyEtcdJSON(3)},
 			},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
 				lines: []string{statusEtcdJSON(leader, 3)},
 			},
 		},
@@ -210,6 +236,7 @@ func TestClusterResumeReadiness_HealthyHA_OK(t *testing.T) {
 
 func TestClusterResumeReadiness_UnhealthyMember_Warn(t *testing.T) {
 	t.Parallel()
+	const etcdContainerID = "etcd-container-id-abc"
 	mixed := `[` +
 		`{"endpoint":"https://127.0.0.1:2379","health":true,"took":"1ms"},` +
 		`{"endpoint":"https://10.0.0.2:2379","health":true,"took":"1ms"},` +
@@ -218,8 +245,8 @@ func TestClusterResumeReadiness_UnhealthyMember_Warn(t *testing.T) {
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{mixed},
 			},
 		},
@@ -243,6 +270,7 @@ func TestClusterResumeReadiness_UnhealthyMember_Warn(t *testing.T) {
 
 func TestClusterResumeReadiness_AllUnhealthy_Warn(t *testing.T) {
 	t.Parallel()
+	const etcdContainerID = "etcd-container-id-abc"
 	allBad := `[` +
 		`{"endpoint":"https://127.0.0.1:2379","health":false,"error":"refused"},` +
 		`{"endpoint":"https://10.0.0.2:2379","health":false,"error":"refused"},` +
@@ -251,8 +279,8 @@ func TestClusterResumeReadiness_AllUnhealthy_Warn(t *testing.T) {
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{allBad},
 			},
 		},
@@ -274,14 +302,15 @@ func TestClusterResumeReadiness_StaleSnapshot_Warn(t *testing.T) {
 	t.Parallel()
 	const currentLeader = "99999"
 	const staleLeader = "11111"
+	const etcdContainerID = "etcd-container-id-abc"
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{healthyEtcdJSON(3)},
 			},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
 				lines: []string{statusEtcdJSON(currentLeader, 3)},
 			},
 		},
@@ -304,14 +333,15 @@ func TestClusterResumeReadiness_StaleSnapshot_Warn(t *testing.T) {
 func TestClusterResumeReadiness_FreshSnapshot_OK(t *testing.T) {
 	t.Parallel()
 	const leader = "55555"
+	const etcdContainerID = "etcd-container-id-abc"
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{healthyEtcdJSON(3)},
 			},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
 				lines: []string{statusEtcdJSON(leader, 3)},
 			},
 		},
@@ -330,14 +360,15 @@ func TestClusterResumeReadiness_FreshSnapshot_OK(t *testing.T) {
 func TestClusterResumeReadiness_NoSnapshot_OK(t *testing.T) {
 	t.Parallel()
 	const leader = "77777"
+	const etcdContainerID = "etcd-container-id-abc"
 	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
 		cpNodeNames: []string{"cp1", "cp2", "cp3"},
 		execResults: map[string]fakeExecLines{
-			"cp1|which etcdctl": {lines: []string{"/usr/local/bin/etcdctl"}},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json": {
 				lines: []string{healthyEtcdJSON(3)},
 			},
-			"cp1|/usr/local/bin/etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
+			"cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json": {
 				lines: []string{statusEtcdJSON(leader, 3)},
 			},
 		},
