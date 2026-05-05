@@ -39,8 +39,8 @@ type clusterResumeReadinessCheck struct {
 	// slice or an error is treated as "no kind cluster detected" → skip.
 	listClusterNodes func() (cpNodeNames []string, binaryName string, err error)
 	// execInContainer runs `<binaryName> exec <container> <cmd...>` and returns
-	// stdout split into lines. Used for `which etcdctl` probing and the two
-	// etcdctl invocations (endpoint health, endpoint status).
+	// stdout split into lines. Used for crictl discovery and the two
+	// etcdctl invocations (endpoint health, endpoint status) via crictl exec.
 	execInContainer func(binaryName, container string, cmd ...string) ([]string, error)
 	// readSnapshot returns the leader id captured at pause time from
 	// /kind/pause-snapshot.json, plus a presence bool. ok=false means the
@@ -112,18 +112,36 @@ func (c *clusterResumeReadinessCheck) Run() []Result {
 
 	bootstrap := cpNodeNames[0]
 
-	// 1. Probe etcdctl availability inside the bootstrap CP container.
-	if _, err := c.execInContainer(binaryName, bootstrap, "which", "etcdctl"); err != nil {
+	// 1. Discover the running etcd static-pod container id via crictl.
+	etcdIDLines, err := c.execInContainer(binaryName, bootstrap, "crictl", "ps", "--name", "etcd", "-q")
+	if err != nil {
 		return []Result{{
 			Name:     c.Name(),
 			Category: c.Category(),
 			Status:   "skip",
-			Message:  "etcdctl unavailable inside container",
+			Message:  "crictl unavailable inside container",
+		}}
+	}
+	var etcdContainerID string
+	for _, line := range etcdIDLines {
+		if id := strings.TrimSpace(line); id != "" {
+			etcdContainerID = id
+			break
+		}
+	}
+	if etcdContainerID == "" {
+		return []Result{{
+			Name:     c.Name(),
+			Category: c.Category(),
+			Status:   "skip",
+			Message:  "etcd container not running",
 		}}
 	}
 
-	// 2. Run `etcdctl endpoint health --cluster` to count healthy/unhealthy members.
-	healthArgs := append([]string{"/usr/local/bin/etcdctl"}, etcdctlAuthArgs...)
+	// 2. Run `etcdctl endpoint health --cluster` via crictl exec into the etcd
+	// static-pod container. The etcd container has etcdctl on its PATH and has
+	// /etc/kubernetes/pki/etcd/ bind-mounted by kubelet.
+	healthArgs := append([]string{"crictl", "exec", etcdContainerID, "etcdctl"}, etcdctlAuthArgs...)
 	healthArgs = append(healthArgs, "endpoint", "health", "--cluster", "--write-out=json")
 	healthLines, err := c.execInContainer(binaryName, bootstrap, healthArgs...)
 	if err != nil {
@@ -173,7 +191,7 @@ func (c *clusterResumeReadinessCheck) Run() []Result {
 	// 3. All members healthy. Check snapshot freshness when present.
 	snapLeader, snapOK := c.readSnapshot(binaryName, bootstrap)
 	if snapOK && snapLeader != "" {
-		statusArgs := append([]string{"/usr/local/bin/etcdctl"}, etcdctlAuthArgs...)
+		statusArgs := append([]string{"crictl", "exec", etcdContainerID, "etcdctl"}, etcdctlAuthArgs...)
 		statusArgs = append(statusArgs, "endpoint", "status", "--cluster", "--write-out=json")
 		statusLines, statusErr := c.execInContainer(binaryName, bootstrap, statusArgs...)
 		if statusErr == nil {
