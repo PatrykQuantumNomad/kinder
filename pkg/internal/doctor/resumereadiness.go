@@ -273,7 +273,7 @@ func realListCPNodes() ([]string, string, error) {
 	lines, err := exec.OutputLines(exec.Command(
 		binaryName, "ps",
 		"--filter", "label=io.x-k8s.kind.cluster",
-		"--format", `{{.Names}}|{{index .Labels "io.x-k8s.kind.role"}}`,
+		"--format", `{{.Names}}|{{.Label "io.x-k8s.kind.role"}}`,
 	))
 	if err != nil {
 		return nil, binaryName, err
