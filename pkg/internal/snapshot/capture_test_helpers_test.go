@@ -19,6 +19,7 @@ package snapshot
 import (
 	"context"
 	"io"
+	"os"
 
 	"sigs.k8s.io/kind/pkg/exec"
 )
@@ -80,4 +81,9 @@ func (e *fakeExitError) Error() string { return e.msg }
 // multiNodeCapture implements nodes.Node for multi-node PV/topology tests.
 type multiNodeCapture struct {
 	captureCallbackNode
+}
+
+// openFileForRead is a test helper that opens a file for reading, failing the test if unable.
+func openFileForRead(path string) (*os.File, error) {
+	return os.Open(path)
 }
