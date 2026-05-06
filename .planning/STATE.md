@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in-progress
-stopped_at: Phase 49 Plans 01 + 02 + 03 complete (Wave 2 done). Plan 49-04 (CLI shell) is next.
-last_updated: "2026-05-06T18:42:00.000Z"
-last_activity: "2026-05-06 — Plan 49-03 closed: cycle runner + watch-mode orchestrator delivered. runOneCycle (build/load/rollout per-step %.1fs timing) + Run (signal-aware watch loop, banner SC1, debounce SC3, --poll dispatch SC4). 22 -race tests added (7 cycle + 15 Run). 4 atomic TDD commits (RED→GREEN × 2 tasks). Zero new module deps. 1 deviation (Rule 1: removed plan-body's post-cycle drain that would silently drop edits-during-cycle, breaking hot-reload UX; plan's own test asserted 2 cycles). pkg/internal/dev now totals 72 -race tests in 3.7s."
+stopped_at: Phase 49 source-level COMPLETE — Plan 49-04 (CLI shell) closed. All 4 plans of Phase 49 landed. Phase 49 is ready for the verifier gate; afterwards Phase 50 (Runtime Error Decoder) is the next executable unit.
+last_updated: "2026-05-06T18:40:02Z"
+last_activity: "2026-05-06 — Plan 49-04 closed: kinder dev cobra command (197 LOC dev.go + 594 LOC dev_test.go), 17 -race tests, 10 LOCKED flags wired to internaldev.Run. Phase 49 SC1 (kinder dev --watch <dir> --target <deployment> enters watch mode) reachable from CLI. 3 atomic commits (Task 1 RED→GREEN + Task 2 root.go registration). Zero new module deps. 2 Rule 1 deviations: (1) lifecycle.ProviderBinaryName signature corrected from plan body draft (no-arg, returns string not (string,error)); (2) test --help capture needed c.SetOut(buf). DEV-01/DEV-04/DEV-05 marked complete in REQUIREMENTS.md."
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 3
   total_plans: 16
-  completed_plans: 15
-  percent: 94
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (Waves 1 + 2 complete: Plans 01 + 02 + 03 landed; Plan 04 CLI shell is the final unit)
+**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (ALL 4 plans complete; ready for verifier gate). Phase 50 (Runtime Error Decoder) is next.
 
 ## Current Position
 
-Phase: 49 of 51 — IN PROGRESS
-Plan: 03 of 04 — COMPLETE; Plan 04 (CLI shell) is the final unit of phase 49
-Status: Plans 49-01 + 49-02 + 49-03 source-level complete. Full watch-mode orchestrator (Run + runOneCycle + Options) sits on top of the watcher / poller / debouncer / cycle-step primitives. 72 -race tests pass in pkg/internal/dev/. Plan 04 only needs to wire cobra flags + cluster auto-detection to call dev.Run.
-Last activity: 2026-05-06 — Plan 49-03 closed: 4 atomic TDD commits (RED→GREEN × 2 tasks); runOneCycle (build/load/rollout %.1fs timing matching Phase 47/48 convention) + Run orchestrator (signal-aware watch loop, banner SC1, debounce SC3, --poll dispatch SC4, EventSource test injection). Zero new module deps. 1 Rule 1 deviation (removed plan body's post-cycle drain that would silently drop edits arriving during an in-flight cycle, defeating hot-reload UX — plan's own TestRun_ConcurrentCyclesPrevented test asserted 2 cycles).
+Phase: 49 of 51 — SOURCE-LEVEL COMPLETE (verifier gate pending)
+Plan: 4 of 4 — COMPLETE
+Status: Phase 49 source-level complete; ready for verifier. Plan 49-04 closed: kinder dev cobra command shipped with 17 -race tests, 10 LOCKED flags, registered in root.go between delete and export. Phase 49 SC1 (kinder dev enters watch mode) reachable from CLI. SC2/SC3/SC4 land via 49-03's Run + 49-01's Debounce/StartPoller (already wired through Plan 04's flag → Plan 03's Run dispatch).
+Last activity: 2026-05-06 — Plan 49-04 closed: 3 atomic commits (test → feat → feat). 17 unit tests pass under -race. ProviderBinaryName signature corrected vs plan-body draft (no-arg, returns string). DEV-01/DEV-04/DEV-05 marked complete in REQUIREMENTS.md. Zero new module deps.
 
-Progress: [█████████▌] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [█████████▌] 94%
 | 49    | 01   | ~6m      | 3     | 9     | TDD RED→GREEN × 3 tasks (6 commits). 19 -race tests pass. fsnotify v1.10.1 added (first new dep since v2.0; STATE.md authorized). pkg/internal/dev/ pure (zero project-internal imports). Parallel-wave park-aside reused for 49-02 RED test collisions (per 47-02 precedent). 0 deviations. |
 | 49    | 02   | ~21m     | 3     | 8     | TDD RED→GREEN × 3 tasks (6 commits). 32 -race tests pass. 4 cycle-step primitives: BuildImage (V5 mitigation), LoadImagesIntoCluster (replicates kinder load images core via public APIs — no pkg/cmd/kind/load import), RolloutRestartAndWait (host kubectl + external kubeconfig per RESEARCH §3), WriteKubeconfigTemp (0600 V4 mitigation). Zero new module deps. 2 deviations: Rule 3 timing-only (held for 49-01 GREEN race), Rule 1 imageInspectID switched to io.Pipe for -race cleanliness. |
 | 49    | 03   | ~9m      | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 22 new -race tests (7 cycle + 15 Run); pkg/internal/dev now totals 72 -race tests in 3.7s. runOneCycle (build/load/rollout %.1fs per-step timing per Phase 47/48 convention) + Run orchestrator (signal.NotifyContext SIGINT/SIGTERM teardown, kubeconfig once-at-startup not-per-cycle, banner SC1, Debounce SC3, --poll SC4 dispatch, EventSource test-injection). Zero new module deps. 1 deviation: Rule 1 removed plan body's post-cycle drain that would silently drop edits-during-cycle (plan's own test asserted 2 cycles when 5 events arrive during in-flight cycle 1). Locked Options struct ready for Plan 04 cobra wiring. |
+| 49    | 04   | ~6m      | 2     | 3     | TDD RED→GREEN for Task 1 (3 commits total: test + feat for Task 1, single feat for Task 2 root.go registration). 17 -race tests pass in 1.5s for pkg/cmd/kind/dev/. Phase 49 SC1 delivered (kinder dev is a registered top-level command). 2 Rule 1 deviations: (1) lifecycle.ProviderBinaryName signature is func() string not (logger) (string, error) as plan body draft showed; (2) TestDevCmd_HelpListsCriticalFlags needed c.SetOut(buf) for --help capture in isolated test. AddCommand inserted between delete-export (the alphabetical slot) not delete-doctor (those aren't adjacent in current root.go layout). Zero new module deps. |
 
 *Updated after each plan completion*
 
@@ -135,6 +136,9 @@ Progress: [█████████▌] 94%
 - 2026-05-06 (49-03): `runOneCycle` substitutes `io.Discard` when `streams.Out` is nil (defensive guard). Plan 04's CLI wiring may produce partially-initialized Options; a panic on the first Fprintf would be a hostile failure mode for an inner-loop developer tool.
 - 2026-05-06 (49-03): Default `ExitOnFirstError = false` (continue on cycle error, log to ErrOut). A flaky build mid-iteration should not auto-exit `kinder dev` — the user already sees the cycle error in their terminal. Eventual return value is the FIRST cycle error observed (when ctx-cancel terminates the loop). `ExitOnFirstError=true` remains internal for tests and future strict-mode flags.
 - 2026-05-06 (49-03): EventSource `<-chan struct{}` test injection on Options struct lets `dev_test.go` drive the full watch loop deterministically without spinning a real fsnotify watcher. Production = nil (start the real watcher); tests = synthetic channel. Pattern composes with the per-cycle BuildImageFn / loadImagesFn / RolloutFn fakes for exhaustive orchestrator-level coverage that's still -race clean.
+- 2026-05-06 (49-04): lifecycle.ProviderBinaryName signature is func() string (no logger arg, no error return) — adjusted resolveBinaryName var accordingly; runE checks binary == "" and surfaces clear error referencing kinder doctor. Plan body's pseudocode showed (logger) (string, error) which was incorrect. Pattern matches existing callers in get/clusters/clusters.go:85 and status/status.go:107.
+- 2026-05-06 (49-04): kinder dev cobra command shipped with three injection points (runFn / resolveClusterName / resolveBinaryName), 17 unit tests, 10 LOCKED flags. resolveClusterName is (args, explicit) — explicit-aware closure (vs pause.go's args-only) because dev uses --name flag, not positional cluster arg. AddCommand inserted between delete and export (the alphabetical slot in root.go's existing layout, NOT strictly between delete-doctor as plan body said since those are not adjacent in current AddCommand layout).
+- 2026-05-06 (49-04): --json flag is reserved/documented as 'currently unused' in --help rather than removed. Plan 49-03's Run does not emit JSON-structured cycle output; keeping the flag now avoids a future breaking change when JSON output is wired and mirrors pause.go's --json shape.
 
 ### Pending Todos
 
@@ -146,10 +150,10 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 Waves 1 + 2 complete: file-watch foundation, cycle-step primitives, runOneCycle, and full Run watch-mode orchestrator are all in pkg/internal/dev/ with 72 -race tests. Plan 04 (CLI shell) is the final unit — it only needs to define cobra flags + resolve ClusterName/BinaryName + call dev.Run.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed; the watcher / poller / debouncer / cycle-step / runOneCycle / Run primitives from plans 49-01..49-03 are all wired through to the user-facing CLI. Phase 49 ready for verifier gate; Phase 50 (Runtime Error Decoder) is the next executable unit afterwards.
 
 ## Session Continuity
 
-Last session: 2026-05-06T18:42:00Z
-Stopped at: Plan 49-03 complete (cycle runner + Run orchestrator). Waves 1 + 2 fully done. Plan 49-04 (CLI shell) is the final unit of phase 49.
-Resume file: None — Plans 49-01 + 49-02 + 49-03 done; Plan 49-04 is the next executable unit.
+Last session: 2026-05-06T18:40:02Z
+Stopped at: Phase 49 source-level COMPLETE — Plan 49-04 closed; ready for verifier gate.
+Resume file: None

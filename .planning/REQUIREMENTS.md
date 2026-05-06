@@ -21,11 +21,11 @@ Requirements for the Inner Loop milestone. Each maps to exactly one phase.
 
 ### DEV — Inner Loop
 
-- [ ] **DEV-01**: User can run `kinder dev --watch <dir> --target <deployment>` to watch a directory and trigger a build-load-rollout pipeline on file changes
+- [x] **DEV-01**: User can run `kinder dev --watch <dir> --target <deployment>` to watch a directory and trigger a build-load-rollout pipeline on file changes
 - [ ] **DEV-02**: `kinder dev` builds an image from the watched directory (Dockerfile-based) and imports it via the existing `kinder load images` pipeline
 - [ ] **DEV-03**: After successful image load, `kinder dev` rolls the target Deployment via `kubectl rollout restart` and waits for ready
-- [ ] **DEV-04**: `kinder dev` debounces rapid file changes (configurable, default 500ms) and shows build/load/rollout timing per cycle
-- [ ] **DEV-05**: `kinder dev` supports `--poll` flag for fsnotify-unfriendly environments (Docker Desktop volume mounts on macOS); polls watched directory at configurable interval
+- [x] **DEV-04**: `kinder dev` debounces rapid file changes (configurable, default 500ms) and shows build/load/rollout timing per cycle
+- [x] **DEV-05**: `kinder dev` supports `--poll` flag for fsnotify-unfriendly environments (Docker Desktop volume mounts on macOS); polls watched directory at configurable interval
 
 ### DIAG — Runtime Diagnostics (extends v2.1 doctor framework)
 
@@ -94,11 +94,11 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 | LIFE-06 | 48 | Complete |
 | LIFE-07 | 48 | Complete (48-05) |
 | LIFE-08 | 48 | Complete |
-| DEV-01 | 49 | Pending |
+| DEV-01 | 49 | Complete |
 | DEV-02 | 49 | Pending |
 | DEV-03 | 49 | Pending |
-| DEV-04 | 49 | Pending |
-| DEV-05 | 49 | Pending |
+| DEV-04 | 49 | Complete |
+| DEV-05 | 49 | Complete |
 | DIAG-01 | 50 | Pending |
 | DIAG-02 | 50 | Pending |
 | DIAG-03 | 50 | Pending |
