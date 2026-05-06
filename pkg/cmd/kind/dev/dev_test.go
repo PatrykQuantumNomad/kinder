@@ -567,14 +567,21 @@ func TestDevCmd_ZeroRolloutTimeoutRejected(t *testing.T) {
 // TestDevCmd_HelpListsCriticalFlags: `kinder dev --help` output contains the
 // four critical flags advertised by RESEARCH SC1. Sanity check that the
 // command is registered and its Long/help text is non-empty.
+//
+// Note: cobra writes --help to the writer set via SetOut. In production
+// pkg/cmd/kind/root.go calls SetOut on the root command and children
+// inherit. In this isolated test we have to set it on the dev command
+// directly because we instantiate it without a parent.
 func TestDevCmd_HelpListsCriticalFlags(t *testing.T) {
-	streams, stdout, _ := newTestStreams()
+	streams, _, _ := newTestStreams()
 	c := NewCommand(log.NoopLogger{}, streams)
+	helpBuf := &bytes.Buffer{}
+	c.SetOut(helpBuf)
 	c.SetArgs([]string{"--help"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("--help exited error: %v", err)
 	}
-	out := stdout.String()
+	out := helpBuf.String()
 	for _, want := range []string{"--watch", "--target", "--debounce", "--poll"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected --help to mention %q; got:\n%s", want, out)
