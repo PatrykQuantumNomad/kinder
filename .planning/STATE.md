@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: in_progress
-stopped_at: Plan 48-04 complete — Create+Restore orchestrators delivered. 27 new tests pass -race. Ready for Plan 48-05 (CLI).
-last_updated: "2026-05-06T13:35:00.000Z"
-last_activity: "2026-05-06 — Plan 48-04 shipped: snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 sentinels), EnsureDiskSpace. 27 new TDD tests pass -race."
+status: completed
+stopped_at: Plan 48-05 complete — CLI surface delivered. 5 subcommands, 27 unit tests, root.go registered. Ready for Plan 48-06 (integration/e2e).
+last_updated: "2026-05-06T13:30:00.000Z"
+last_activity: "2026-05-06 — Plan 48-05 shipped: kinder snapshot create/restore/list/show/prune CLI with fn-injection unit tests, tabwriter table, JSON/YAML, no --yes on restore, prune refuses no-flag invocation."
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 11
-  percent: 88
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 ## Current Position
 
 Phase: 48 of 51
-Plan: 05 (next: CLI — kinder snapshot create/restore/list/show/prune)
-Status: Plan 48-04 complete — Create+Restore orchestrators delivered with full pre-flight and TDD
-Last activity: 2026-05-06 — Plan 48-04 shipped: snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 sentinels), EnsureDiskSpace. 27 new TDD tests pass -race.
+Plan: 06 (next: integration/e2e tests and Phase 48 final verification)
+Status: Plan 48-05 complete — CLI surface delivered with 5 subcommands, 27 unit tests, root.go registered
+Last activity: 2026-05-06 — Plan 48-05 shipped: kinder snapshot create/restore/list/show/prune CLI with fn-injection tests, tabwriter table, JSON/YAML, no --yes on restore, prune no-flag refusal.
 
-Progress: [████████░░] 83%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████████░░] 83%
 | 48    | 02   | ~8m      | 2     | 11    | TDD RED→GREEN (4 commits: 2 tasks × 2). 16 new tests pass -race. CaptureEtcd/Images/PVs/Topology/Addons/KindConfig. ClassifyFn injection avoids lifecycle import. No circular deps. |
 | 48    | 03   | ~11m     | 2     | 6     | TDD RED→GREEN (4 commits: 2 tasks × 2). 9 new tests pass -race. RestoreEtcd (HA same-token, manifest bracket, atomic swap), RestoreImages (LoadImageArchiveWithFallback wrapper), RestorePVs (nested-tar dispatch). No circular deps. |
 | 48    | 04   | ~35m     | 3     | 8     | TDD RED→GREEN (6 commits: 3 tasks × 2). 27 new tests pass -race. snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 aggregated sentinels), EnsureDiskSpace (syscall.Statfs + ensureFromStatfs pure fn). 1 auto-fix (exec.OutputLines call). |
+| 48    | 05   | ~9m      | 3     | 13    | All tasks pass -race. 5 CLI subcommands (create/restore/list/show/prune) wired via fn-injection. tabwriter table, JSON/YAML, no --yes on restore, prune no-flag refusal. 2 auto-fixes (test arg prefix, JSON key case). |
 
 *Updated after each plan completion*
 
@@ -107,6 +108,12 @@ Progress: [████████░░] 83%
 - 2026-05-06 (48-04): CheckCompatibility aggregates all three dimension violations (K8s+topology+addon) via kinderrors.NewAggregate — errors.Is() can drill into wrapped aggregate for each sentinel independently.
 - 2026-05-06 (48-04): ErrClusterNotRunning added as new sentinel for etcd reachability pre-flight check in Restore — signals that the cluster must be running before restore can proceed.
 - 2026-05-06 (48-04): Create disk threshold fixed at 8GiB — cannot estimate image size before listing (chicken-and-egg); lifecycle.ClassifyNodes and lifecycle.Pause/Resume are injected via nil-defaulted CreateOptions/RestoreOptions fields (matches Phase 47 test injection pattern).
+- 2026-05-06 (48-05): restore has NO --yes flag — CONTEXT.md locked; hard overwrite is intentional signaling to the caller that this is destructive and non-interactive.
+- 2026-05-06 (48-05): prune enforces at least one policy flag with error listing all 3 (--keep-last/--older-than/--max-size) — CONTEXT.md locked; never delete on naked invocation.
+- 2026-05-06 (48-05): show uses vertical key/value layout — planner discretion for addon map readability; --output json/yaml available for scripted use.
+- 2026-05-06 (48-05): ADDONS column truncation threshold = 50 runes for 120-col terminal; --no-trunc bypasses.
+- 2026-05-06 (48-05): parseSize uses base-2 multipliers (1K=1024), case-insensitive, accepts KiB/MiB/GiB/TiB variants; no custom 'd' duration suffix (rely on Go ParseDuration h/m/s per Research OQ-4).
+- 2026-05-06 (48-05): pruneStoreFns struct bundles list+delete fn injection together — cleaner test setup than two separate package vars.
 
 ### Pending Todos
 
@@ -122,6 +129,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T13:14:53.546Z
-Stopped at: Plan 48-03 complete — restore primitives delivered. 9 new tests pass -race. Ready for Plan 48-04 (restore orchestrator).
+Last session: 2026-05-06T13:27:42Z
+Stopped at: Plan 48-05 complete — CLI surface delivered. 5 subcommands, 27 unit tests, root.go registered. Ready for Plan 48-06.
 Resume file: None

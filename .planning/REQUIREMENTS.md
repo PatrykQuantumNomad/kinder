@@ -16,7 +16,7 @@ Requirements for the Inner Loop milestone. Each maps to exactly one phase.
 - [x] **LIFE-04**: Doctor pre-flight check `cluster-resume-readiness` runs before resume on HA clusters and warns if etcd quorum is at risk
 - [x] **LIFE-05**: User can snapshot a cluster via `kinder snapshot create [snap-name]`; snapshot captures etcd state, loaded container images, and local-path-provisioner PV contents
 - [x] **LIFE-06**: User can restore a cluster from a snapshot via `kinder snapshot restore [snap-name]`; restore refuses if Kubernetes version in snapshot mismatches current cluster
-- [ ] **LIFE-07**: User can list, inspect (size, age, k8s version), and prune snapshots via `kinder snapshot list`, `kinder snapshot show [snap-name]`, `kinder snapshot prune`
+- [x] **LIFE-07**: User can list, inspect (size, age, k8s version), and prune snapshots via `kinder snapshot list`, `kinder snapshot show [snap-name]`, `kinder snapshot prune`
 - [x] **LIFE-08**: Snapshot metadata records cluster Kubernetes version, addon versions, and image-bundle digest for air-gap reproducibility
 
 ### DEV — Inner Loop
@@ -92,7 +92,7 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 | LIFE-04 | 47 | Complete (47-04) |
 | LIFE-05 | 48 | Complete |
 | LIFE-06 | 48 | Complete |
-| LIFE-07 | 48 | Pending |
+| LIFE-07 | 48 | Complete (48-05) |
 | LIFE-08 | 48 | Complete |
 | DEV-01 | 49 | Pending |
 | DEV-02 | 49 | Pending |

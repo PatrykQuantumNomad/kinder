@@ -126,7 +126,7 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
 - [x] 48-02-PLAN.md — Capture sources: etcd snapshot via `crictl exec etcdctl`, image bundle via `ctr --namespace=k8s.io images export`, local-path PV tar of `/opt/local-path-provisioner` per node (nested per-node entries), topology + addon-version reconstruction via `kubectl get deployment`, minimal v1alpha4 kind-config reconstruction
 - [x] 48-03-PLAN.md — Restore sources (parallel to 02): HA-safe etcd restore with shared `--initial-cluster-token`, manifest-aside + atomic data-dir swap, image re-import via existing `nodeutils.LoadImageArchiveWithFallback`, per-node PV untar
 - [x] 48-04-PLAN.md — Orchestrators: `snapshot.Create` (etcd-while-running → `lifecycle.Pause` → images+PVs → bundle → defer-`lifecycle.Resume`); `snapshot.Restore` (full pre-flight: sha256 + disk + K8s/topology/addon hard-fail compat checks BEFORE any mutation; recovery-hint error on post-pause failure, no auto-rollback)
-- [ ] 48-05-PLAN.md — CLI: `pkg/cmd/kind/snapshot/{snapshot,create,restore,list,show,prune}.go` mirroring Phase 47 patterns (positional cluster arg, `--json`, `cobra.DurationVar`); list shows NAME/AGE/SIZE/K8S/ADDONS/STATUS; prune refuses no-flag invocation, prompts y/N unless `--yes`; root.go registration
+- [x] 48-05-PLAN.md — CLI: `pkg/cmd/kind/snapshot/{snapshot,create,restore,list,show,prune}.go` mirroring Phase 47 patterns (positional cluster arg, `--json`, `cobra.DurationVar`); list shows NAME/AGE/SIZE/K8S/ADDONS/STATUS; prune refuses no-flag invocation, prompts y/N unless `--yes`; root.go registration
 - [ ] 48-06-PLAN.md — Integration tests on real cluster: ConfigMap + PV sentinel round-trip; restore refusal on K8s/topology mismatch; `list` STATUS=corrupt detection; blocking human-verification checkpoint for `make integration` + manual smoke
 
 ### Phase 49: Inner-Loop Hot Reload (`kinder dev`)
@@ -183,7 +183,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
-| 48. Cluster Snapshot/Restore | v2.3 | 4/6 | In Progress|  |
+| 48. Cluster Snapshot/Restore | v2.3 | 5/6 | In Progress |  |
 | 49. Inner-Loop Hot Reload | v2.3 | 0/TBD | Not started | - |
 | 50. Runtime Error Decoder | v2.3 | 0/TBD | Not started | - |
 | 51. Upstream Sync & K8s 1.36 | v2.3 | 0/TBD | Not started | - |
