@@ -138,7 +138,11 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   2. Each cycle builds a Docker image from the watched directory, imports it via the existing `kinder load images` pipeline, and rolls the target Deployment via `kubectl rollout restart`; timing for each step is printed per cycle
   3. Rapid file saves within the configurable debounce window (default 500ms) trigger only one cycle, not one per save
   4. On Docker Desktop for macOS where fsnotify events are unreliable, user can pass `--poll` to switch to a polling-based watcher at a configurable interval
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 49-01-PLAN.md — Watcher/poller/debouncer foundation: add fsnotify v1.10.1, fsnotify recursive watcher, stdlib polling fallback, channel-based debouncer
+- [ ] 49-02-PLAN.md — Cycle-step primitives: BuildImage (docker build shell-out), LoadImagesIntoCluster (replicates kinder load images via public APIs), RolloutRestartAndWait (host kubectl), WriteKubeconfigTemp (mode 0600)
+- [ ] 49-03-PLAN.md — Run() orchestrator: cycle runner with per-step %.1fs timing, watch-mode banner, debounce + concurrent-cycle prevention, signal.NotifyContext SIGINT/SIGTERM
+- [ ] 49-04-PLAN.md — `kinder dev` CLI command: cobra wiring, --watch/--target required, --debounce/--poll/--poll-interval/--rollout-timeout flags, root.go registration
 **UI hint**: yes
 
 ### Phase 50: Runtime Error Decoder
@@ -184,6 +188,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
 | 48. Cluster Snapshot/Restore | v2.3 | 6/6 | Complete | 2026-05-06 |
-| 49. Inner-Loop Hot Reload | v2.3 | 0/TBD | Not started | - |
+| 49. Inner-Loop Hot Reload | v2.3 | 0/4 | Not started | - |
 | 50. Runtime Error Decoder | v2.3 | 0/TBD | Not started | - |
 | 51. Upstream Sync & K8s 1.36 | v2.3 | 0/TBD | Not started | - |
