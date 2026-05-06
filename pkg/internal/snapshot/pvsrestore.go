@@ -88,7 +88,6 @@ func RestorePVs(ctx context.Context, allNodes []nodes.Node, pvsTarHostPath strin
 		n, ok := nodeByName[nodeName]
 		if !ok {
 			// Unknown node — warn and skip (not an error).
-			// Log to stderr for observability; caller can ignore.
 			fmt.Fprintf(os.Stderr, "RestorePVs: warning: tar entry %q references unknown node %q (skipping)\n",
 				entryName, nodeName)
 			continue

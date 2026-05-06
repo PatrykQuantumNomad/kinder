@@ -63,11 +63,6 @@ type EtcdRestoreOptions struct {
 // etcdManifestPath is the static-pod manifest path inside kindest/node.
 const etcdManifestPath = "/etc/kubernetes/manifests/etcd.yaml"
 
-// etcdManifestSettleDelay is the duration RestoreEtcd waits after moving the
-// etcd manifest aside so kubelet has time to tear down the etcd static pod.
-// Tests replace this variable to avoid sleeping.
-var etcdManifestSettleDelay = 5 * time.Second
-
 // etcdManifestAside is the temporary location used while the restore is in
 // progress. Moving the manifest aside causes kubelet to stop managing the etcd
 // static pod, giving us a quiescent etcd data dir to operate on.
@@ -89,6 +84,11 @@ const etcdOldDataDir = "/var/lib/etcd.kinder-old"
 // node before handing it to etcdctl.
 const etcdTmpSnap = "/tmp/kinder-restore.snap"
 
+// etcdManifestSettleDelay is the duration RestoreEtcd waits after moving the
+// etcd manifest aside so kubelet has time to tear down the etcd static pod.
+// Tests replace this variable to avoid sleeping.
+var etcdManifestSettleDelay = 5 * time.Second
+
 // RestoreEtcd restores the etcd snapshot at opts.SnapshotHostPath onto each
 // control-plane node in opts.CPs.
 //
@@ -100,7 +100,7 @@ const etcdTmpSnap = "/tmp/kinder-restore.snap"
 //
 // Per-node steps:
 //  1. Move etcd manifest aside → kubelet stops etcd.
-//  2. Wait briefly (5 s) for kubelet to tear down the etcd container.
+//  2. Wait briefly for kubelet to tear down the etcd container.
 //  3. Copy host snapshot into the node.
 //  4. Run etcdctl snapshot restore with per-node advertise-peer-urls.
 //  5. Atomically swap data dirs; roll back on failure.

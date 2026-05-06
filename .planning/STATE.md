@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: completed
-stopped_at: Plan 48-02 complete — capture sources (etcd, images, pvs, topology, kindconfig) delivered. 16 new tests pass -race. Ready for Plan 48-03 (restore).
-last_updated: "2026-05-06T12:54:18.000Z"
-last_activity: "2026-05-06 — Plan 48-02 shipped: CaptureEtcd/CaptureImages/CapturePVs/CaptureTopology/CaptureAddonVersions/ReconstructKindConfig. ClassifyFn injection avoids lifecycle import cycle. AddonRegistry 7 entries. 16 new TDD tests pass -race. 5 new .go files."
+status: in_progress
+stopped_at: Plan 48-03 complete — restore primitives (RestoreEtcd, RestoreImages, RestorePVs) delivered. 9 new tests pass -race. Ready for Plan 48-04 (orchestrator).
+last_updated: "2026-05-06T12:57:46.000Z"
+last_activity: "2026-05-06 — Plan 48-03 shipped: RestoreEtcd (HA-safe, manifest-bracketed, atomic swap), RestoreImages (nodeutils.LoadImageArchiveWithFallback wrapper), RestorePVs (per-node nested-tar dispatch). 9 new TDD tests pass -race."
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
-  percent: 75
+  completed_plans: 10
+  percent: 83
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02 complete)
+**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02+03 complete)
 
 ## Current Position
 
 Phase: 48 of 51
-Plan: 03 (next: restore command implementation)
-Status: Plan 48-02 complete — capture sources delivered (etcd, images, PVs, topology, kindconfig)
-Last activity: 2026-05-06 — Plan 48-02 shipped: CaptureEtcd/CaptureImages/CapturePVs/CaptureTopology/CaptureAddonVersions/ReconstructKindConfig. ClassifyFn injection avoids lifecycle import cycle. AddonRegistry 7 entries. 16 new TDD tests pass -race.
+Plan: 04 (next: restore orchestrator — Pause + RestoreEtcd + RestoreImages + RestorePVs + Resume)
+Status: Plan 48-03 complete — restore primitives delivered (RestoreEtcd, RestoreImages, RestorePVs)
+Last activity: 2026-05-06 — Plan 48-03 shipped: RestoreEtcd (HA-safe, manifest-bracketed, atomic swap), RestoreImages (nodeutils.LoadImageArchiveWithFallback wrapper), RestorePVs (per-node nested-tar dispatch). 9 new TDD tests pass -race.
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [███████░░░] 67%
 | 47    | 06   | ~40m     | 3     | 10    | TDD RED→GREEN (6 commits: 3 tasks × 2). No deviations. 4 source gaps fixed: cluster discovery filter, -a flag + running-CP bootstrap, DurationVar flags, positional cluster arg. 16 test changes across 5 test files. |
 | 48    | 01   | ~7m      | 3     | 9     | TDD RED→GREEN (6 commits: 3 tasks × 2). 17 tests pass -race. stdlib-only: metadata schema, bundle sha256, SnapshotStore 0700, prune policies. ArchiveDigest in sidecar only (not in tarred metadata.json). |
 | 48    | 02   | ~8m      | 2     | 11    | TDD RED→GREEN (4 commits: 2 tasks × 2). 16 new tests pass -race. CaptureEtcd/Images/PVs/Topology/Addons/KindConfig. ClassifyFn injection avoids lifecycle import. No circular deps. |
+| 48    | 03   | ~11m     | 2     | 6     | TDD RED→GREEN (4 commits: 2 tasks × 2). 9 new tests pass -race. RestoreEtcd (HA same-token, manifest bracket, atomic swap), RestoreImages (LoadImageArchiveWithFallback wrapper), RestorePVs (nested-tar dispatch). No circular deps. |
 
 *Updated after each plan completion*
 
@@ -98,6 +99,9 @@ Progress: [███████░░░] 67%
 - 2026-05-06 (48-02): CapturePVs uses single outer tar with per-node nested entries (<nodeName>/local-path-provisioner.tar) — RESEARCH Q8 resolution: simpler layout, matches bundleReader expectations.
 - 2026-05-06 (48-02): ReconstructKindConfig uses string builder (no v1alpha4 API types) — keeps snapshot pkg free of cluster API imports; output is documentation artifact, not for programmatic re-creation.
 - 2026-05-06 (48-02): AddonRegistry omits localRegistry — it is a host-level Docker container not discoverable via kubectl get deployment; topology nodeImage covers it implicitly.
+- 2026-05-06 (48-03): etcdctl invoked directly on kindest/node PATH (not via crictl exec) for snapshot restore — restore runs AFTER manifest removed so etcd container is gone; etcdctl must be on node PATH. Confirmed feasible per RESEARCH OQ-6.
+- 2026-05-06 (48-03): etcdManifestSettleDelay is a package-level var (not EtcdRestoreOptions field) — test injection via assignment, keeps public API clean.
+- 2026-05-06 (48-03): Manifest restore is a deferred call inside restoreSingleCP — guarantees rollback on ALL exit paths; runs after rm tmp snap in the success path.
 
 ### Pending Todos
 
@@ -113,6 +117,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T12:54:18.000Z
-Stopped at: Plan 48-02 complete — capture sources delivered. 16 new tests pass -race. Ready for Plan 48-03 (restore).
+Last session: 2026-05-06T12:57:46.000Z
+Stopped at: Plan 48-03 complete — restore primitives delivered. 9 new tests pass -race. Ready for Plan 48-04 (restore orchestrator).
 Resume file: None
