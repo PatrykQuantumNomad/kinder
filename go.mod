@@ -16,6 +16,7 @@ require (
 	al.essio.dev/pkg/shellescape v1.5.1
 	github.com/BurntSushi/toml v1.4.0
 	github.com/evanphx/json-patch/v5 v5.6.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/mattn/go-isatty v0.0.20
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pkg/errors v0.9.1
