@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: complete
-stopped_at: Phase 48 complete — all 6 plans shipped; source + integration tests + live UAT approved. Ready for gsd-verifier.
-last_updated: "2026-05-06T14:30:00.000Z"
-last_activity: "2026-05-06 — Plan 48-06 closed: integration tests committed (70c7667e), live UAT approved by user (full happy-path round-trip + K8s/topology/addon refusals + STATUS=corrupt + manual smoke incl. prune no-flag refusal + y/N prompt — all green)."
+status: in-progress
+stopped_at: Phase 49 Plan 01 complete (watch/poll/debounce foundation). Plan 49-02 in flight on Wave 1 in parallel.
+last_updated: "2026-05-06T18:07:00.000Z"
+last_activity: "2026-05-06 — Plan 49-01 closed: fsnotify v1.10.1 added (first new dep since v2.0); StartWatcher + StartPoller + Debounce delivered with 19 -race tests; pkg/internal/dev/ package pure (zero project-internal imports); 6 atomic TDD commits (RED→GREEN per task)."
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_plans: 16
+  completed_plans: 13
+  percent: 81
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02+03+04 complete)
+**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (Plan 01 complete; Plan 02 in flight in parallel on Wave 1)
 
 ## Current Position
 
-Phase: 48 of 51 — COMPLETE
-Plan: 06 of 06 — ALL PLANS COMPLETE
-Status: Phase 48 source-level + integration-test + live-UAT all complete; ready for `gsd-verifier` to score against ROADMAP success criteria
-Last activity: 2026-05-06 — Plan 48-06 closed: integration tests committed (70c7667e), live UAT approved by user (full happy-path round-trip + K8s/topology/addon refusals + STATUS=corrupt + manual smoke incl. prune no-flag refusal + y/N prompt — all green).
+Phase: 49 of 51 — IN PROGRESS
+Plan: 01 of 04 — COMPLETE; Plan 02 in flight (Wave 1 parallel)
+Status: Plan 49-01 source-level complete (fsnotify watcher + stdlib poller + leading-trigger debouncer), 19 tests pass -race, package pure for Plan 03 to wire.
+Last activity: 2026-05-06 — Plan 49-01 closed: 6 atomic TDD commits (RED→GREEN × 3 tasks); fsnotify v1.10.1 added as direct dep; ZERO project-internal imports in pkg/internal/dev/; parallel-wave park-aside reused (per 47-02 precedent) to handle 49-02's RED-test files dropping into the shared package directory during my GREEN runs.
 
-Progress: [██████████] 100%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | 48    | 04   | ~35m     | 3     | 8     | TDD RED→GREEN (6 commits: 3 tasks × 2). 27 new tests pass -race. snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 aggregated sentinels), EnsureDiskSpace (syscall.Statfs + ensureFromStatfs pure fn). 1 auto-fix (exec.OutputLines call). |
 | 48    | 05   | ~9m      | 3     | 13    | All tasks pass -race. 5 CLI subcommands (create/restore/list/show/prune) wired via fn-injection. tabwriter table, JSON/YAML, no --yes on restore, prune no-flag refusal. 2 auto-fixes (test arg prefix, JSON key case). |
 | 48    | 06   | ~48m     | 3     | 2     | 5 integration tests under //go:build integration: ConfigMap round-trip + LIFE-08 metadata, K8s/topology/addon refusals, STATUS=corrupt. Task 3 human-verify: live UAT approved 2026-05-06 (make integration + manual smoke all green). Phase 48 COMPLETE. |
+| 49    | 01   | ~6m      | 3     | 9     | TDD RED→GREEN × 3 tasks (6 commits). 19 -race tests pass. fsnotify v1.10.1 added (first new dep since v2.0; STATE.md authorized). pkg/internal/dev/ pure (zero project-internal imports). Parallel-wave park-aside reused for 49-02 RED test collisions (per 47-02 precedent). 0 deviations. |
 
 *Updated after each plan completion*
 
@@ -115,6 +116,11 @@ Progress: [██████████] 100%
 - 2026-05-06 (48-05): ADDONS column truncation threshold = 50 runes for 120-col terminal; --no-trunc bypasses.
 - 2026-05-06 (48-05): parseSize uses base-2 multipliers (1K=1024), case-insensitive, accepts KiB/MiB/GiB/TiB variants; no custom 'd' duration suffix (rely on Go ParseDuration h/m/s per Research OQ-4).
 - 2026-05-06 (48-05): pruneStoreFns struct bundles list+delete fn injection together — cleaner test setup than two separate package vars.
+- 2026-05-06 (49-01): fsnotify v1.10.1 added as direct dep — first new module dep since v2.0; pre-authorized by STATE.md 2026-05-03 decision. Transitive golang.org/x/sys at pre-existing v0.41.0 dominates fsnotify's v0.13.0 floor — go.sum gains 2 lines (fsnotify itself only).
+- 2026-05-06 (49-01): Watcher channel cap=64, poller cap=1, debouncer cap=1. Watcher needs burst headroom (IDE atomic-save = 5–50 events/tick); poller's tick rate-limits emits intrinsically; debouncer enforces "boolean semantics" — consumer only needs to know "something changed since last drain."
+- 2026-05-06 (49-01): Debouncer uses LEADING-trigger (first event arms timer, subsequent events absorbed) NOT trailing-trigger (last event resets timer). File-save bursts fire over <100ms — we want build-load-rollout cycle starting ASAP, not waiting for editor to finish swap-rename. Trailing-trigger is for fast-typing UIs.
+- 2026-05-06 (49-01): fsnotify.ErrEventOverflow handler logs warn + emits a SYNTHETIC event into the output channel. Heavy builds writing thousands of files to _output/ commonly overflow inotify queue; silently dropping the trigger would be a UX disaster — synthesis ensures the cycle still fires.
+- 2026-05-06 (49-01): Parallel-wave shared-package collision handled via filesystem park-aside (per 47-02 precedent). 49-02 dropped its RED test files into pkg/internal/dev/ during my Task 2 RED run, breaking my package compilation. Resolution: temporarily moved 49-02's untracked test files to /tmp during my test runs, restored after. NO 49-02 files were modified or committed by me.
 
 ### Pending Todos
 
@@ -126,10 +132,10 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically verified on a real 3-CP HA cluster.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 Plan 01 (file-watch foundation) complete; downstream plans (49-02/03/04) clear to land.
 
 ## Session Continuity
 
-Last session: 2026-05-06T14:30:00Z
-Stopped at: Phase 48 source-level + integration-test + live-UAT all complete; ready for `gsd-verifier` to score against ROADMAP success criteria.
-Resume file: None — Phase 48 complete.
+Last session: 2026-05-06T18:07:00Z
+Stopped at: Plan 49-01 complete (watch/poll/debounce foundation). Plan 49-02 in flight in parallel on Wave 1.
+Resume file: None — Plan 49-01 done; Plan 49-02 / 49-03 / 49-04 are the next executable units.
