@@ -699,29 +699,39 @@ Pattern: mark with function name prefix `TestIntegration` (existing convention);
 
 ---
 
-## 12. Open Questions (for the planner)
+## 12. Open Questions (RESOLVED)
 
-These are NOT answered here — surface for planning decisions:
+All questions have been resolved by the plans created from this research; resolutions captured below for traceability:
 
 1. **Progress bar vs silent:** Should `kinder snapshot create` and `restore` show a spinner (existing `pkg/internal/cli/spinner.go`) or stream line-by-line progress? The spinner is already available; streaming progress requires knowing total bytes (possible with known file sizes).
+   **RESOLVED:** Plan 05 uses simple `fmt.Fprintf` status lines (no spinner) for create/restore success output; Plan 04's orchestrators rely on the injected `log.Logger` for inline progress. Streaming-byte progress deferred — not in CONTEXT.md must-have list.
 
 2. **`kinder snapshot show` output format:** Mirror `list` columns (single-row table) or expand to vertical key/value layout? Should it accept `--output json`?
+   **RESOLVED:** Plan 05 Task 2 (`show.go`) uses a vertical key/value layout (planner discretion choice) with `--output json|yaml` flag for machine-parseable variants. CONTEXT.md "Claude's Discretion" entry explicitly allowed either; vertical was chosen for readability of the addon map.
 
 3. **Disk-space pre-check threshold:** Hard number (e.g., 10 GB always required) vs dynamic estimate based on component sizes? Dynamic is more correct but adds complexity.
+   **RESOLVED:** Plan 04 Task 1 (`diskspace.go`) + Task 2 (`create.go` step 3) use a dynamic estimate of `2 * (etcd≈50MB + images≈5GB + pvs≈unknown)` clamped to a minimum of 500MB; Plan 04 Task 3 (`restore.go` PF2) uses `info.Size * 2` to cover extraction tempdir.
 
 4. **`--older-than DURATION` and days:** Go's `time.ParseDuration` only supports `ns/us/ms/s/m/h`. Should the planner add a custom parser for `d` suffix, or document that users must use `168h` for 7 days?
+   **RESOLVED:** Plan 05 Task 3 (`prune.go`) uses `cobra.DurationVar` with stdlib `time.ParseDuration`; the `--older-than` flag help documents `168h` for 7 days. Custom `d` parser deferred to keep zero-dep streak.
 
 5. **`snapshot restore` positional arg signature:** Should it be `kinder snapshot restore <snap-name>` (cluster auto-detected) or `kinder snapshot restore <cluster-name> <snap-name>` (matching `pause`/`resume` convention)? Both work; the planner should pick and document.
+   **RESOLVED:** Plan 05 Task 1 (`restore.go`) uses `cobra.RangeArgs(1, 2)` — accepts both `<snap-name>` (1 arg, cluster auto-detected) AND `<cluster-name> <snap-name>` (2 args, matches Phase 47-06 convention). All five subcommands follow the same pattern (create/list/prune use MaximumNArgs; restore/show use RangeArgs(1,2) since snap-name is required).
 
 6. **etcdctl location on kindest/node:** Does the kindest/node image include `etcdctl` on PATH? If yes, `docker exec <node> etcdctl snapshot restore ...` works. If no, the planner must design a temporary container approach. This needs verification against the kindest/node Dockerfile.
+   **RESOLVED:** Plan 03 (etcd capture/restore primitives) assumes `etcdctl` is on the kindest/node PATH at `/usr/local/bin/etcdctl` (per the recommendation in Section 1 of this research) and probes for it at runtime. If the probe fails, Plan 03 falls back to `crictl exec <etcd-container-id> etcdctl ...` against the running etcd static-pod container (the Phase 47 pattern from `pkg/internal/doctor/resumereadiness.go:85`). Both code paths share the auth-args constant; the probe + fallback live in Plan 03 Task 1's `captureEtcd` and Task 2's `restoreEtcd` helpers. (Implementation note: the executor MUST `docker exec <cp> which etcdctl` once at function start and pick the path; do NOT punt this decision to "verify during implementation.")
 
 7. **Image bundle fast-path on restore:** Should restore skip `ctr images import` when the live node's image set sha256 matches `metadata.imagesDigest`? Computing the live sha256 requires exporting all images first, which is circular. Alternative: list image refs and compare deterministically. This optimization may be deferred.
+   **RESOLVED:** DEFERRED. Plan 03's `RestoreImages` always re-imports from `images.tar` (matches CONTEXT.md "always re-load images from images.tar — the archive is the source of truth"). Live-vs-snapshot fast-path optimization is not in scope for Phase 48.
 
 8. **Multi-node PV capture naming:** How should `pvs.tar` handle data from multiple nodes? Options: (a) single tar with per-node subdirectories `<nodeName>/opt/local-path-provisioner/`, (b) separate per-node tars inside the outer tar.gz. Option (a) is simpler.
+   **RESOLVED:** Plan 02 (`pvs.go` `CapturePVs`) uses option (a): single `pvs.tar` with per-node `<nodeName>/` prefix. Restore in Plan 03 uses the inverse mapping. Simpler API and one-file-per-component matches the CONTEXT.md bundle layout.
 
 9. **`kinder snapshot prune --max-size SIZE`:** SIZE format — bytes (e.g., `5G`, `500M`)? Go has no stdlib size parser. Use a simple multiplier parser or require bytes as an integer.
+   **RESOLVED:** Plan 05 Task 3 (`prune.go` `parseSize`) supports `K/M/G/T` suffixes with base-2 multipliers (1K = 1024 bytes), case-insensitive. No suffix = bytes. Inline helper, no new dependency.
 
 10. **Should `snapshot create` fail if no addons are installed?** Probably not — a bare cluster with no addons is a valid snapshot target.
+    **RESOLVED:** Plan 02 (`addons.go` `CaptureAddonVersions`) returns an empty map on a bare cluster; Plan 04's `CheckCompatibility` treats nil and empty maps as equal (`addonsEqual` helper). A no-addon cluster is a fully-valid snapshot/restore target.
 
 ---
 
