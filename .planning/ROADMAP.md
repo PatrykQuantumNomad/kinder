@@ -139,9 +139,9 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   3. Rapid file saves within the configurable debounce window (default 500ms) trigger only one cycle, not one per save
   4. On Docker Desktop for macOS where fsnotify events are unreliable, user can pass `--poll` to switch to a polling-based watcher at a configurable interval
 **Plans**: 4 plans
-- [ ] 49-01-PLAN.md — Watcher/poller/debouncer foundation: add fsnotify v1.10.1, fsnotify recursive watcher, stdlib polling fallback, channel-based debouncer
+- [x] 49-01-PLAN.md — Watcher/poller/debouncer foundation: add fsnotify v1.10.1, fsnotify recursive watcher, stdlib polling fallback, channel-based debouncer
 - [x] 49-02-PLAN.md — Cycle-step primitives: BuildImage (docker build shell-out), LoadImagesIntoCluster (replicates kinder load images via public APIs), RolloutRestartAndWait (host kubectl), WriteKubeconfigTemp (mode 0600)
-- [ ] 49-03-PLAN.md — Run() orchestrator: cycle runner with per-step %.1fs timing, watch-mode banner, debounce + concurrent-cycle prevention, signal.NotifyContext SIGINT/SIGTERM
+- [x] 49-03-PLAN.md — Run() orchestrator: cycle runner with per-step %.1fs timing, watch-mode banner, debounce + concurrent-cycle prevention, signal.NotifyContext SIGINT/SIGTERM
 - [ ] 49-04-PLAN.md — `kinder dev` CLI command: cobra wiring, --watch/--target required, --debounce/--poll/--poll-interval/--rollout-timeout flags, root.go registration
 **UI hint**: yes
 
