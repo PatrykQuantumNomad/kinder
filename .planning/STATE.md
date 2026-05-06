@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: in_progress
-stopped_at: Phase 48 Plan 01 complete — snapshot package foundation delivered (metadata/bundle/store/prune)
-last_updated: "2026-05-06T12:41:00Z"
-last_activity: 2026-05-06 — Plan 48-01 shipped: pkg/internal/snapshot package built stdlib-only with TDD RED-GREEN (6 commits). 17 tests pass under -race. Metadata round-trip, single-pass sha256 bundle, SnapshotStore 0700 mode, pure prune policies delivered.
+status: completed
+stopped_at: Plan 48-02 complete — capture sources (etcd, images, pvs, topology, kindconfig) delivered. 16 new tests pass -race. Ready for Plan 48-03 (restore).
+last_updated: "2026-05-06T12:54:18.000Z"
+last_activity: "2026-05-06 — Plan 48-02 shipped: CaptureEtcd/CaptureImages/CapturePVs/CaptureTopology/CaptureAddonVersions/ReconstructKindConfig. ClassifyFn injection avoids lifecycle import cycle. AddonRegistry 7 entries. 16 new TDD tests pass -race. 5 new .go files."
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 21
-  completed_plans: 7
-  percent: 33
+  total_plans: 12
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plan 01 complete)
+**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02 complete)
 
 ## Current Position
 
 Phase: 48 of 51
-Plan: 02 (next: capture command implementation)
-Status: Plan 48-01 complete — snapshot package foundation (pkg/internal/snapshot) delivered
-Last activity: 2026-05-06 — Plan 48-01 shipped: snapshot foundation package built stdlib-only. Metadata struct (LIFE-08 fields), WriteBundle single-pass sha256, VerifyBundle/OpenBundle, SnapshotStore with 0700 mode, pure prune policies. 17 tests pass -race. Ready for Plan 48-02 (capture command).
+Plan: 03 (next: restore command implementation)
+Status: Plan 48-02 complete — capture sources delivered (etcd, images, PVs, topology, kindconfig)
+Last activity: 2026-05-06 — Plan 48-02 shipped: CaptureEtcd/CaptureImages/CapturePVs/CaptureTopology/CaptureAddonVersions/ReconstructKindConfig. ClassifyFn injection avoids lifecycle import cycle. AddonRegistry 7 entries. 16 new TDD tests pass -race.
 
-Progress: █████░░░░░ 33% (7 of 21 plans)
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: █████░░░░░ 33% (7 of 21 plans)
 | 47    | 05   | ~25m     | 2     | 4     | TDD RED→GREEN for both tasks (4 commits); 1 auto-fix deviation (test lookup false substring match on "ps" inside "--endpoints=https://"). Gap closure: crictl exec probe replaces unreachable which-etcdctl path in doctor check and pause.go. |
 | 47    | 06   | ~40m     | 3     | 10    | TDD RED→GREEN (6 commits: 3 tasks × 2). No deviations. 4 source gaps fixed: cluster discovery filter, -a flag + running-CP bootstrap, DurationVar flags, positional cluster arg. 16 test changes across 5 test files. |
 | 48    | 01   | ~7m      | 3     | 9     | TDD RED→GREEN (6 commits: 3 tasks × 2). 17 tests pass -race. stdlib-only: metadata schema, bundle sha256, SnapshotStore 0700, prune policies. ArchiveDigest in sidecar only (not in tarred metadata.json). |
+| 48    | 02   | ~8m      | 2     | 11    | TDD RED→GREEN (4 commits: 2 tasks × 2). 16 new tests pass -race. CaptureEtcd/Images/PVs/Topology/Addons/KindConfig. ClassifyFn injection avoids lifecycle import. No circular deps. |
 
 *Updated after each plan completion*
 
@@ -92,10 +93,16 @@ Progress: █████░░░░░ 33% (7 of 21 plans)
 - 2026-05-06 (48-01): bundleReader is in-memory (all entries loaded on OpenBundle) — avoids seeking on non-seekable gzip streams; acceptable for restore because large entries extracted to temp files anyway.
 - 2026-05-06 (48-01): PrunePlan union semantics — a snapshot is in the deletion set if ANY active policy marks it. Zero-value Policy fields are inactive (0 = no deletions for that field). CLI `kinder snapshot prune` must enforce at least one flag before calling PrunePlan.
 - 2026-05-06 (48-01): SnapshotStore.List performs full VerifyBundle (re-hash) for accurate Status. Fast-path (Status='unknown' without re-hash) deferred to Plan 05 via StatusFast/StatusFull mode flag documented inline in store.go.
+- 2026-05-06 (48-02): etcdctlAuthArgs duplicated inline in snapshot/etcd.go — no doctor package import avoids circular dependency; TODO references original location for future refactor.
+- 2026-05-06 (48-02): ClassifyFn defined in snapshot package (not lifecycle) — Plan 04 injects lifecycle.ClassifyNodes; avoids circular import risk since lifecycle imports snapshot via Plan 04.
+- 2026-05-06 (48-02): CapturePVs uses single outer tar with per-node nested entries (<nodeName>/local-path-provisioner.tar) — RESEARCH Q8 resolution: simpler layout, matches bundleReader expectations.
+- 2026-05-06 (48-02): ReconstructKindConfig uses string builder (no v1alpha4 API types) — keeps snapshot pkg free of cluster API imports; output is documentation artifact, not for programmatic re-creation.
+- 2026-05-06 (48-02): AddonRegistry omits localRegistry — it is a host-level Docker container not discoverable via kubectl get deployment; topology nodeImage covers it implicitly.
 
 ### Pending Todos
 
 Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic, NOT 47 regressions; may be addressed in a future phase or as opportunistic fixes:
+
 1. Etcd peer TLS certs are bound to original Docker container IPs; pause/resume can reassign IPs and break peer connectivity. Affects HA pause/resume usefulness in production. Candidate for phase 48 (snapshot/restore) consideration or a dedicated kinder fix.
 2. `cluster-node-skew` doctor check tries to `docker exec <lb-container> cat /kind/version` and warns when the LB container doesn't have it — pre-existing skew-check bug, not 47-06 territory.
 3. `cluster-resume-readiness` reason text dumps raw etcdctl error output when partial-failure JSON is available; could parse `[{"endpoint":...,"health":...}]` to produce "1/3 healthy, quorum at risk". Cosmetic — semantics (warn vs skip vs fail) are correct.
@@ -106,6 +113,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T12:41:00Z
-Stopped at: Plan 48-01 complete — snapshot package foundation (metadata/bundle/store/prune) delivered. 17 tests pass -race. Ready for Plan 48-02 (capture command).
-Resume file: .planning/phases/48-cluster-snapshot-restore/48-02-PLAN.md
+Last session: 2026-05-06T12:54:18.000Z
+Stopped at: Plan 48-02 complete — capture sources delivered. 16 new tests pass -race. Ready for Plan 48-03 (restore).
+Resume file: None

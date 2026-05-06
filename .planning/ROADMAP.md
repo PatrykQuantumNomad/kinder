@@ -122,8 +122,8 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   3. User can run `kinder snapshot list` to see all snapshots, `kinder snapshot show [snap-name]` to inspect size, age, k8s version, and image digest, and `kinder snapshot prune` to delete old snapshots
   4. Each snapshot's metadata records the cluster Kubernetes version, addon versions, and image-bundle digest for air-gap reproducibility
 **Plans**: 6 plans
-- [ ] 48-01-PLAN.md — `pkg/internal/snapshot/` foundation: Metadata schema, single-pass tar.gz bundle writer with sha256 sidecar, SnapshotStore over `~/.kinder/snapshots/<cluster>/` (mode 0700), pure prune-policy filters (`KeepLast` / `OlderThan` / `MaxSize`); zero cluster/lifecycle imports
-- [ ] 48-02-PLAN.md — Capture sources: etcd snapshot via `crictl exec etcdctl`, image bundle via `ctr --namespace=k8s.io images export`, local-path PV tar of `/opt/local-path-provisioner` per node (nested per-node entries), topology + addon-version reconstruction via `kubectl get deployment`, minimal v1alpha4 kind-config reconstruction
+- [x] 48-01-PLAN.md — `pkg/internal/snapshot/` foundation: Metadata schema, single-pass tar.gz bundle writer with sha256 sidecar, SnapshotStore over `~/.kinder/snapshots/<cluster>/` (mode 0700), pure prune-policy filters (`KeepLast` / `OlderThan` / `MaxSize`); zero cluster/lifecycle imports
+- [x] 48-02-PLAN.md — Capture sources: etcd snapshot via `crictl exec etcdctl`, image bundle via `ctr --namespace=k8s.io images export`, local-path PV tar of `/opt/local-path-provisioner` per node (nested per-node entries), topology + addon-version reconstruction via `kubectl get deployment`, minimal v1alpha4 kind-config reconstruction
 - [ ] 48-03-PLAN.md — Restore sources (parallel to 02): HA-safe etcd restore with shared `--initial-cluster-token`, manifest-aside + atomic data-dir swap, image re-import via existing `nodeutils.LoadImageArchiveWithFallback`, per-node PV untar
 - [ ] 48-04-PLAN.md — Orchestrators: `snapshot.Create` (etcd-while-running → `lifecycle.Pause` → images+PVs → bundle → defer-`lifecycle.Resume`); `snapshot.Restore` (full pre-flight: sha256 + disk + K8s/topology/addon hard-fail compat checks BEFORE any mutation; recovery-hint error on post-pause failure, no auto-rollback)
 - [ ] 48-05-PLAN.md — CLI: `pkg/cmd/kind/snapshot/{snapshot,create,restore,list,show,prune}.go` mirroring Phase 47 patterns (positional cluster arg, `--json`, `cobra.DurationVar`); list shows NAME/AGE/SIZE/K8S/ADDONS/STATUS; prune refuses no-flag invocation, prompts y/N unless `--yes`; root.go registration
@@ -183,7 +183,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
-| 48. Cluster Snapshot/Restore | v2.3 | 0/6 | Not started | - |
+| 48. Cluster Snapshot/Restore | v2.3 | 2/6 | In Progress|  |
 | 49. Inner-Loop Hot Reload | v2.3 | 0/TBD | Not started | - |
 | 50. Runtime Error Decoder | v2.3 | 0/TBD | Not started | - |
 | 51. Upstream Sync & K8s 1.36 | v2.3 | 0/TBD | Not started | - |
