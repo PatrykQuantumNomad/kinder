@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: completed
-stopped_at: Plan 48-05 complete — CLI surface delivered. 5 subcommands, 27 unit tests, root.go registered. Ready for Plan 48-06 (integration/e2e).
-last_updated: "2026-05-06T13:30:00.000Z"
-last_activity: "2026-05-06 — Plan 48-05 shipped: kinder snapshot create/restore/list/show/prune CLI with fn-injection unit tests, tabwriter table, JSON/YAML, no --yes on restore, prune refuses no-flag invocation."
+status: checkpoint
+stopped_at: Plan 48-06 Task 3 checkpoint — 2 integration test files committed (70c7667e); awaiting human-verify (make integration + manual smoke).
+last_updated: "2026-05-06T13:52:00.000Z"
+last_activity: "2026-05-06 — Plan 48-06 Tasks 1+2 shipped: 5 integration tests (ConfigMap round-trip, K8s/topology/addon refusals, STATUS=corrupt) under //go:build integration. Reached Task 3 human-verify checkpoint."
 progress:
   total_phases: 5
   completed_phases: 1
@@ -129,6 +129,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T13:27:42Z
-Stopped at: Plan 48-05 complete — CLI surface delivered. 5 subcommands, 27 unit tests, root.go registered. Ready for Plan 48-06.
-Resume file: None
+Last session: 2026-05-06T13:52:00Z
+Stopped at: Plan 48-06 Task 3 checkpoint (human-verify) — `make integration` + manual smoke required before phase close.
+Resume file: .planning/phases/48-cluster-snapshot-restore/48-06-PLAN.md (Task 3, continuation after "approved")
