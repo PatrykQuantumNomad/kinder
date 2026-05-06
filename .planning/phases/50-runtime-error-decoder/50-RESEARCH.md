@@ -14,7 +14,7 @@ The codebase investigation reveals a fully formed extension path. The `pkg/inter
 
 The pattern catalog can be sourced entirely from: (a) `pkg/internal/doctor` existing check bodies (they describe pre-flight conditions that become post-hoc patterns), (b) `pkg/cluster/internal/providers/common/cgroups.go` (cgroup regex), (c) kind Known Issues page, (d) kubeadm troubleshooting guide, and (e) CI failure knowledge baked into this repo's doctor checks. No external data source or new module dep is needed.
 
-**Primary recommendation:** Implement decode as a `doctor decode` subcommand. The doctor parent command becomes `cobra.Command{Use: "doctor", RunE: nil}` and adds two children: a `run` subcommand (the current `doctor.go` behavior, kept identical) and a new `decode` subcommand. This is the smallest structural change and matches how `kinder snapshot` was handled in Phase 48.
+**Primary recommendation:** Implement decode as an ADDITIVE PEER subcommand of `doctor`. Keep the existing `doctor.go` RunE intact (bare `kinder doctor` continues to run pre-flight checks). Add `kinder doctor decode` as a sibling cobra command via `doctor.NewCommand`'s `c.AddCommand(decode.NewCommand(...))`. No `kinder doctor run` subcommand is introduced; this preserves all existing CLI invocations and CI scripts. [LOCKED PER USER DECISION #1 — additive peer; decision recorded in CONTEXT.md.]
 
 ---
 
@@ -297,43 +297,33 @@ kinder doctor          ← currently a leaf command (no subcommands)
 ### Phase 50 target tree
 
 ```
-kinder doctor          ← becomes a parent (RunE = nil or shows help)
-  kinder doctor run    ← the existing checks (moved from doctor.go's RunE)
-  kinder doctor decode ← new subcommand
+kinder doctor          ← parent KEEPS its existing RunE (pre-flight checks)
+  kinder doctor decode ← NEW additive peer subcommand
     --name <cluster>
     --since <duration>  (default 30m)
     --output <format>   ("" or "json")
     --auto-fix
+    --include-normal
 ```
 
-**Design choice — keep doctor as default or require explicit subcommand?**
+**Design choice — LOCKED per user decision #1: additive peer.**
 
-Phase 48's `kinder snapshot` has no default RunE and requires an explicit subcommand name (`kinder snapshot create`, `kinder snapshot list`, etc.). That is cleaner than hiding `doctor run` behind the bare `kinder doctor` call. **Recommendation:** Convert `doctor` to a parent group command. Move existing logic to `kinder doctor run`. Existing users who call `kinder doctor` directly will see a help message listing the subcommands — a one-level breaking change acceptable for a v2.3 milestone (similar to how Phase 47 knowingly broke `kinder get clusters --output json` schema).
-
-If backward-compat is a hard requirement, keep `doctor.RunE` pointing to the check-runner and add `decode` as a peer subcommand; Cobra supports parent commands with RunE AND subcommands simultaneously. **The planner decides** — both are implementable. Research recommends the clean break (parent + two subcommands) as it matches the snapshot pattern established in Phase 48.
+The doctor parent command keeps `RunE` pointing at the existing pre-flight check runner. `decode` is added as a sibling subcommand via `c.AddCommand(decode.NewCommand(...))`. Cobra supports parent commands with `RunE` AND child subcommands simultaneously — bare `kinder doctor` still runs the existing checks (no breaking change to CLI, CI scripts, or docs); `kinder doctor decode` invokes the new decoder. NO `kinder doctor run` subcommand is introduced. This was the explicit user decision recorded in CONTEXT.md and is not revisitable here.
 
 ### Package structure for decode subcommand
 
-Following Phase 48's pattern (`pkg/cmd/kind/snapshot/` → separate subcommand files):
+Per locked decision #1 (additive peer), the parent command is minimally modified — only an `AddCommand(decode.NewCommand(...))` line is added. The existing `RunE` is preserved verbatim:
 
 ```
 pkg/cmd/kind/doctor/
-├── doctor.go           ← modified: parent command, adds decode + run as subcommands
+├── doctor.go           ← MINIMAL change: keep RunE intact; add one AddCommand line
 ├── doctor_test.go      ← unchanged (tests extractMountPaths)
 ├── decode/
-│   ├── decode.go       ← cobra subcommand wiring
-│   └── decode_test.go  ← unit tests for flag parsing and output
+│   ├── decode.go       ← NEW: cobra subcommand wiring
+│   └── decode_test.go  ← NEW: unit tests for flag parsing and output
 ```
 
-If `run` is kept as explicit subcommand:
-```
-pkg/cmd/kind/doctor/
-├── doctor.go           ← parent only
-├── run/
-│   └── run.go          ← current doctor.go RunE moved here
-└── decode/
-    └── decode.go
-```
+No `run/` subdirectory is created. The "parent-only with run subcommand" alternative was considered and explicitly rejected by user decision #1 to preserve backward compatibility with existing `kinder doctor` invocations, CI scripts, and documentation.
 
 ---
 
@@ -442,9 +432,10 @@ func matchLines(lines []string, patterns []DecodePattern, source string) []Decod
 **How to avoid:** Use `kubectl get events --sort-by=.lastTimestamp` without `--since`. Apply time-window filtering client-side: parse the `LAST SEEN` column and filter lines older than the window. Or accept that events returns all events (typically ≤100) and rely on sort-by-time to put recent events first.
 **Warning signs:** `kubectl get events --since` error at runtime.
 
-### Pitfall 5: Cobra parent command with RunE AND subcommands confusion
-**What goes wrong:** If `doctor.NewCommand` keeps `RunE` pointing to the existing checks AND adds `decode` as a subcommand, `kinder doctor decode` works but `kinder doctor` still runs the full check suite. This is confusing but functional. The risk is that `--output` flag on the parent is shared with the `run` subcommand but not with `decode`, causing flag parse errors.
-**How to avoid:** Either (a) remove `RunE` from the parent and create explicit `run` and `decode` subcommands, OR (b) keep `RunE` on the parent and flag ALL `doctor` flags as applicable to the `run` behavior (document this choice clearly). The Phase 48 snapshot pattern (no parent RunE) is the cleaner approach.
+### Pitfall 5: Cobra parent command with RunE AND subcommands flag scoping
+**What goes wrong:** `doctor.NewCommand` keeps `RunE` pointing to the existing checks AND adds `decode` as a subcommand (per locked decision #1). Bare `kinder doctor` still runs the full check suite; `kinder doctor decode` runs the decoder. The risk is that `--output` and `--config` flags declared on the parent could leak into the `decode` subcommand or cause unexpected scoping.
+**How to avoid:** Declare ALL parent flags (`--output`, `--config`) as parent-scoped only — they apply to the existing pre-flight check pipeline. The `decode` subcommand declares its OWN `--output` flag (cobra subcommand flags are independent of parent flags by default — verified with `kinder snapshot list --output json` precedent in Phase 48). Document in `decode.go` that the parent's `--config` is intentionally NOT inherited by `decode`.
+**Why locked decision (b) was chosen:** Decision #1 mandates additive-peer semantics to preserve all existing `kinder doctor` invocations, CI scripts, and documentation. The clean-break alternative (no parent RunE) was explicitly rejected by the user.
 
 ---
 
@@ -465,10 +456,9 @@ Based on dependency analysis, the following wave/plan breakdown minimizes risk:
 **Note:** Cannot test against a live cluster in unit tests. Integration test (build-tagged) for 50-05.
 
 ### Plan 50-03: Doctor subcommand wiring (Wave 2 — depends on 50-01, 50-02)
-**Files:** `pkg/cmd/kind/doctor/doctor.go` (modified), `pkg/cmd/kind/doctor/decode/decode.go`, `pkg/cmd/kind/doctor/decode/decode_test.go`
-**Contents:** Modify `doctor.go` to be a parent command; add `decode.NewCommand(...)` as subcommand; decode CLI flags: `--name`, `--since`, `--output`, `--auto-fix`; cluster resolution using `lifecycle.ResolveClusterName`; node enumeration using `provider.ListNodes`; call `doctor.RunDecode(...)`; format output using new decode renderer.
-**If `run` is broken out:** Add `pkg/cmd/kind/doctor/run/run.go` (current `doctor.go` logic, unchanged).
-**TDD:** RED — test decode subcommand registers under `kinder doctor`; test `--name` / `--since` / `--output` flag parsing. GREEN — implement.
+**Files:** `pkg/cmd/kind/doctor/doctor.go` (minimally modified), `pkg/cmd/kind/doctor/decode/decode.go`, `pkg/cmd/kind/doctor/decode/decode_test.go`
+**Contents:** Per locked decision #1 (additive peer), keep `doctor.go`'s existing `RunE` intact; add a single `c.AddCommand(decode.NewCommand(...))` line. Decode CLI flags: `--name`, `--since` (locked default 30m, time.Duration per locked decision #2), `--output`, `--auto-fix`, `--include-normal` (locked decision #3 override; default = false → Warnings only); cluster resolution using `lifecycle.ResolveClusterName`; node enumeration using `provider.ListNodes`; call `doctor.RunDecode(...)`; format output using new decode renderer.
+**TDD:** RED — test decode subcommand registers under `kinder doctor`; test bare `kinder doctor` STILL runs pre-flight checks (locked decision #1 regression check); test `--name` / `--since` / `--output` / `--auto-fix` / `--include-normal` flag parsing and defaults. GREEN — implement.
 
 ### Plan 50-04: Auto-fix whitelist (Wave 2 — depends on 50-01, 50-02)
 **Files:** `pkg/internal/doctor/decode_autofix.go`, updated `decode_catalog.go` (AutoFixable=true on qualifying patterns), `decode_autofix_test.go`
@@ -543,27 +533,21 @@ Based on dependency analysis, the following wave/plan breakdown minimizes risk:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All four questions below were resolved by the user's locked decisions in `50-CONTEXT.md` and are NOT revisitable. They are retained here for traceability between research and implementation.
 
 1. **`kinder doctor` command tree restructure — parent or keep RunE?**
-   - What we know: Phase 48 used the "parent with no RunE" pattern for `kinder snapshot`. Phase 49 used a single command with no subcommands for `kinder dev`.
-   - What's unclear: Whether existing CI/docs reference `kinder doctor` directly (would break if RunE is removed).
-   - Recommendation: Check `ROADMAP.md`, `README.md`, and any CI scripts for bare `kinder doctor` invocations. If none, use the clean parent pattern. If found, keep RunE and add `decode` as an additive subcommand.
+   - **RESOLVED per locked decision #1** — Keep `doctor` RunE intact; add `decode` as an ADDITIVE PEER subcommand via `c.AddCommand(decode.NewCommand(...))`. Do NOT introduce `kinder doctor run`. Bare `kinder doctor` continues to run the existing pre-flight checks for full backward compatibility with CLI, CI scripts, and documentation.
 
 2. **Time window default: 30m or "last N lines"?**
-   - What we know: `docker logs --since 30m` works. `docker logs --tail 500` also works.
-   - What's unclear: CI failures may be older than 30m; "last N lines" is more predictable.
-   - Recommendation: Use `--since 30m` as default with flag override. Add `--tail` flag if users report misses.
+   - **RESOLVED per locked decision #2** — `--since` only with `time.Duration` default `30 * time.Minute`. Single duration flag flowed to BOTH `docker logs --since` AND the kubectl events client-side time filter. NO `--tail` in v1; if users report misses, that becomes a v2 follow-up.
 
 3. **`--field-selector type!=Normal` for events — right filter?**
-   - What we know: Kubernetes events have type "Normal" (informational) and "Warning" (problems). Filtering to Warning reduces noise.
-   - What's unclear: Some addon-startup issues produce Normal events that still indicate a stuck state.
-   - Recommendation: Default to no filter (show all events); let pattern catalog match only warning-type content.
+   - **RESOLVED per locked decision #3** — Default is `type!=Normal` (Warnings only) via `--field-selector`. An override flag (`--include-normal`, planner discretion) flips to include Normal events for cases where addon-startup issues produce Normal events that indicate a stuck state.
 
 4. **Should `decode` also scan containerd logs inside the node (via `docker exec <node> cat /var/log/containers/*.log`)?**
-   - What we know: Docker logs capture the node entrypoint stdout/stderr, not pod-level containerd logs. Pod-level errors show up in kubectl events.
-   - What's unclear: Some containerd errors only appear in `/var/log/containers/` inside the node.
-   - Recommendation: Defer per phase "out of scope" — `decode` is one-shot against docker logs + kubectl events. Pod-level log tailing is explicitly deferred.
+   - **RESOLVED — DEFERRED** to a future phase. `decode` v1 is one-shot against docker logs + kubectl events. Pod-level containerd log tailing is explicitly out of scope for Phase 50 and is recorded in CONTEXT.md as a deferred idea.
 
 ---
 
