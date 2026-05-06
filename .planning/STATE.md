@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
-stopped_at: Phase 47 APPROVED & SHIPPED (LIFE-01..LIFE-04 delivered, all 4 ROADMAP success criteria verified on real 3-CP HA cluster); ready to plan phase 48 (cluster snapshot/restore)
-last_updated: "2026-05-06T00:00:00Z"
-last_activity: 2026-05-06 — Phase 47 user-approved after live UAT on 3-CP HA verify47 cluster: full pause/resume cycle preserved pod UIDs, PVC + sentinel data, Service ClusterIP/NodePort. Quorum-safe ordering observed (workers→CP→LB on pause; LB→CP→workers on resume). Doctor cluster-resume-readiness exercised across healthy / 2-CP-stopped / all-CP-stopped states (warn semantic, never skip/fail). Pause snapshot leaderID non-empty (47-05 crictl probe production-verified).
+stopped_at: Phase 48 Plan 01 complete — snapshot package foundation delivered (metadata/bundle/store/prune)
+last_updated: "2026-05-06T12:41:00Z"
+last_activity: 2026-05-06 — Plan 48-01 shipped: pkg/internal/snapshot package built stdlib-only with TDD RED-GREEN (6 commits). 17 tests pass under -race. Metadata round-trip, single-pass sha256 bundle, SnapshotStore 0700 mode, pure prune policies delivered.
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 21
-  completed_plans: 6
-  percent: 29
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 47: Cluster Pause/Resume (complete with gap closure 47-06)
+**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plan 01 complete)
 
 ## Current Position
 
-Phase: 48 of 51 (next: Cluster Snapshot/Restore — needs context + planning)
-Plan: 01 (not yet planned)
-Status: Phase 47 complete including gap closure 47-06; ready to start phase 48 context-gathering
-Last activity: 2026-05-05 — Plan 47-06 shipped (gap closure UAT): 4 source gaps fixed — (1) clusterskew.go removed =kind pin so any cluster name is discovered; (2) resumereadiness.go uses docker ps -a + running-CP bootstrap selector; (3) kinder pause/resume --wait/--timeout migrated to DurationVar (5m, 30s syntax); (4) kinder get nodes now accepts positional cluster name like pause/resume. 16 test changes (6 TDD commits). Developer rebuild step required before re-running UAT 12/14.
+Phase: 48 of 51
+Plan: 02 (next: capture command implementation)
+Status: Plan 48-01 complete — snapshot package foundation (pkg/internal/snapshot) delivered
+Last activity: 2026-05-06 — Plan 48-01 shipped: snapshot foundation package built stdlib-only. Metadata struct (LIFE-08 fields), WriteBundle single-pass sha256, VerifyBundle/OpenBundle, SnapshotStore with 0700 mode, pure prune policies. 17 tests pass -race. Ready for Plan 48-02 (capture command).
 
-Progress: █████░░░░░ 29% (6 of 21 plans)
+Progress: █████░░░░░ 33% (7 of 21 plans)
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: █████░░░░░ 29% (6 of 21 plans)
 | 47    | 04   | ~30m     | 2     | 7     | TDD RED→GREEN for both tasks (4 commits); 2 auto-fix deviations (lifecycle path correction pre-flagged by orchestrator, both registry tests in gpu_test.go + socket_test.go updated for 23→24 check count). LIFE-04 delivered; Phase 47 complete. |
 | 47    | 05   | ~25m     | 2     | 4     | TDD RED→GREEN for both tasks (4 commits); 1 auto-fix deviation (test lookup false substring match on "ps" inside "--endpoints=https://"). Gap closure: crictl exec probe replaces unreachable which-etcdctl path in doctor check and pause.go. |
 | 47    | 06   | ~40m     | 3     | 10    | TDD RED→GREEN (6 commits: 3 tasks × 2). No deviations. 4 source gaps fixed: cluster discovery filter, -a flag + running-CP bootstrap, DurationVar flags, positional cluster arg. 16 test changes across 5 test files. |
+| 48    | 01   | ~7m      | 3     | 9     | TDD RED→GREEN (6 commits: 3 tasks × 2). 17 tests pass -race. stdlib-only: metadata schema, bundle sha256, SnapshotStore 0700, prune policies. ArchiveDigest in sidecar only (not in tarred metadata.json). |
 
 *Updated after each plan completion*
 
@@ -86,6 +87,11 @@ Progress: █████░░░░░ 29% (6 of 21 plans)
 - 2026-05-05 (47-06): All-stopped HA cluster returns warn not skip from clusterResumeReadinessCheck — completely stopped HA cluster is real degradation with actionable advice, not "check not applicable".
 - 2026-05-05 (47-06): realInspectState inlines lifecycle.ContainerState to avoid doctor→lifecycle import cycle; doctor must never import lifecycle (lifecycle/resume.go imports doctor).
 - 2026-05-05 (47-06): listNodes nil-check injection in nodes.go: var is nil by default; production code nil-guards it and calls provider.ListNodes; test sets it to capture resolved name.
+- 2026-05-06 (48-01): ArchiveDigest inside tarred metadata.json is intentionally left empty — including it would require knowing the archive digest before writing the archive (recursive). Sidecar .sha256 is the single source of truth for archive integrity; SnapshotStore.List reads sidecar for Status.
+- 2026-05-06 (48-01): ErrMissingSidecar is a distinct sentinel from ErrCorruptArchive — missing sidecar is an operational error (interrupted write), not a data-integrity failure. Plan 05 CLI should surface both distinctly.
+- 2026-05-06 (48-01): bundleReader is in-memory (all entries loaded on OpenBundle) — avoids seeking on non-seekable gzip streams; acceptable for restore because large entries extracted to temp files anyway.
+- 2026-05-06 (48-01): PrunePlan union semantics — a snapshot is in the deletion set if ANY active policy marks it. Zero-value Policy fields are inactive (0 = no deletions for that field). CLI `kinder snapshot prune` must enforce at least one flag before calling PrunePlan.
+- 2026-05-06 (48-01): SnapshotStore.List performs full VerifyBundle (re-hash) for accurate Status. Fast-path (Status='unknown' without re-hash) deferred to Plan 05 via StatusFast/StatusFull mode flag documented inline in store.go.
 
 ### Pending Todos
 
@@ -100,6 +106,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T00:00:00Z
-Stopped at: Phase 47 APPROVED & SHIPPED — all 4 ROADMAP SCs verified on real 3-CP HA cluster (pod UIDs, PVC sentinel data, Service ClusterIP/NodePort all preserved across pause/resume; ordering correct; doctor warn-not-skip on quorum risk verified across healthy / partial-CP-stopped / all-CP-stopped states); 3 unrelated issues logged as future todos. Ready to plan phase 48.
-Resume file: .planning/phases/48-cluster-snapshot-restore/ (does not yet exist — needs `gsd discuss-phase 48` to gather context)
+Last session: 2026-05-06T12:41:00Z
+Stopped at: Plan 48-01 complete — snapshot package foundation (metadata/bundle/store/prune) delivered. 17 tests pass -race. Ready for Plan 48-02 (capture command).
+Resume file: .planning/phases/48-cluster-snapshot-restore/48-02-PLAN.md
