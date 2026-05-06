@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cmd/kind/load"
 	"sigs.k8s.io/kind/pkg/cmd/kind/pause"
 	"sigs.k8s.io/kind/pkg/cmd/kind/resume"
+	"sigs.k8s.io/kind/pkg/cmd/kind/snapshot"
 	"sigs.k8s.io/kind/pkg/cmd/kind/status"
 	"sigs.k8s.io/kind/pkg/cmd/kind/version"
 	"sigs.k8s.io/kind/pkg/internal/kindversion"
@@ -90,6 +91,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	// scaffolds wired here so plans 02 and 03 only edit their own packages.
 	cmd.AddCommand(pause.NewCommand(logger, streams))
 	cmd.AddCommand(resume.NewCommand(logger, streams))
+	cmd.AddCommand(snapshot.NewCommand(logger, streams))
 	cmd.AddCommand(status.NewCommand(logger, streams))
 	return cmd
 }
