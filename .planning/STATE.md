@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in-progress
-stopped_at: Phase 49 source-level COMPLETE — Plan 49-04 (CLI shell) closed. All 4 plans of Phase 49 landed. Phase 49 is ready for the verifier gate; afterwards Phase 50 (Runtime Error Decoder) is the next executable unit.
-last_updated: "2026-05-06T18:40:02Z"
-last_activity: "2026-05-06 — Plan 49-04 closed: kinder dev cobra command (197 LOC dev.go + 594 LOC dev_test.go), 17 -race tests, 10 LOCKED flags wired to internaldev.Run. Phase 49 SC1 (kinder dev --watch <dir> --target <deployment> enters watch mode) reachable from CLI. 3 atomic commits (Task 1 RED→GREEN + Task 2 root.go registration). Zero new module deps. 2 Rule 1 deviations: (1) lifecycle.ProviderBinaryName signature corrected from plan body draft (no-arg, returns string not (string,error)); (2) test --help capture needed c.SetOut(buf). DEV-01/DEV-04/DEV-05 marked complete in REQUIREMENTS.md."
+stopped_at: Phase 49 COMPLETE — verifier passed 4/4 SCs at code level + automated live UAT executed against openshell-dev cluster confirmed all 4 human-verification items (e2e build-load-rollout cycle, burst→single-cycle, --poll mode, SIGINT cleanup). Phase 50 (Runtime Error Decoder) is next.
+last_updated: "2026-05-06T22:20:00Z"
+last_activity: "2026-05-06 — Phase 49 closed: live UAT automated end-to-end on openshell-dev (2-node K8s 1.35) cluster. All 4 human-verification items PASS. T1 e2e: cycle 4.1s (build 0.3 / load 2.3 / rollout 1.5), pod rolled 5cb69457b→69fc6567d5. T2 burst: 10 saves in 5.2ms produced exactly 1 cycle (Debounce coalesce). T3 --poll: banner Mode: poll, polling detected save, cycle 4.0s. T4 SIGINT: exit=0 in 2ms, kubeconfig in TMPDIR cleaned up post-exit. DEV-02/DEV-03 checkbox lag in REQUIREMENTS.md fixed (Pending → Complete)."
 progress:
   total_phases: 5
   completed_phases: 3

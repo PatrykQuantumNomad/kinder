@@ -95,8 +95,8 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 | LIFE-07 | 48 | Complete (48-05) |
 | LIFE-08 | 48 | Complete |
 | DEV-01 | 49 | Complete |
-| DEV-02 | 49 | Pending |
-| DEV-03 | 49 | Pending |
+| DEV-02 | 49 | Complete |
+| DEV-03 | 49 | Complete |
 | DEV-04 | 49 | Complete |
 | DEV-05 | 49 | Complete |
 | DIAG-01 | 50 | Pending |
