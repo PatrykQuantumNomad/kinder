@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in-progress
-stopped_at: Phase 49 Plan 01 complete (watch/poll/debounce foundation). Plan 49-02 in flight on Wave 1 in parallel.
-last_updated: "2026-05-06T18:07:00.000Z"
-last_activity: "2026-05-06 — Plan 49-01 closed: fsnotify v1.10.1 added (first new dep since v2.0); StartWatcher + StartPoller + Debounce delivered with 19 -race tests; pkg/internal/dev/ package pure (zero project-internal imports); 6 atomic TDD commits (RED→GREEN per task)."
+stopped_at: Phase 49 Plans 01 + 02 complete (Wave 1). Plan 49-03 (cycle runner) and 49-04 (CLI) are next.
+last_updated: "2026-05-06T18:14:00.000Z"
+last_activity: "2026-05-06 — Plan 49-02 closed: 4 cycle-step primitives (BuildImage, LoadImagesIntoCluster, RolloutRestartAndWait, WriteKubeconfigTemp) delivered with 32 -race tests across 4 _test.go files; replicates kinder load images core via public APIs (no pkg/cmd/kind/load coupling); host kubectl + 0600 kubeconfig; LoadOptions/ImageLoaderFn/BuildImageFn/RolloutFn locked surface for Plan 03; 6 atomic TDD commits (RED→GREEN × 3 tasks); zero new module deps."
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 16
-  completed_plans: 13
-  percent: 81
+  completed_plans: 14
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (Plan 01 complete; Plan 02 in flight in parallel on Wave 1)
+**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (Wave 1 complete: Plans 01 + 02 landed; Plan 03 cycle-runner next)
 
 ## Current Position
 
 Phase: 49 of 51 — IN PROGRESS
-Plan: 01 of 04 — COMPLETE; Plan 02 in flight (Wave 1 parallel)
-Status: Plan 49-01 source-level complete (fsnotify watcher + stdlib poller + leading-trigger debouncer), 19 tests pass -race, package pure for Plan 03 to wire.
-Last activity: 2026-05-06 — Plan 49-01 closed: 6 atomic TDD commits (RED→GREEN × 3 tasks); fsnotify v1.10.1 added as direct dep; ZERO project-internal imports in pkg/internal/dev/; parallel-wave park-aside reused (per 47-02 precedent) to handle 49-02's RED-test files dropping into the shared package directory during my GREEN runs.
+Plan: 02 of 04 — COMPLETE; Plan 03 (cycle runner) and Plan 04 (CLI) are next
+Status: Plans 49-01 + 49-02 source-level complete. Watcher + poller + debouncer + four cycle-step primitives all in pkg/internal/dev/, 50 -race tests pass, package ready for Plan 03 to assemble the per-cycle runner.
+Last activity: 2026-05-06 — Plan 49-02 closed: 6 atomic TDD commits (RED→GREEN × 3 tasks); 4 cycle-step primitives (BuildImage, LoadImagesIntoCluster, RolloutRestartAndWait, WriteKubeconfigTemp) all in pkg/internal/dev/; zero new module deps from 49-02 (fsnotify add was 49-01's commit); locked LoadOptions / ImageLoaderFn / BuildImageFn / RolloutFn surface for Plan 03.
 
-Progress: [████████░░] 81%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 81%
 | 48    | 05   | ~9m      | 3     | 13    | All tasks pass -race. 5 CLI subcommands (create/restore/list/show/prune) wired via fn-injection. tabwriter table, JSON/YAML, no --yes on restore, prune no-flag refusal. 2 auto-fixes (test arg prefix, JSON key case). |
 | 48    | 06   | ~48m     | 3     | 2     | 5 integration tests under //go:build integration: ConfigMap round-trip + LIFE-08 metadata, K8s/topology/addon refusals, STATUS=corrupt. Task 3 human-verify: live UAT approved 2026-05-06 (make integration + manual smoke all green). Phase 48 COMPLETE. |
 | 49    | 01   | ~6m      | 3     | 9     | TDD RED→GREEN × 3 tasks (6 commits). 19 -race tests pass. fsnotify v1.10.1 added (first new dep since v2.0; STATE.md authorized). pkg/internal/dev/ pure (zero project-internal imports). Parallel-wave park-aside reused for 49-02 RED test collisions (per 47-02 precedent). 0 deviations. |
+| 49    | 02   | ~21m     | 3     | 8     | TDD RED→GREEN × 3 tasks (6 commits). 32 -race tests pass. 4 cycle-step primitives: BuildImage (V5 mitigation), LoadImagesIntoCluster (replicates kinder load images core via public APIs — no pkg/cmd/kind/load import), RolloutRestartAndWait (host kubectl + external kubeconfig per RESEARCH §3), WriteKubeconfigTemp (0600 V4 mitigation). Zero new module deps. 2 deviations: Rule 3 timing-only (held for 49-01 GREEN race), Rule 1 imageInspectID switched to io.Pipe for -race cleanliness. |
 
 *Updated after each plan completion*
 
@@ -121,6 +122,13 @@ Progress: [████████░░] 81%
 - 2026-05-06 (49-01): Debouncer uses LEADING-trigger (first event arms timer, subsequent events absorbed) NOT trailing-trigger (last event resets timer). File-save bursts fire over <100ms — we want build-load-rollout cycle starting ASAP, not waiting for editor to finish swap-rename. Trailing-trigger is for fast-typing UIs.
 - 2026-05-06 (49-01): fsnotify.ErrEventOverflow handler logs warn + emits a SYNTHETIC event into the output channel. Heavy builds writing thousands of files to _output/ commonly overflow inotify queue; silently dropping the trigger would be a UX disaster — synthesis ensures the cycle still fires.
 - 2026-05-06 (49-01): Parallel-wave shared-package collision handled via filesystem park-aside (per 47-02 precedent). 49-02 dropped its RED test files into pkg/internal/dev/ during my Task 2 RED run, breaking my package compilation. Resolution: temporarily moved 49-02's untracked test files to /tmp during my test runs, restored after. NO 49-02 files were modified or committed by me.
+- 2026-05-06 (49-02): LoadImagesIntoCluster replicates the `kinder load images` core via public APIs (RESEARCH §1 Option A) — does NOT import `pkg/cmd/kind/load`. The unexported `runE` takes an unexported flagpole and writes structured output to streams.Out; reusing it would require widening export surface (scope creep). Re-implementing the ~30-line pipeline against `nodeutils.ImageTags`/`ReTagImage`/`LoadImageArchiveWithFallback` + `errors.UntilErrorConcurrent` is the chosen path.
+- 2026-05-06 (49-02): Single-image LoadOptions API (not multi-image []string like upstream runE). `kinder dev` only ever loads ONE image per cycle (the freshly-built one); multi-image surface adds complexity for no gain.
+- 2026-05-06 (49-02): Rollout uses host `pkg/exec.CommandContext` against host kubectl with `--kubeconfig=<external>` (RESEARCH §3) — NOT `node.CommandContext` (the in-cluster system-addon pattern used by corednstuning). User Deployments are user-managed; rollout must run on the host where the user's existing kubectl context lives.
+- 2026-05-06 (49-02): Function-var indirection over interface threading for hard-to-fake dependencies (`nodeLister`, `kubeconfigGetter`, `imageTagsFn`, `reTagFn`, `imageInspectID`, `devCmder`). Production paths default to the real implementation; tests swap via t.Cleanup. Threading interfaces through every signature would have widened the API for no test-injection gain — matches `pkg/internal/lifecycle/state.go` precedent.
+- 2026-05-06 (49-02): Kubeconfig tempfile chmod to 0600 BEFORE writing (V4 mitigation). os.CreateTemp creates 0600 on Unix already, but explicit Chmod is defensive against unusual umask configurations. os.CreateTemp (not os.WriteFile) for unique-path concurrency-safety across multiple kinder dev invocations.
+- 2026-05-06 (49-02): imageInspectID inlines a stripped-down OutputLines pipeline (io.Pipe + goroutine + manual line splitter) instead of calling exec.OutputLines directly — `-race` clean across the test fakes that script per-call stdout. Production behavior is identical (single-line stdout from `<binary> image inspect -f {{ .Id }} <ref>`).
+- 2026-05-06 (49-02): Parallel-execution timing race (Rule 3 deviation, no code change): 49-01's RED commit `test(49-01): add failing tests for StartPoller` referenced an undefined `StartPoller` while my Task 1 GREEN gate was running. Held position; 49-01 advanced to GREEN within the same minute (`feat(49-01): implement stdlib StartPoller fallback`). The plan's concurrency note explicitly tolerates this hazard. Re-ran my GREEN gate → pass. Confirms the documented coordination model on the same `main` branch is workable but expects brief wait windows when one plan races ahead of another's GREEN.
 
 ### Pending Todos
 
@@ -132,10 +140,10 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 Plan 01 (file-watch foundation) complete; downstream plans (49-02/03/04) clear to land.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 Wave 1 (Plans 01 + 02) complete: file-watch foundation + four cycle-step primitives. Plan 03 (cycle runner) and Plan 04 (CLI) are the next executable units.
 
 ## Session Continuity
 
-Last session: 2026-05-06T18:07:00Z
-Stopped at: Plan 49-01 complete (watch/poll/debounce foundation). Plan 49-02 in flight in parallel on Wave 1.
-Resume file: None — Plan 49-01 done; Plan 49-02 / 49-03 / 49-04 are the next executable units.
+Last session: 2026-05-06T18:14:00Z
+Stopped at: Plan 49-02 complete (cycle-step primitives). Wave 1 fully done. Plan 49-03 (cycle runner) is next.
+Resume file: None — Plans 49-01 + 49-02 done; Plan 49-03 + 49-04 are the next executable units.
