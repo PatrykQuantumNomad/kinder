@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
-stopped_at: Plan 48-03 complete — restore primitives (RestoreEtcd, RestoreImages, RestorePVs) delivered. 9 new tests pass -race. Ready for Plan 48-04 (orchestrator).
-last_updated: "2026-05-06T12:57:46.000Z"
-last_activity: "2026-05-06 — Plan 48-03 shipped: RestoreEtcd (HA-safe, manifest-bracketed, atomic swap), RestoreImages (nodeutils.LoadImageArchiveWithFallback wrapper), RestorePVs (per-node nested-tar dispatch). 9 new TDD tests pass -race."
+stopped_at: Plan 48-04 complete — Create+Restore orchestrators delivered. 27 new tests pass -race. Ready for Plan 48-05 (CLI).
+last_updated: "2026-05-06T13:35:00.000Z"
+last_activity: "2026-05-06 — Plan 48-04 shipped: snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 sentinels), EnsureDiskSpace. 27 new TDD tests pass -race."
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02+03 complete)
+**Current focus:** v2.3 Inner Loop — Phase 48: Cluster Snapshot/Restore (Plans 01+02+03+04 complete)
 
 ## Current Position
 
 Phase: 48 of 51
-Plan: 04 (next: restore orchestrator — Pause + RestoreEtcd + RestoreImages + RestorePVs + Resume)
-Status: Plan 48-03 complete — restore primitives delivered (RestoreEtcd, RestoreImages, RestorePVs)
-Last activity: 2026-05-06 — Plan 48-03 shipped: RestoreEtcd (HA-safe, manifest-bracketed, atomic swap), RestoreImages (nodeutils.LoadImageArchiveWithFallback wrapper), RestorePVs (per-node nested-tar dispatch). 9 new TDD tests pass -race.
+Plan: 05 (next: CLI — kinder snapshot create/restore/list/show/prune)
+Status: Plan 48-04 complete — Create+Restore orchestrators delivered with full pre-flight and TDD
+Last activity: 2026-05-06 — Plan 48-04 shipped: snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 sentinels), EnsureDiskSpace. 27 new TDD tests pass -race.
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [████████░░] 75%
 | 48    | 01   | ~7m      | 3     | 9     | TDD RED→GREEN (6 commits: 3 tasks × 2). 17 tests pass -race. stdlib-only: metadata schema, bundle sha256, SnapshotStore 0700, prune policies. ArchiveDigest in sidecar only (not in tarred metadata.json). |
 | 48    | 02   | ~8m      | 2     | 11    | TDD RED→GREEN (4 commits: 2 tasks × 2). 16 new tests pass -race. CaptureEtcd/Images/PVs/Topology/Addons/KindConfig. ClassifyFn injection avoids lifecycle import. No circular deps. |
 | 48    | 03   | ~11m     | 2     | 6     | TDD RED→GREEN (4 commits: 2 tasks × 2). 9 new tests pass -race. RestoreEtcd (HA same-token, manifest bracket, atomic swap), RestoreImages (LoadImageArchiveWithFallback wrapper), RestorePVs (nested-tar dispatch). No circular deps. |
+| 48    | 04   | ~35m     | 3     | 8     | TDD RED→GREEN (6 commits: 3 tasks × 2). 27 new tests pass -race. snapshot.Create (defer-Resume), snapshot.Restore (pre-flight gauntlet, no-rollback), CheckCompatibility (3 aggregated sentinels), EnsureDiskSpace (syscall.Statfs + ensureFromStatfs pure fn). 1 auto-fix (exec.OutputLines call). |
 
 *Updated after each plan completion*
 
@@ -102,6 +103,10 @@ Progress: [████████░░] 75%
 - 2026-05-06 (48-03): etcdctl invoked directly on kindest/node PATH (not via crictl exec) for snapshot restore — restore runs AFTER manifest removed so etcd container is gone; etcdctl must be on node PATH. Confirmed feasible per RESEARCH OQ-6.
 - 2026-05-06 (48-03): etcdManifestSettleDelay is a package-level var (not EtcdRestoreOptions field) — test injection via assignment, keeps public API clean.
 - 2026-05-06 (48-03): Manifest restore is a deferred call inside restoreSingleCP — guarantees rollback on ALL exit paths; runs after rm tmp snap in the success path.
+- 2026-05-06 (48-04): Create defers Resume on all exit paths (read-only capture; no cluster mutation); Restore does NOT defer Resume (mutation path; CONTEXT.md no-rollback locked decision). Post-pause restore failures include recovery hint: "run `kinder resume <cluster>` to restart".
+- 2026-05-06 (48-04): CheckCompatibility aggregates all three dimension violations (K8s+topology+addon) via kinderrors.NewAggregate — errors.Is() can drill into wrapped aggregate for each sentinel independently.
+- 2026-05-06 (48-04): ErrClusterNotRunning added as new sentinel for etcd reachability pre-flight check in Restore — signals that the cluster must be running before restore can proceed.
+- 2026-05-06 (48-04): Create disk threshold fixed at 8GiB — cannot estimate image size before listing (chicken-and-egg); lifecycle.ClassifyNodes and lifecycle.Pause/Resume are injected via nil-defaulted CreateOptions/RestoreOptions fields (matches Phase 47 test injection pattern).
 
 ### Pending Todos
 
@@ -117,6 +122,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically ve
 
 ## Session Continuity
 
-Last session: 2026-05-06T12:57:46.000Z
+Last session: 2026-05-06T13:14:53.546Z
 Stopped at: Plan 48-03 complete — restore primitives delivered. 9 new tests pass -race. Ready for Plan 48-04 (restore orchestrator).
 Resume file: None
