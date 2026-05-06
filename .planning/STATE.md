@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: in_progress
-stopped_at: Phase 47 COMPLETE including gap closure 47-06 (LIFE-01..LIFE-04 + all UAT source fixes delivered); ready to plan phase 48 (cluster snapshot/restore)
-last_updated: "2026-05-05T10:55:00Z"
-last_activity: 2026-05-05 — Phase 47 plan 06 complete (gap closure UAT): 4 source gaps fixed (clusterskew =kind pin, resumereadiness -a flag + running-CP bootstrap, DurationVar CLI flags, positional cluster arg on get nodes); 16 test changes across 5 test files; 6 atomic TDD commits; go test ./... passes
+stopped_at: Phase 47 APPROVED & SHIPPED (LIFE-01..LIFE-04 delivered, all 4 ROADMAP success criteria verified on real 3-CP HA cluster); ready to plan phase 48 (cluster snapshot/restore)
+last_updated: "2026-05-06T00:00:00Z"
+last_activity: 2026-05-06 — Phase 47 user-approved after live UAT on 3-CP HA verify47 cluster: full pause/resume cycle preserved pod UIDs, PVC + sentinel data, Service ClusterIP/NodePort. Quorum-safe ordering observed (workers→CP→LB on pause; LB→CP→workers on resume). Doctor cluster-resume-readiness exercised across healthy / 2-CP-stopped / all-CP-stopped states (warn semantic, never skip/fail). Pause snapshot leaderID non-empty (47-05 crictl probe production-verified).
 progress:
   total_phases: 5
   completed_phases: 1
@@ -89,14 +89,17 @@ Progress: █████░░░░░ 29% (6 of 21 plans)
 
 ### Pending Todos
 
-None.
+Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic, NOT 47 regressions; may be addressed in a future phase or as opportunistic fixes:
+1. Etcd peer TLS certs are bound to original Docker container IPs; pause/resume can reassign IPs and break peer connectivity. Affects HA pause/resume usefulness in production. Candidate for phase 48 (snapshot/restore) consideration or a dedicated kinder fix.
+2. `cluster-node-skew` doctor check tries to `docker exec <lb-container> cat /kind/version` and warns when the LB container doesn't have it — pre-existing skew-check bug, not 47-06 territory.
+3. `cluster-resume-readiness` reason text dumps raw etcdctl error output when partial-failure JSON is available; could parse `[{"endpoint":...,"health":...}]` to produce "1/3 healthy, quorum at risk". Cosmetic — semantics (warn vs skip vs fail) are correct.
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. All 4 ROADMAP SCs empirically verified on a real 3-CP HA cluster.
 
 ## Session Continuity
 
-Last session: 2026-05-05T10:55:00Z
-Stopped at: Phase 47 COMPLETE including gap closure 47-06 (LIFE-01..LIFE-04 + all 4 UAT source gaps fixed); developer rebuild step required (go build + install bin/kinder) before re-running UAT 12/14; ready to plan phase 48
+Last session: 2026-05-06T00:00:00Z
+Stopped at: Phase 47 APPROVED & SHIPPED — all 4 ROADMAP SCs verified on real 3-CP HA cluster (pod UIDs, PVC sentinel data, Service ClusterIP/NodePort all preserved across pause/resume; ordering correct; doctor warn-not-skip on quorum risk verified across healthy / partial-CP-stopped / all-CP-stopped states); 3 unrelated issues logged as future todos. Ready to plan phase 48.
 Resume file: .planning/phases/48-cluster-snapshot-restore/ (does not yet exist — needs `gsd discuss-phase 48` to gather context)
