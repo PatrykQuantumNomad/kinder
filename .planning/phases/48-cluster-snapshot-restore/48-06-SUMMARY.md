@@ -31,9 +31,9 @@ decisions:
   - "ArchiveDigest inside tarred metadata.json intentionally empty (chicken-and-egg); test logs this as expected rather than failing"
   - "assertKinderRestoreFails checks both wantInStderr and noneOfInStderr lists — addon test specifically excludes 'k8s version mismatch' and 'topology mismatch' so the error is isolated to the addon dimension"
 metrics:
-  duration: "~18 minutes (writing + verification)"
+  duration: "~48 minutes (writing + verification + live UAT)"
   completed: "2026-05-06"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
   files_created: 2
   files_modified: 0
@@ -50,11 +50,7 @@ metrics:
 | 1 | ConfigMap round-trip + LIFE-08 metadata integration test | 70c7667e | pkg/internal/snapshot/snapshot_integration_test.go |
 | 2 | Restore-refusal cases + STATUS=corrupt integration tests | 70c7667e | pkg/internal/snapshot/restore_refusal_integration_test.go |
 
-## Tasks Pending (at checkpoint)
-
-| Task | Name | Status |
-|------|------|--------|
-| 3 | Human verification — `make integration` + manual smoke on host | AWAITING USER |
+| 3 | Human verification — `make integration` + manual smoke on host | user-approved | (live UAT 2026-05-06) |
 
 ## What Was Built
 
@@ -102,7 +98,24 @@ metrics:
 | `go vet -tags integration ./pkg/internal/snapshot/...` | PASS (no output) |
 | `go build -tags integration ./...` | PASS (no output) |
 | `go test ./pkg/internal/snapshot/...` (no integration tag) | PASS (0.432s, regular unit suite untouched) |
-| `make integration` on real Docker | PENDING — awaiting human verification (Task 3 checkpoint) |
+| `make integration` on real Docker (Task 3 live UAT) | PASS — user approved 2026-05-06 (all 4 integration tests green) |
+| Manual smoke: `kinder create cluster --name uat48 --local-path` full sequence | PASS — ConfigMap value "before" restored; snapshot list STATUS=ok; prune no-flag refusal; prune --keep-last 1 y/N prompt |
+
+## Human Verification (Task 3 — Live UAT)
+
+Approved by user on 2026-05-06 after running the full acceptance sequence:
+
+1. `make integration` — all 4 integration tests passed (ConfigMap round-trip, K8s/topology/addon refusals, STATUS=corrupt).
+2. Manual smoke on a fresh `uat48` cluster with `--local-path`:
+   - `kinder snapshot create uat48` — snapshot created.
+   - `kinder snapshot list uat48` — NAME/AGE/SIZE/K8S/ADDONS/STATUS columns visible, STATUS=ok.
+   - `kinder snapshot show uat48 <snap>` — metadata fields displayed.
+   - `kubectl delete configmap uat-cm` → `kinder snapshot restore uat48 <snap>` → `kubectl get configmap uat-cm -o jsonpath='{.data.key}'` returned "before".
+   - `kinder snapshot prune uat48` (no flags) — exited non-zero with error listing all 3 policy flags.
+   - `kinder snapshot prune uat48 --keep-last 1` — showed y/N confirmation prompt.
+3. All acceptance criteria from the plan passed.
+
+Phase 48 full-stack delivery confirmed: source (Plans 01–05) + integration tests (Plan 06) + live UAT all green.
 
 ## Deviations from Plan
 
