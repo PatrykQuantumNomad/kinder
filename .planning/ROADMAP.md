@@ -159,7 +159,7 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
 - [x] 50-02-PLAN.md — Log + event collectors: dockerLogsFn (per-node `docker logs --since`), k8sEventsFn (in-node kubectl with locked Warnings-only filter), RunDecode orchestrator threading single time.Duration to both sources
 - [x] 50-03-PLAN.md — `kinder doctor decode` CLI subcommand (additive peer per locked decision #1; bare `kinder doctor` unchanged): --name/--since 30m/--output/--auto-fix/--include-normal flags; FormatDecodeHumanReadable + FormatDecodeJSON renderers carry all four SC3 fields per match
 - [x] 50-04-PLAN.md — Auto-fix whitelist: 3 SafeMitigation factories (inotify-raise, coredns-restart, node-container-restart) with NeedsFix preconditions + idempotent Apply; ApplyDecodeAutoFix orchestrator dedupes by Name and respects NeedsRoot; PreviewDecodeAutoFix is side-effect-free
-- [ ] 50-05-PLAN.md — Build-tagged integration tests (catalog-coverage orphan/stale guards + SC3 render end-to-end) + live UAT human-verify checkpoint against openshell-dev cluster
+- [x] 50-05-PLAN.md — Build-tagged integration tests (catalog-coverage orphan/stale guards + SC3 render end-to-end) + live UAT human-verify checkpoint against openshell-dev cluster
 
 ### Phase 51: Upstream Sync & K8s 1.36
 **Goal**: Kinder adopts kind's HAProxy-to-Envoy LB transition, ships K8s 1.36 as the default node image, and protects users from the silent IPVS removal breakage introduced in 1.36
@@ -194,5 +194,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
 | 48. Cluster Snapshot/Restore | v2.3 | 6/6 | Complete | 2026-05-06 |
 | 49. Inner-Loop Hot Reload | v2.3 | 4/4 | Complete   | 2026-05-06 |
-| 50. Runtime Error Decoder | v2.3 | 4/5 | In Progress|  |
+| 50. Runtime Error Decoder | v2.3 | 5/5 | Complete | 2026-05-07 |
 | 51. Upstream Sync & K8s 1.36 | v2.3 | 0/TBD | Not started | - |

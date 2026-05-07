@@ -158,6 +158,16 @@ None — all three mitigations have real production implementations (realReadSys
 
 None — decode_autofix.go does not introduce new network endpoints, auth paths, or file access patterns beyond the existing /proc/sys reads/writes (documented in the plan's RESEARCH §"Auto-Fix Whitelist" threat model). The NeedsRoot guard ensures sysctl writes are only attempted when the process has the necessary privilege.
 
+## Self-Check: PASSED
+
+All files verified present. All commits verified in git history:
+- `4772c837` (Task 1 RED), `258f11ac` (Task 1 GREEN), `450e6641` (Task 2 RED), `f55236cb` (Task 2 GREEN), `0aefa56d` (docs)
+- `go vet ./pkg/internal/doctor/...` clean
+- `go test -race` decode-scope tests pass
+- 4 AutoFixable=true entries confirmed
+- 0 execCommand redeclarations in decode_autofix.go
+- go.mod/go.sum unchanged (0 bytes diff)
+
 ## Next Phase Readiness
 
 Plan 50-03 (cobra command for `kinder doctor decode`) can call:

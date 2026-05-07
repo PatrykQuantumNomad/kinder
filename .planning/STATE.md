@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: executing
-stopped_at: Phase 50 Plan 03 complete — kinder doctor decode subcommand + renderers shipped. Plan 50-05 (live integration) is next.
-last_updated: "2026-05-07T11:01:41.991Z"
+stopped_at: Phase 50 complete — Runtime Error Decoder source-level + live UAT approved. Phase 51 (Upstream Sync & K8s 1.36) is next.
+last_updated: "2026-05-07T12:00:00.000Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 21
-  completed_plans: 20
-  percent: 95
+  completed_plans: 21
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 50: Runtime Error Decoder (Plans 01+02 complete). Plans 03/04/05 remain.
+**Current focus:** v2.3 Inner Loop — Phase 50 COMPLETE (Runtime Error Decoder, DIAG-01..04 delivered). Phase 51: Upstream Sync & K8s 1.36 is next.
 
 ## Current Position
 
-Phase: 50 of 51 — IN PROGRESS
-Plan: 4 of 5 — COMPLETE
-Status: Ready to execute
+Phase: 50 of 51 — COMPLETE
+Plan: 5 of 5 — COMPLETE
+Status: Phase 51 (Upstream Sync & K8s 1.36) is next
 Last activity: 2026-05-07
 
-Progress: [██████████] 95%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [██████████] 95%
 
 *Updated after each plan completion*
 | Phase 50 P03 | ~5m | 2 tasks | 5 files |
+| 50    | 05   | ~15m     | 3     | 2     | TDD RED+GREEN (3 commits: 2 RED tests + 1 GREEN fixtures). 16-subtest catalog-coverage integration test + SC3 render integration test under //go:build integration. Live UAT approved (openshell-dev, K8s 1.35.0): 5 UAT steps PASS (bare doctor unchanged, decode runs, JSON envelope valid, --auto-fix preview-then-apply gate honored, --include-normal expands scan). Phase 50 SC1-SC4 all met. DIAG-01..04 complete. |
 
 ## Accumulated Context
 
@@ -159,6 +160,9 @@ Progress: [██████████] 95%
 - [Phase 50]: nodeStringer interface (String+Role) in decode.go: fakeNode injection without exec.Cmder; avoids full nodes.Node in tests — classifyNodesFromStringers inline avoids lifecycle import cycle
 - [Phase 50]: decode_test.go uses newMockParentWithDecode (not doctor.NewCommand): doctor imports decode so decode cannot import doctor without cycle
 - [Phase 50]: FormatDecodeHumanReadable groups by scope (first-seen order); unexported decodeMatchJSON preserves SC3 fields in JSON without json: tags on engine types
+- 2026-05-07 (50-05 UAT): Live UAT approved against openshell-dev cluster (K8s 1.35.0, 2 nodes: openshell-dev-control-plane + openshell-dev-worker). All 5 UAT steps PASS: (1) bare `kinder doctor` regression-free (24 checks, 7 ok, 3 warning, exit 2); (2) decode happy path runs, healthy cluster returns 0 matches; (3) JSON envelope valid, jq parses .cluster/.matches/.unmatched/.summary; (4) --auto-fix preview-before-apply gate honored (shows "no whitelisted remediations apply" on healthy cluster); (5) --include-normal --since 5m expands scan from 3 to 4 lines. Phase 50 SC1, SC2, SC3, SC4 all met.
+- 2026-05-07 (50-05 UAT): Pre-existing race in pkg/internal/doctor/check_test.go and socket_test.go (allChecks global mutated under t.Parallel) confirmed as pre-50 baseline regression at commit c138ad62 — NOT a Phase 50 regression. Added to Pending Todos for future resolution.
+- 2026-05-07 (50-05): --auto-fix preview-then-apply flow validated: decode results printed first, then auto-fix section with whitelisted remediations (or "no whitelisted remediations apply" if cluster healthy). Bare `kinder doctor decode` invocation never triggers any Apply path — the --auto-fix flag is the explicit gate.
 
 ### Pending Todos
 
@@ -167,13 +171,14 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 1. Etcd peer TLS certs are bound to original Docker container IPs; pause/resume can reassign IPs and break peer connectivity. Affects HA pause/resume usefulness in production. Candidate for phase 48 (snapshot/restore) consideration or a dedicated kinder fix.
 2. `cluster-node-skew` doctor check tries to `docker exec <lb-container> cat /kind/version` and warns when the LB container doesn't have it — pre-existing skew-check bug, not 47-06 territory.
 3. `cluster-resume-readiness` reason text dumps raw etcdctl error output when partial-failure JSON is available; could parse `[{"endpoint":...,"health":...}]` to produce "1/3 healthy, quorum at risk". Cosmetic — semantics (warn vs skip vs fail) are correct.
+4. Pre-existing data race in `pkg/internal/doctor/check_test.go` and `socket_test.go`: the `allChecks` global is mutated under `t.Parallel()`. Confirmed at baseline commit c138ad62 (pre-Phase-50). NOT a Phase 50 regression. Candidate for a future gap-closure plan (add sync.Mutex guard around allChecks mutations, or restructure tests to avoid shared global state under parallelism).
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed. Phase 50 Plans 01+02+04 complete: matchLines engine + 16-entry Catalog (Plan 01); live collectors + RunDecode orchestrator (Plan 02); auto-fix whitelist + ApplyDecodeAutoFix/PreviewDecodeAutoFix (Plan 04). Plans 50-03 and 50-05 remain.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 fully delivers kinder dev hot-reload. Phase 50 fully delivers Runtime Error Decoder (DIAG-01..04): matchLines engine + 16-entry Catalog (Plan 01); live collectors + RunDecode orchestrator (Plan 02); kinder doctor decode subcommand + renderers (Plan 03); auto-fix whitelist + ApplyDecodeAutoFix/PreviewDecodeAutoFix (Plan 04); build-tagged integration tests + live UAT approved (Plan 05). Phase 51 (Upstream Sync & K8s 1.36) is next — plans TBD.
 
 ## Session Continuity
 
-Last session: 2026-05-07T11:01:41.981Z
-Stopped at: Phase 50 Plan 03 complete — kinder doctor decode subcommand + renderers shipped. Plan 50-05 (live integration) is next.
+Last session: 2026-05-07T12:00:00.000Z
+Stopped at: Phase 50 complete — build-tagged integration tests + live UAT (openshell-dev, all 5 steps PASS). Phase 51 (Upstream Sync & K8s 1.36) is next.
 Resume file: None

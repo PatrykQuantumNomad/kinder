@@ -148,9 +148,9 @@ func realGetCoreDNSStatus(binaryName, cpNodeName string) (string, error) {
 	return strings.TrimSpace(lines[0]), nil
 }
 
-// realInspectStateAuto mirrors lifecycle.ContainerState but inlined to
-// avoid the doctor↔lifecycle import cycle (matches realInspectState in
-// resumereadiness.go).
+// realInspectStateAuto inlines lifecycle.ContainerState to avoid the
+// doctor->lifecycle import cycle (lifecycle/resume.go imports doctor).
+// This is intentionally identical to realInspectState in resumereadiness.go.
 func realInspectStateAuto(binaryName, container string) (string, error) {
 	lines, err := exec.OutputLines(execCommand(
 		binaryName, "inspect", "--format", "{{.State.Status}}", container,
