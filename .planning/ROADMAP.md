@@ -155,7 +155,7 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   3. Each matched error shows: the pattern that matched, a plain-English explanation, the suggested fix, and a link to documentation or a known issue where applicable
   4. User runs `kinder doctor decode --auto-fix` and the command applies only whitelisted, non-destructive remediations automatically; no destructive action is ever taken without explicit user confirmation
 **Plans**: 5 plans
-- [ ] 50-01-PLAN.md — Pattern catalog + matcher engine: DecodePattern/DecodeMatch/DecodeResult types, matchLines() pure function, 16-entry seed catalog (KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02) covering all five DIAG-02 scopes
+- [x] 50-01-PLAN.md — Pattern catalog + matcher engine: DecodePattern/DecodeMatch/DecodeResult types, matchLines() pure function, 16-entry seed catalog (KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02) covering all five DIAG-02 scopes
 - [ ] 50-02-PLAN.md — Log + event collectors: dockerLogsFn (per-node `docker logs --since`), k8sEventsFn (in-node kubectl with locked Warnings-only filter), RunDecode orchestrator threading single time.Duration to both sources
 - [ ] 50-03-PLAN.md — `kinder doctor decode` CLI subcommand (additive peer per locked decision #1; bare `kinder doctor` unchanged): --name/--since 30m/--output/--auto-fix/--include-normal flags; FormatDecodeHumanReadable + FormatDecodeJSON renderers carry all four SC3 fields per match
 - [ ] 50-04-PLAN.md — Auto-fix whitelist: 3 SafeMitigation factories (inotify-raise, coredns-restart, node-container-restart) with NeedsFix preconditions + idempotent Apply; ApplyDecodeAutoFix orchestrator dedupes by Name and respects NeedsRoot; PreviewDecodeAutoFix is side-effect-free
@@ -194,5 +194,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
 | 48. Cluster Snapshot/Restore | v2.3 | 6/6 | Complete | 2026-05-06 |
 | 49. Inner-Loop Hot Reload | v2.3 | 4/4 | Complete   | 2026-05-06 |
-| 50. Runtime Error Decoder | v2.3 | 0/5 | Plans created | - |
+| 50. Runtime Error Decoder | v2.3 | 1/5 | In Progress|  |
 | 51. Upstream Sync & K8s 1.36 | v2.3 | 0/TBD | Not started | - |

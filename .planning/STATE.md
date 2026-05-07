@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: in-progress
-stopped_at: Phase 49 COMPLETE — verifier passed 4/4 SCs at code level + automated live UAT executed against openshell-dev cluster confirmed all 4 human-verification items (e2e build-load-rollout cycle, burst→single-cycle, --poll mode, SIGINT cleanup). Phase 50 (Runtime Error Decoder) is next.
-last_updated: "2026-05-06T22:20:00Z"
-last_activity: "2026-05-06 — Phase 49 closed: live UAT automated end-to-end on openshell-dev (2-node K8s 1.35) cluster. All 4 human-verification items PASS. T1 e2e: cycle 4.1s (build 0.3 / load 2.3 / rollout 1.5), pod rolled 5cb69457b→69fc6567d5. T2 burst: 10 saves in 5.2ms produced exactly 1 cycle (Debounce coalesce). T3 --poll: banner Mode: poll, polling detected save, cycle 4.0s. T4 SIGINT: exit=0 in 2ms, kubeconfig in TMPDIR cleaned up post-exit. DEV-02/DEV-03 checkbox lag in REQUIREMENTS.md fixed (Pending → Complete)."
+status: verifying
+stopped_at: Phase 50 Plan 01 complete — matchLines engine + 16-entry Catalog shipped. Plan 50-02 (collectors + RunDecode) is next.
+last_updated: "2026-05-07T10:32:45.139Z"
+last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
+  total_plans: 21
+  completed_plans: 17
+  percent: 81
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 49: kinder dev hot-reload (ALL 4 plans complete; ready for verifier gate). Phase 50 (Runtime Error Decoder) is next.
+**Current focus:** v2.3 Inner Loop — Phase 50: Runtime Error Decoder (Plan 01 complete). Plans 02/03/04/05 remain.
 
 ## Current Position
 
-Phase: 49 of 51 — SOURCE-LEVEL COMPLETE (verifier gate pending)
-Plan: 4 of 4 — COMPLETE
-Status: Phase 49 source-level complete; ready for verifier. Plan 49-04 closed: kinder dev cobra command shipped with 17 -race tests, 10 LOCKED flags, registered in root.go between delete and export. Phase 49 SC1 (kinder dev enters watch mode) reachable from CLI. SC2/SC3/SC4 land via 49-03's Run + 49-01's Debounce/StartPoller (already wired through Plan 04's flag → Plan 03's Run dispatch).
-Last activity: 2026-05-06 — Plan 49-04 closed: 3 atomic commits (test → feat → feat). 17 unit tests pass under -race. ProviderBinaryName signature corrected vs plan-body draft (no-arg, returns string). DEV-01/DEV-04/DEV-05 marked complete in REQUIREMENTS.md. Zero new module deps.
+Phase: 50 of 51 — IN PROGRESS
+Plan: 1 of 5 — COMPLETE
+Status: Plan 50-01 complete — matchLines engine + 16-entry Catalog shipped. Plan 50-02 (collectors + RunDecode) is next.
+Last activity: 2026-05-07
 
-Progress: [██████████] 100%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100%
 | 49    | 02   | ~21m     | 3     | 8     | TDD RED→GREEN × 3 tasks (6 commits). 32 -race tests pass. 4 cycle-step primitives: BuildImage (V5 mitigation), LoadImagesIntoCluster (replicates kinder load images core via public APIs — no pkg/cmd/kind/load import), RolloutRestartAndWait (host kubectl + external kubeconfig per RESEARCH §3), WriteKubeconfigTemp (0600 V4 mitigation). Zero new module deps. 2 deviations: Rule 3 timing-only (held for 49-01 GREEN race), Rule 1 imageInspectID switched to io.Pipe for -race cleanliness. |
 | 49    | 03   | ~9m      | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 22 new -race tests (7 cycle + 15 Run); pkg/internal/dev now totals 72 -race tests in 3.7s. runOneCycle (build/load/rollout %.1fs per-step timing per Phase 47/48 convention) + Run orchestrator (signal.NotifyContext SIGINT/SIGTERM teardown, kubeconfig once-at-startup not-per-cycle, banner SC1, Debounce SC3, --poll SC4 dispatch, EventSource test-injection). Zero new module deps. 1 deviation: Rule 1 removed plan body's post-cycle drain that would silently drop edits-during-cycle (plan's own test asserted 2 cycles when 5 events arrive during in-flight cycle 1). Locked Options struct ready for Plan 04 cobra wiring. |
 | 49    | 04   | ~6m      | 2     | 3     | TDD RED→GREEN for Task 1 (3 commits total: test + feat for Task 1, single feat for Task 2 root.go registration). 17 -race tests pass in 1.5s for pkg/cmd/kind/dev/. Phase 49 SC1 delivered (kinder dev is a registered top-level command). 2 Rule 1 deviations: (1) lifecycle.ProviderBinaryName signature is func() string not (logger) (string, error) as plan body draft showed; (2) TestDevCmd_HelpListsCriticalFlags needed c.SetOut(buf) for --help capture in isolated test. AddCommand inserted between delete-export (the alphabetical slot) not delete-doctor (those aren't adjacent in current root.go layout). Zero new module deps. |
+| 50    | 01   | ~15m     | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 11 -race tests pass. matchLines pure engine (sync.Map regex cache, first-match-wins). 16-entry Catalog: KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02. All 5 DecodeScope values covered (SC2/DIAG-02). DIAG-03/SC3 fields: ID/Match/Explanation/Fix non-empty on every entry. AutoFixable+AutoFix pre-declared zero for Plan 50-04. Zero new module deps. |
 
 *Updated after each plan completion*
 
@@ -139,6 +140,9 @@ Progress: [██████████] 100%
 - 2026-05-06 (49-04): lifecycle.ProviderBinaryName signature is func() string (no logger arg, no error return) — adjusted resolveBinaryName var accordingly; runE checks binary == "" and surfaces clear error referencing kinder doctor. Plan body's pseudocode showed (logger) (string, error) which was incorrect. Pattern matches existing callers in get/clusters/clusters.go:85 and status/status.go:107.
 - 2026-05-06 (49-04): kinder dev cobra command shipped with three injection points (runFn / resolveClusterName / resolveBinaryName), 17 unit tests, 10 LOCKED flags. resolveClusterName is (args, explicit) — explicit-aware closure (vs pause.go's args-only) because dev uses --name flag, not positional cluster arg. AddCommand inserted between delete and export (the alphabetical slot in root.go's existing layout, NOT strictly between delete-doctor as plan body said since those are not adjacent in current AddCommand layout).
 - 2026-05-06 (49-04): --json flag is reserved/documented as 'currently unused' in --help rather than removed. Plan 49-03's Run does not emit JSON-structured cycle output; keeping the flag now avoids a future breaking change when JSON output is wired and mirrors pause.go's --json shape.
+- 2026-05-07 (50-01): matchLines uses sync.Map regex cache keyed by pattern string — each unique regex compiles once across process lifetime; -race clean without mutex contention.
+- 2026-05-07 (50-01): KADM-02 catalog entry uses single substring "coredns" rather than two-field compound match — multi-match logic is outside matchLines first-match-wins design; explanation note directs user to check for Pending state.
+- 2026-05-07 (50-01): AutoFixable=false and AutoFix=nil for all 16 Catalog entries — Plan 50-04 populates KUB-01, KUB-02, KADM-02, KUB-05 auto-fix fields by editing only decode_catalog.go; decode.go struct definition is frozen.
 
 ### Pending Todos
 
@@ -150,10 +154,10 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed; the watcher / poller / debouncer / cycle-step / runOneCycle / Run primitives from plans 49-01..49-03 are all wired through to the user-facing CLI. Phase 49 ready for verifier gate; Phase 50 (Runtime Error Decoder) is the next executable unit afterwards.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed. Phase 50 Plan 01 complete: matchLines engine + 16-entry Catalog shipped; DIAG-02/DIAG-03 requirements marked complete. Plans 50-02..05 remain.
 
 ## Session Continuity
 
-Last session: 2026-05-06T18:40:02Z
+Last session: 2026-05-07T10:32:45.131Z
 Stopped at: Phase 49 source-level COMPLETE — Plan 49-04 closed; ready for verifier gate.
 Resume file: None
