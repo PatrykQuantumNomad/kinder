@@ -48,7 +48,7 @@ type addonImage struct {
 // Total: 14
 var allAddonImages = []addonImage{
 	// Load Balancer (HA clusters only)
-	{"docker.io/kindest/haproxy:v20260131-7181c60a", "Load Balancer (HA)"},
+	{"docker.io/envoyproxy/envoy:v1.36.2", "Load Balancer (HA)"},
 	// Local Registry
 	{"registry:2", "Local Registry"},
 	// MetalLB

@@ -17,7 +17,12 @@ limitations under the License.
 package loadbalancer
 
 // Image defines the loadbalancer image:tag
-const Image = "docker.io/kindest/haproxy:v20260131-7181c60a"
+const Image = "docker.io/envoyproxy/envoy:v1.36.2"
 
-// ConfigPath defines the path to the config file in the image
-const ConfigPath = "/usr/local/etc/haproxy/haproxy.cfg"
+// keep in sync with DynamicFilesystemConfigTemplate
+const (
+	ProxyConfigPathCDS = "/home/envoy/cds.yaml"
+	ProxyConfigPathLDS = "/home/envoy/lds.yaml"
+	ProxyConfigPath    = "/home/envoy/envoy.yaml"
+	ProxyConfigDir     = "/home/envoy"
+)
