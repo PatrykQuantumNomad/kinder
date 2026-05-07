@@ -6,6 +6,7 @@ wave: 2
 depends_on: ["51-01"]
 files_modified:
   - pkg/apis/config/defaults/image.go
+  - pkg/apis/config/defaults/image_test.go
   - kinder-site/src/content/docs/guides/multi-version-clusters.md
   - kinder-site/src/content/docs/guides/tls-web-app.md
 autonomous: true
@@ -13,7 +14,7 @@ autonomous: true
 must_haves:
   truths:
     - "Running kinder create cluster without an explicit image: field provisions a Kubernetes 1.36.x node"
-    - "The default image tag satisfies the >=1.36.4 floor declared in SC2"
+    - "The default image tag is the highest available v1.36.x patch release at execute time (>=1.36.4 preferred; any v1.36.x accepted if no >=1.36.4 exists — see SUMMARY.md floor-relaxation note)"
     - "The default image is verified to exist on Docker Hub at execute time (no broken default)"
     - "Existing website examples that mention concrete kindest/node:vX.Y.Z tags are updated to the new default"
   artifacts:
@@ -125,16 +126,62 @@ If Outcome A: a `TAG` and `DIGEST` value are captured (note them in the SUMMARY 
 </task>
 
 <task type="auto">
-  <name>Task 2: Update default image constant + website tag references (gated by Task 1 Outcome A)</name>
+  <name>Task 2: TDD bump of default image constant + website tag references (gated by Task 1 Outcome A)</name>
   <files>
     pkg/apis/config/defaults/image.go
+    pkg/apis/config/defaults/image_test.go
     kinder-site/src/content/docs/guides/multi-version-clusters.md
     kinder-site/src/content/docs/guides/tls-web-app.md
   </files>
   <action>
 **ONLY EXECUTE THIS TASK IF TASK 1 RETURNED OUTCOME A.**
 
-Update `pkg/apis/config/defaults/image.go`:
+Follow strict TDD discipline (RED → GREEN), matching the pattern used in plans 51-01 and 51-02 for analogous constant changes. The work splits into two atomic commits.
+
+---
+
+**STEP A — RED: write failing test for the default-image constant.**
+
+Create `pkg/apis/config/defaults/image_test.go` (file must not yet exist; if it does, extend it):
+
+```go
+package defaults
+
+import (
+	"strings"
+	"testing"
+)
+
+// TestDefaultImageIsKubernetes136 pins the default kindest/node image to a
+// v1.36.x patch release. SC2 of phase 51 requires that `kinder create cluster`
+// without an explicit image: field provisions a Kubernetes 1.36 node.
+func TestDefaultImageIsKubernetes136(t *testing.T) {
+	if !strings.HasPrefix(Image, "kindest/node:v1.36") {
+		t.Fatalf("default Image = %q; want prefix %q (SC2: default must be K8s 1.36.x)", Image, "kindest/node:v1.36")
+	}
+	// Canonical kind format requires an @sha256: digest pin to prevent tag drift.
+	if !strings.Contains(Image, "@sha256:") {
+		t.Fatalf("default Image = %q; missing @sha256:<digest> pin", Image)
+	}
+}
+```
+
+Run the test — it MUST fail because `Image` still points to `kindest/node:v1.35.1@sha256:...`:
+```bash
+go test ./pkg/apis/config/defaults/... -run TestDefaultImageIsKubernetes136 -v
+```
+Confirm the failure output names the v1.35 tag.
+
+Commit (RED):
+```
+git add pkg/apis/config/defaults/image_test.go
+git commit -m "test(51-04): add failing test pinning default image to kindest/node:v1.36.x"
+```
+
+---
+
+**STEP B — GREEN: update the `Image` constant in `pkg/apis/config/defaults/image.go`.**
+
 - Read the current file (RESEARCH §SYNC-02 says line 21 holds `const Image = "kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab"`).
 - Replace the constant value with the canonical form using the captured TAG and DIGEST from Task 1:
   ```go
@@ -153,12 +200,13 @@ Update website example references that pin a specific older `kindest/node:vX.Y.Z
 
 Do NOT update the project-wide `STATE.md` or `PROJECT.md` — only the user-facing constants and website example tags.
 
-Run sanity checks:
+Run sanity checks — the previously RED test must now PASS, and the broader build/test suite must stay green:
 ```bash
+go test ./pkg/apis/config/defaults/... -run TestDefaultImageIsKubernetes136 -v
 go build ./...
 go test ./pkg/apis/config/... -race
 ```
-Both must pass. Run the existing default-image regression test if any (look for test files in the same package). Then run a broader grep:
+All must pass. Then run a broader grep:
 ```bash
 grep -rn "kindest/node:v1\.35" pkg/ kinder-site/ 2>/dev/null
 ```
@@ -166,7 +214,7 @@ Acceptable matches: tests that use a fixed older version intentionally (e.g. ver
 
 If the grep surfaces unexpected production matches, update those files in this same task. Capture the final list in the SUMMARY.
 
-Commit:
+Commit (GREEN):
 ```
 git add pkg/apis/config/defaults/image.go kinder-site/src/content/docs/guides/multi-version-clusters.md kinder-site/src/content/docs/guides/tls-web-app.md
 git commit -m "feat(51-04): bump default kindest/node to v1.36.x"
@@ -174,9 +222,9 @@ git commit -m "feat(51-04): bump default kindest/node to v1.36.x"
 (Replace `v1.36.x` in the commit message with the actual tag picked.)
   </action>
   <verify>
-`grep -n "kindest/node:v1.36" pkg/apis/config/defaults/image.go` returns one match. `go build ./... && go test ./pkg/apis/config/... -race` exit 0. `grep -rn "kindest/node:v1\.35" pkg/apis/ kinder-site/src/content/docs/guides/` returns no matches that imply "default" (only intentional historical or version-skew references).
+RED commit: `git log --oneline -2` shows the `test(51-04): add failing test ...` commit BEFORE the `feat(51-04): bump ...` commit. After the RED commit alone, `go test ./pkg/apis/config/defaults/... -run TestDefaultImageIsKubernetes136` exits non-zero. After the GREEN commit, the same test exits 0. `grep -n "kindest/node:v1.36" pkg/apis/config/defaults/image.go` returns one match. `go build ./... && go test ./pkg/apis/config/... -race` exit 0. `grep -rn "kindest/node:v1\.35" pkg/apis/ kinder-site/src/content/docs/guides/` returns no matches that imply "default" (only intentional historical or version-skew references).
   </verify>
-  <done>Default image bumped to confirmed-available v1.36.x; build green; tests pass; website default-tag references updated.</done>
+  <done>Default image bumped to confirmed-available v1.36.x via RED→GREEN TDD cycle (2 commits); test pins the v1.36 prefix and digest format; build green; website default-tag references updated.</done>
 </task>
 
 </tasks>
@@ -186,7 +234,7 @@ git commit -m "feat(51-04): bump default kindest/node to v1.36.x"
 - `pkg/apis/config/defaults/image.go` contains `kindest/node:v1.36` followed by a sha256 digest.
 - `go build ./... && go test ./pkg/apis/config/... -race` exit 0.
 - Website `multi-version-clusters.md` and `tls-web-app.md` reference the new tag where they previously said "v1.35.1" as the default.
-- 1 commit landed on main; SUMMARY.md notes the picked TAG and DIGEST and whether the ≥1.36.4 floor was met.
+- 2 commits landed on main (RED `test(51-04): ...` then GREEN `feat(51-04): ...`); SUMMARY.md notes the picked TAG and DIGEST and whether the ≥1.36.4 floor was met (note any floor-relaxation per the must_have wording if only v1.36.0..v1.36.3 was available).
 
 **If Task 1 returned Outcome B/C:**
 - Only the INCONCLUSIVE SUMMARY.md is committed.

@@ -425,26 +425,30 @@ resources:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **kindest/node v1.36 image availability**
    - What we know: no v1.36.x kindest/node image exists on Docker Hub as of 2026-05-07; kind main still defaults to v1.35.1
    - What's unclear: when kind will publish v1.36 images (requires a new kind release, likely v0.32.0); whether there will be patch releases before 1.36.4
    - Recommendation: plan SYNC-02 as a separate sub-task that blocks on `kindest/node:v1.36.x` availability; the RESEARCH.md should be re-verified once images appear
+   - **RESOLVED:** Plan 51-04 Task 1 implements a Docker Hub pre-flight gate. On Outcome A the executor picks the highest available v1.36.x patch and proceeds; on Outcome B/C the executor halts cleanly and writes an INCONCLUSIVE SUMMARY.md (no broken default committed). SC2 is treated as DEFERRED in the B/C case and the plan is re-runnable once kind publishes a v1.36 image.
 
 2. **IPVS removal timeline vs. hard rejection semantics**
    - What we know: IPVS deprecated in v1.35, still present in v1.36 with bug fixes
    - What's unclear: whether a hard validation rejection is overly aggressive vs. a warning
    - Recommendation: implement as hard error per SC requirement, but phrase message as "deprecated and will be removed" not "removed"
+   - **RESOLVED:** Hard rejection per SC3. The validator error message phrases the timeline as "deprecated in v1.35 and will be removed in a future release" — NOT "removed in 1.36" (which would be factually wrong since 1.36 only deprecates and still ships IPVS code with bug fixes).
 
 3. **kubeadm v1beta4 and the 1.36 clusters**
    - What we know: kind issue #3847 is open; kubeadm v1beta4 planned for K8s 1.36+ in kind; hasn't shipped in a kind release yet
    - What's unclear: will kinder need to handle this before SYNC-02 can ship?
    - Recommendation: the recipe page should mention v1beta4 `extraArgs` syntax change but kinder's kubeadm config generation doesn't need to change until kind ships a release with v1beta4
+   - **RESOLVED:** Plan 51-03 (recipe page) notes the v1beta4 `extraArgs` syntax change as forward-looking context for readers. No kinder code change is required in this phase — kinder's kubeadm config generation stays on v1beta3 until kind ships a release with v1beta4 support.
 
 4. **In-Place Pod Resize feature for recipe page: container-level or pod-level?**
    - What we know: container-level (`InPlacePodVerticalScaling`) is GA; pod-level (`InPlacePodLevelResourcesVerticalScaling`) is Beta in 1.36
    - Recommendation: demonstrate container-level resize (simpler, GA, no extra feature gates needed)
+   - **RESOLVED:** Plan 51-03 demonstrates container-level resize on the recipe page — GA in 1.35, on by default in 1.36, no extra feature gates required. Pod-level (Beta) is mentioned as a forward-looking note but not exercised in the recipe.
 
 ---
 
