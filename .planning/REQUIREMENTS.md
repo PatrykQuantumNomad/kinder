@@ -29,7 +29,7 @@ Requirements for the Inner Loop milestone. Each maps to exactly one phase.
 
 ### DIAG — Runtime Diagnostics (extends v2.1 doctor framework)
 
-- [ ] **DIAG-01**: User can run `kinder doctor decode` to scan recent docker logs and `kubectl get events` for known error patterns and print plain-English explanations with suggested fixes
+- [x] **DIAG-01**: User can run `kinder doctor decode` to scan recent docker logs and `kubectl get events` for known error patterns and print plain-English explanations with suggested fixes
 - [x] **DIAG-02**: Decoder ships with at least 15 cataloged error patterns covering kubelet, kubeadm, containerd, docker, and addon-startup failures (sourced from kind issue tracker, v2.1 checks, and CI failures)
 - [x] **DIAG-03**: Each decoded error includes: pattern matched, plain-English explanation, suggested fix, link to docs/issue (where applicable)
 - [x] **DIAG-04**: `kinder doctor decode --auto-fix` applies known-safe remediations automatically (whitelist only — never destructive)
@@ -99,7 +99,7 @@ Which phases cover which requirements. Updated during roadmap creation by gsd-ro
 | DEV-03 | 49 | Complete |
 | DEV-04 | 49 | Complete |
 | DEV-05 | 49 | Complete |
-| DIAG-01 | 50 | Pending |
+| DIAG-01 | 50 | Complete |
 | DIAG-02 | 50 | Complete |
 | DIAG-03 | 50 | Complete |
 | DIAG-04 | 50 | Complete |

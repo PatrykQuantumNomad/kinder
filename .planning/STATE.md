@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: executing
-stopped_at: Phase 50 Plan 02 complete — RunDecode orchestrator + live collectors shipped. Plan 50-03 (cobra command) is next.
-last_updated: "2026-05-07T10:50:24.588Z"
+stopped_at: Phase 50 Plan 03 complete — kinder doctor decode subcommand + renderers shipped. Plan 50-05 (live integration) is next.
+last_updated: "2026-05-07T11:01:41.991Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 21
-  completed_plans: 19
-  percent: 90
+  completed_plans: 20
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 ## Current Position
 
 Phase: 50 of 51 — IN PROGRESS
-Plan: 3 of 5 — COMPLETE
+Plan: 4 of 5 — COMPLETE
 Status: Ready to execute
 Last activity: 2026-05-07
 
-Progress: [█████████░] 90%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [█████████░] 90%
 | 50    | 04   | ~4m      | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 20 new -race tests pass. Three SafeMitigation factories (inotify-raise/coredns-restart/node-container-restart) with NeedsFix preconditions and fn-var injection; ApplyDecodeAutoFix dedup-by-Name + NeedsFix/NeedsRoot orchestration; PreviewDecodeAutoFix side-effect-free. Catalog wired: KUB-01/02 AutoFix=InotifyRaiseMitigation(); KADM-02/KUB-05 AutoFixable=true+AutoFix=nil. Zero new module deps. 0 deviations. |
 
 *Updated after each plan completion*
+| Phase 50 P03 | ~5m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,9 @@ Progress: [█████████░] 90%
 - 2026-05-07 (50-04): execCommand referenced from decode_collectors.go (50-02) without redeclaration — 50-02 was on disk before 50-04 ran; no filesystem park-aside needed. Single-file ownership pattern confirmed: Plan 50-02 owns execCommand.
 - 2026-05-07 (50-04): KUB-05 node name extracted from match.Source "docker-logs:<node>" prefix — k8s-events source returns nil from mitigationFor (no node name extractable, skip is correct).
 - 2026-05-07 (50-04): ApplyDecodeAutoFix dedupes by sm.Name so KUB-01+KUB-02 both embedding inotify-raise fires the mitigation exactly once per run (dedup before NeedsFix/NeedsRoot checks).
+- [Phase 50]: nodeStringer interface (String+Role) in decode.go: fakeNode injection without exec.Cmder; avoids full nodes.Node in tests — classifyNodesFromStringers inline avoids lifecycle import cycle
+- [Phase 50]: decode_test.go uses newMockParentWithDecode (not doctor.NewCommand): doctor imports decode so decode cannot import doctor without cycle
+- [Phase 50]: FormatDecodeHumanReadable groups by scope (first-seen order); unexported decodeMatchJSON preserves SC3 fields in JSON without json: tags on engine types
 
 ### Pending Todos
 
@@ -170,6 +174,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot
 
 ## Session Continuity
 
-Last session: 2026-05-07T10:48:34Z
-Stopped at: Phase 50 Plan 04 complete — auto-fix whitelist (inotify-raise/coredns-restart/node-container-restart) + ApplyDecodeAutoFix/PreviewDecodeAutoFix + Catalog wiring shipped. Plan 50-03 (cobra command) is next.
+Last session: 2026-05-07T11:01:41.981Z
+Stopped at: Phase 50 Plan 03 complete — kinder doctor decode subcommand + renderers shipped. Plan 50-05 (live integration) is next.
 Resume file: None
