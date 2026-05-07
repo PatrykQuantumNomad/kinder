@@ -35,14 +35,56 @@ import (
 //
 // Run with: go test -tags integration -race ./pkg/internal/doctor/... -count=1
 func TestDecodeIntegration_EveryCatalogPatternMatchable(t *testing.T) {
-	// Map of pattern.ID -> fixture line. Update when adding/removing
-	// catalog entries; the orphan-check assertion at the bottom will fail
-	// loudly if a Catalog entry has no corresponding fixture.
+	// Map of pattern.ID -> fixture line.  Update when adding/removing Catalog
+	// entries; the orphan-check assertion at the bottom will fail loudly if a
+	// Catalog entry has no corresponding fixture.
+	//
+	// Fixture design constraints (first-match-wins per line):
+	//   KUB-01 and KUB-02 both match "too many open files"; both fixtures may
+	//   trigger either ID — the overlap exception in the subtest allows this.
+	//   All other fixtures are crafted so only the intended pattern fires first.
 	fixtures := map[string]string{
+		// ScopeKubelet ----------------------------------------------------------------
+		// KUB-01 match: "too many open files"
 		"KUB-01": "kubelet[123]: failed to watch /var/log: too many open files",
+		// KUB-02 match: "failed to create fsnotify watcher" (also contains
+		// "too many open files" → KUB-01 may fire; overlap exception handles this)
 		"KUB-02": "failed to create fsnotify watcher: too many open files",
-		// KUB-03..KUB-05 and all remaining entries deliberately omitted —
-		// RED gate: this incomplete map causes the test to fail.
+		// KUB-03 match: "kubelet is not running"
+		"KUB-03": "The connection to the server localhost:6443 was refused — kubelet is not running",
+		// KUB-04 match: exact substring "Get \"http://127.0.0.1:10248/healthz\": context deadline exceeded"
+		"KUB-04": `Get "http://127.0.0.1:10248/healthz": context deadline exceeded`,
+		// KUB-05 match: "regex:error adding pid \d+ to cgroups"
+		"KUB-05": "OCI runtime exec failed: error adding pid 4421 to cgroups: no such file or directory",
+		// ScopeKubeadm ---------------------------------------------------------------
+		// KADM-01 match: "[ERROR CRI]: container runtime is not running"
+		"KADM-01": "[ERROR CRI]: container runtime is not running: provider=containerd",
+		// KADM-02 match: "coredns"
+		"KADM-02": "Pod kube-system/coredns-1234 stuck Pending: 0/1 nodes available",
+		// KADM-03 match: "context deadline exceeded" (fixture must NOT match KUB-04's
+		// longer substring, which it doesn't — the literal KUB-04 match starts with Get)
+		"KADM-03": "kubeadm join: context deadline exceeded waiting for control-plane API",
+		// ScopeContainerd ------------------------------------------------------------
+		// CTD-01 match: "failed to pull image"
+		"CTD-01": `failed to pull image "registry.example/foo:bogus": not found`,
+		// CTD-02 match: "connection refused"
+		// Fixture deliberately avoids "failed to pull image" so CTD-01 does not
+		// fire first (CTD-01 appears before CTD-02 in Catalog).
+		"CTD-02": "dial tcp 192.168.1.1:5000: connect: connection refused",
+		// CTD-03 match: "ImagePullBackOff"
+		"CTD-03": `ImagePullBackOff: Back-off pulling image "foo:1.0"`,
+		// ScopeDocker ----------------------------------------------------------------
+		// DOCK-01 match: "no space left on device"
+		"DOCK-01": "write /var/lib/docker/aufs/foo: no space left on device",
+		// DOCK-02 match: "docker.sock"
+		"DOCK-02": "permission denied while trying to connect to /var/run/docker.sock",
+		// DOCK-03 match: "cannot create temp file"
+		"DOCK-03": "TMPDIR=/tmp/snap.docker.common cannot create temp file",
+		// ScopeAddon -----------------------------------------------------------------
+		// ADDON-01 match: "CrashLoopBackOff"
+		"ADDON-01": "kube-system/metrics-server-abc CrashLoopBackOff (back-off 5m)",
+		// ADDON-02 match: "MountVolume.SetUp failed"
+		"ADDON-02": `MountVolume.SetUp failed for volume "config" : configmap "foo" not found`,
 	}
 
 	for _, pat := range Catalog {
