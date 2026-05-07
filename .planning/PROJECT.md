@@ -70,26 +70,26 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ `kinder load images` subcommand with provider-abstracted save/import, smart-load skip, Docker Desktop 27+ containerd fallback — v2.2
 - ✓ Doctor registry expanded from 18 to 23 checks — v2.2
 
+- ✓ `kinder pause`/`kinder resume` with quorum-safe HA ordering (workers→CP→LB on pause, LB→CP→workers on resume) — v2.3
+- ✓ `cluster-resume-readiness` doctor check using `crictl exec <etcd-id> etcdctl ...` probe — v2.3
+- ✓ `kinder status` command + Status column on `kinder get clusters` (JSON schema migration to `[]{name,status}`) — v2.3
+- ✓ `kinder snapshot create/restore/list/show/prune` with tar.gz bundle + sha256 sidecar capturing etcd + container images + local-path PVs — v2.3
+- ✓ Snapshot restore with K8s/topology/addon hard-fail compatibility checks BEFORE any mutation (no auto-rollback) — v2.3
+- ✓ Snapshot metadata records cluster K8s version, addon versions, image-bundle digest for air-gap reproducibility — v2.3
+- ✓ `kinder dev --watch <dir> --target <deployment>` hot-reload with fsnotify + stdlib polling fallback, leading-trigger debouncer, build/load/rollout cycle — v2.3
+- ✓ `kinder dev --poll` mode for Docker Desktop macOS (fsnotify-unfriendly volume mounts) — v2.3
+- ✓ `kinder doctor decode` with 16-pattern catalog (kubelet/kubeadm/containerd/docker/addon-startup) and `--auto-fix` whitelist (3 SafeMitigation factories, preview-before-apply) — v2.3
+- ✓ HAProxy→Envoy LB migration (kind PR #4127 port) wired across docker/podman/nerdctl with atomic xDS file-swap — v2.3
+- ✓ IPVS-on-1.36+ validation guard at config-time with migration URL — v2.3
+- ✓ K8s 1.36 "What's new" website recipe (User Namespaces GA + In-Place Pod Resize GA) — v2.3
+
 ### Active
 
-## Current Milestone: v2.3 Inner Loop
+(No active milestone — v2.3 shipped. Use `/gsd:new-milestone` to define v2.4.)
 
-**Goal:** Make daily iteration on a kinder cluster as fast as creating one — pause/resume to reclaim laptop resources, snapshot/restore for instant clean state, hot-reload for code changes, and runtime error decoding extending the v2.1 doctor framework. Includes a sync phase to adopt kind upstream's HAProxy→Envoy LB transition and bump the default node image to K8s 1.36 ("Haru").
+### Deferred / Carried Forward
 
-**Target features:**
-- `kinder pause` / `kinder resume` — stop/start cluster without losing state
-- `kinder snapshot` / `kinder restore` — capture and replay full cluster state
-- `kinder dev` — watch a directory and hot-reload a Deployment
-- `kinder doctor decode` — runtime error explainer extending v2.1 doctor checks
-- Upstream sync — adopt kind PR #4127 (Envoy LB), bump default to K8s 1.36, reject IPVS on 1.36+
-
-**Active requirements:**
-
-- [ ] LIFE: pause/resume cluster without losing state, with HA pre-flight doctor check
-- [ ] LIFE: snapshot/restore full cluster state (etcd + images + PV contents) with version-matching enforcement
-- [ ] DEV: hot-reload a target Deployment from a watched directory via existing image-load pipeline
-- [ ] DIAG: runtime error decoder catalog with optional auto-fix for safe remediations
-- [ ] SYNC: adopt HAProxy→Envoy LB, default to K8s 1.36, reject IPVS on 1.36+, ship User Namespaces + In-Place Pod Resize recipes
+- **SYNC-02** (from v2.3): Default `kindest/node` image bump to K8s 1.36.x — external blocker (`kindest/node:v1.36.x` not on Docker Hub as of 2026-05-07). Plan 51-04 halted cleanly at gating probe; Task 2 fully authored and ready to re-execute once kind v0.32.0 publishes the image.
 
 ### Out of Scope
 

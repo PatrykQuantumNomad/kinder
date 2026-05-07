@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Inner Loop
-status: complete
-stopped_at: "Phase 51 complete — SC1 (Envoy LB), SC3 (IPVS guard), SC4 (K8s 1.36 recipe) delivered. SC2 (default node image bump) DEFERRED: kindest/node:v1.36.x not published on Docker Hub as of 2026-05-07. Re-run plan 51-04 once kind publishes a v1.36 image."
-last_updated: "2026-05-07T12:48:00.000Z"
+milestone: none
+milestone_name: ""
+status: shipped
+stopped_at: "v2.3 Inner Loop SHIPPED 2026-05-07 — 20/21 requirements delivered, 1 deferred (SYNC-02 default node image, external blocker). Ready for /gsd:new-milestone."
+last_updated: "2026-05-07T15:30:00.000Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
+See: .planning/PROJECT.md (updated 2026-05-07 after v2.3 milestone)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 Inner Loop — Phase 50 COMPLETE (Runtime Error Decoder, DIAG-01..04 delivered). Phase 51: Upstream Sync & K8s 1.36 is next.
+**Current focus:** v2.3 SHIPPED. Planning next milestone (v2.4) — likely candidates: SYNC-02 re-execution (kind v0.32.0), addon bumps, podman/nerdctl pause-resume, snapshot remote-storage backend.
 
 ## Current Position
 
-Phase: 51 of 51 — COMPLETE (with one deferred success criterion)
-Plan: 4 of 4 — COMPLETE (Wave 1: 51-01 Envoy LB, 51-02 IPVS guard, 51-03 K8s 1.36 recipe; Wave 2: 51-04 INCONCLUSIVE — SC2 DEFERRED)
-Status: Phase 51 done. SC2 (default node image = K8s 1.36.x) deferred pending kindest/node:v1.36.x publication on Docker Hub. All other Phase 51 SCs met.
-Last activity: 2026-05-07
+Phase: — (no active milestone)
+Plan: — (no active plan)
+Status: v2.3 milestone complete and archived. Ready to plan v2.4 via `/gsd:new-milestone`.
+Last activity: 2026-05-07 — v2.3 milestone shipped and archived
 
-Progress: [██████████] 96%
+Progress: [██████████] v2.3 100% — 25/25 plans complete, 20/21 requirements satisfied (SYNC-02 deferred on external blocker)
 
 ## Performance Metrics
 
@@ -80,7 +80,7 @@ Progress: [██████████] 96%
 
 ### Decisions
 
-- v1.0–v2.2: See PROJECT.md Key Decisions table (full log moved there at v2.2 milestone completion)
+- v1.0–v2.3: See PROJECT.md Key Decisions table and `.planning/milestones/v2.3-ROADMAP.md` for v2.3-specific decisions (full log moved there at v2.3 milestone completion)
 - 2026-05-07 (51-04): SC2 DEFERRED — Docker Hub probe returned HTTP 200 with count=0 for kindest/node:v1.36.x tags. Latest is v1.35.1. Re-run plan 51-04 once kind publishes a v1.36 image. No source code modified.
 - 2026-05-07 (51-02): IPVS guard uses "deprecated and will be removed in a future release" framing — NOT "removed in 1.36". IPVS was deprecated in v1.35; hard rejection at validate time is justified by SC3 but message must be technically accurate.
 - 2026-05-07 (51-02): Mixed-node IPVS test uses CP (v1.35.1) + Worker (v1.36.0) to avoid validateVersionSkew HA mismatch firing on two CP nodes with different minor versions; guard runs before skew check in validate.go.
@@ -182,10 +182,14 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-Phase 51 SC2 DEFERRED: kindest/node:v1.36.x not yet published on Docker Hub (probe 2026-05-07, count=0). SC2 re-runs once kind publishes a v1.36 image. All other Phase 51 SCs met: SC1 (Envoy LB — 51-01), SC3 (IPVS guard — 51-02), SC4 (K8s 1.36 recipe — 51-03).
+**Carried forward from v2.3:**
+- **SYNC-02** (deferred): Default `kindest/node` image bump to K8s 1.36.x — external blocker (Docker Hub probe 2026-05-07, count=0). Plan 51-04 Task 2 fully authored; re-run once kind v0.32.0 publishes the image.
+- **DEBT-04**: Pre-existing data race in `pkg/internal/doctor/check_test.go` and `socket_test.go` (`allChecks` global mutated under `t.Parallel()`) — confirmed at baseline commit `c138ad62`.
+- Phase 47 live HA smoke + developer-rebuild UAT still pending.
+- Phase 51 live HA Envoy LB image probe + IPVS-config CLI rejection smoke still pending.
 
 ## Session Continuity
 
-Last session: 2026-05-07T12:48:00.000Z
-Stopped at: Phase 51 Wave 2 complete — 51-04 INCONCLUSIVE (SC2 DEFERRED: kindest/node:v1.36.x not on Docker Hub). v2.3 milestone plans 1-25 all executed. SC2 deferred until kind v0.32.0.
+Last session: 2026-05-07T15:30:00.000Z
+Stopped at: v2.3 Inner Loop milestone shipped and archived. Ready to plan v2.4 via `/gsd:new-milestone`.
 Resume file: None

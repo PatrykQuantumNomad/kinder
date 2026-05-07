@@ -11,7 +11,7 @@
 - SHIPPED **v2.0 Distribution & GPU Support** - Phases 35-37 (shipped 2026-03-05)
 - SHIPPED **v2.1 Known Issues & Proactive Diagnostics** - Phases 38-41 (shipped 2026-03-06)
 - SHIPPED **v2.2 Cluster Capabilities** - Phases 42-46 (shipped 2026-04-10)
-- ACTIVE **v2.3 Inner Loop** - Phases 47-51 (in progress)
+- SHIPPED **v2.3 Inner Loop** - Phases 47-51 (shipped 2026-05-07)
 
 ## Phases
 
@@ -90,92 +90,12 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
 
 </details>
 
-<details open>
-<summary>ACTIVE v2.3 Inner Loop (Phases 47-51) - IN PROGRESS</summary>
+<details>
+<summary>SHIPPED v2.3 Inner Loop (Phases 47-51) - SHIPPED 2026-05-07</summary>
 
-**Milestone Goal:** Make daily iteration on a kinder cluster as fast as creating one — pause/resume to reclaim laptop resources, snapshot/restore for instant clean state, hot-reload for code changes, runtime error decoding extending the v2.1 doctor framework, and an upstream sync to adopt kind's HAProxy→Envoy LB transition with K8s 1.36 as the new default.
+See `.planning/milestones/v2.3-ROADMAP.md` for full phase details.
 
-### Phase 47: Cluster Pause/Resume
-**Goal**: Users can pause and resume a kinder cluster to reclaim laptop resources without losing any cluster state
-**Depends on**: Phase 46 (v2.2 complete)
-**Requirements**: LIFE-01, LIFE-02, LIFE-03, LIFE-04
-**Success Criteria** (what must be TRUE):
-  1. User runs `kinder pause [name]` and all cluster containers stop; CPU and RAM drop to near-zero on the host
-  2. User runs `kinder resume [name]` and the cluster becomes fully operational; pods, PVs, and services are in the same state as before pause
-  3. On a multi-control-plane cluster, pause/resume orchestrates container stop/start in quorum-safe order (workers before control-plane nodes on pause; reverse on resume)
-  4. Before resuming an HA cluster, `kinder doctor` emits a `cluster-resume-readiness` warning if etcd quorum is at risk
-**Plans**: 6 plans
-- [x] 47-01-PLAN.md — Cluster status surface: container-state helpers, `kinder status [name]`, Status column on `kinder get clusters` (JSON schema migration), real container state on `kinder get nodes`, register pause/resume stub commands in root.go
-- [x] 47-02-PLAN.md — `kinder pause`: quorum-safe stop (workers→CP→LB), best-effort errors, idempotent no-op, `--timeout`/`--json` flags, HA pre-pause etcd snapshot to `/kind/pause-snapshot.json`
-- [x] 47-03-PLAN.md — `kinder resume`: quorum-safe start (LB→CP→workers), best-effort errors, idempotent no-op, `--wait`/`--timeout`/`--json` flags, all-nodes-Ready gate via kubectl with K8s 1.24 selector fallback
-- [x] 47-04-PLAN.md — `cluster-resume-readiness` doctor check: registered in v2.1 doctor catalog, HA-only with skip on single-CP, warn-and-continue on unhealthy etcd members, gracefully skip when etcdctl missing, inline invocation between CP-start and worker-start in `lifecycle.Resume`
-- [x] 47-05-PLAN.md — Gap closure (LIFE-04): replace unreachable `which etcdctl` probe in `cluster-resume-readiness` and `readEtcdLeaderID` with `crictl exec <etcd-id> etcdctl ...` so SC4's "warn if quorum at risk" is actually delivered on real HA clusters; mirror the same probe in pause snapshot capture so leader ID is non-empty post-fix
-- [x] 47-06-PLAN.md — Gap closure (UAT 3, 9, 12, 13, 14): doctor cluster-discovery (presence-only filter + docker ps -a + running-CP bootstrap), `--wait`/`--timeout` migrate IntVar→DurationVar on pause/resume CLIs, `kinder get nodes` accepts positional cluster name matching pause/resume convention
-
-### Phase 48: Cluster Snapshot/Restore
-**Goal**: Users can capture a complete cluster state as a named snapshot and restore it in seconds, enabling instant reset between development cycles
-**Depends on**: Phase 47
-**Requirements**: LIFE-05, LIFE-06, LIFE-07, LIFE-08
-**Success Criteria** (what must be TRUE):
-  1. User runs `kinder snapshot create [snap-name]` and a snapshot archive is created that captures etcd state, all loaded container images, and local-path-provisioner PV contents
-  2. User runs `kinder snapshot restore [snap-name]` and the cluster returns to the captured state; the command refuses with a clear error if the snapshot's Kubernetes version differs from the current cluster
-  3. User can run `kinder snapshot list` to see all snapshots, `kinder snapshot show [snap-name]` to inspect size, age, k8s version, and image digest, and `kinder snapshot prune` to delete old snapshots
-  4. Each snapshot's metadata records the cluster Kubernetes version, addon versions, and image-bundle digest for air-gap reproducibility
-**Plans**: 6 plans
-- [x] 48-01-PLAN.md — `pkg/internal/snapshot/` foundation: Metadata schema, single-pass tar.gz bundle writer with sha256 sidecar, SnapshotStore over `~/.kinder/snapshots/<cluster>/` (mode 0700), pure prune-policy filters (`KeepLast` / `OlderThan` / `MaxSize`); zero cluster/lifecycle imports
-- [x] 48-02-PLAN.md — Capture sources: etcd snapshot via `crictl exec etcdctl`, image bundle via `ctr --namespace=k8s.io images export`, local-path PV tar of `/opt/local-path-provisioner` per node (nested per-node entries), topology + addon-version reconstruction via `kubectl get deployment`, minimal v1alpha4 kind-config reconstruction
-- [x] 48-03-PLAN.md — Restore sources (parallel to 02): HA-safe etcd restore with shared `--initial-cluster-token`, manifest-aside + atomic data-dir swap, image re-import via existing `nodeutils.LoadImageArchiveWithFallback`, per-node PV untar
-- [x] 48-04-PLAN.md — Orchestrators: `snapshot.Create` (etcd-while-running → `lifecycle.Pause` → images+PVs → bundle → defer-`lifecycle.Resume`); `snapshot.Restore` (full pre-flight: sha256 + disk + K8s/topology/addon hard-fail compat checks BEFORE any mutation; recovery-hint error on post-pause failure, no auto-rollback)
-- [x] 48-05-PLAN.md — CLI: `pkg/cmd/kind/snapshot/{snapshot,create,restore,list,show,prune}.go` mirroring Phase 47 patterns (positional cluster arg, `--json`, `cobra.DurationVar`); list shows NAME/AGE/SIZE/K8S/ADDONS/STATUS; prune refuses no-flag invocation, prompts y/N unless `--yes`; root.go registration
-- [x] 48-06-PLAN.md — Integration tests on real cluster: ConfigMap + PV sentinel round-trip; restore refusal on K8s/topology mismatch; `list` STATUS=corrupt detection; blocking human-verification checkpoint for `make integration` + manual smoke
-
-### Phase 49: Inner-Loop Hot Reload (`kinder dev`)
-**Goal**: Users can iterate on application code inside a kinder cluster with a single command that watches for file changes and completes a full build-load-rollout cycle automatically
-**Depends on**: Phase 48
-**Requirements**: DEV-01, DEV-02, DEV-03, DEV-04, DEV-05
-**Success Criteria** (what must be TRUE):
-  1. User runs `kinder dev --watch <dir> --target <deployment>` and the command enters watch mode; saving a file in the watched directory triggers a build-load-rollout cycle automatically
-  2. Each cycle builds a Docker image from the watched directory, imports it via the existing `kinder load images` pipeline, and rolls the target Deployment via `kubectl rollout restart`; timing for each step is printed per cycle
-  3. Rapid file saves within the configurable debounce window (default 500ms) trigger only one cycle, not one per save
-  4. On Docker Desktop for macOS where fsnotify events are unreliable, user can pass `--poll` to switch to a polling-based watcher at a configurable interval
-**Plans**: 4 plans
-- [x] 49-01-PLAN.md — Watcher/poller/debouncer foundation: add fsnotify v1.10.1, fsnotify recursive watcher, stdlib polling fallback, channel-based debouncer
-- [x] 49-02-PLAN.md — Cycle-step primitives: BuildImage (docker build shell-out), LoadImagesIntoCluster (replicates kinder load images via public APIs), RolloutRestartAndWait (host kubectl), WriteKubeconfigTemp (mode 0600)
-- [x] 49-03-PLAN.md — Run() orchestrator: cycle runner with per-step %.1fs timing, watch-mode banner, debounce + concurrent-cycle prevention, signal.NotifyContext SIGINT/SIGTERM
-- [x] 49-04-PLAN.md — `kinder dev` CLI command: cobra wiring, --watch/--target required, --debounce/--poll/--poll-interval/--rollout-timeout flags, root.go registration
-**UI hint**: yes
-
-### Phase 50: Runtime Error Decoder
-**Goal**: Users can decode cryptic runtime errors from running clusters into plain-English explanations with actionable fixes, extending the v2.1 doctor framework into post-create diagnostics
-**Depends on**: Phase 47
-**Requirements**: DIAG-01, DIAG-02, DIAG-03, DIAG-04
-**Success Criteria** (what must be TRUE):
-  1. User runs `kinder doctor decode` and the command scans recent docker logs and `kubectl get events`, matches known error patterns, and prints plain-English explanations with suggested fixes
-  2. The decoder recognizes at least 15 cataloged error patterns covering kubelet, kubeadm, containerd, docker, and addon-startup failures
-  3. Each matched error shows: the pattern that matched, a plain-English explanation, the suggested fix, and a link to documentation or a known issue where applicable
-  4. User runs `kinder doctor decode --auto-fix` and the command applies only whitelisted, non-destructive remediations automatically; no destructive action is ever taken without explicit user confirmation
-**Plans**: 5 plans
-- [x] 50-01-PLAN.md — Pattern catalog + matcher engine: DecodePattern/DecodeMatch/DecodeResult types, matchLines() pure function, 16-entry seed catalog (KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02) covering all five DIAG-02 scopes
-- [x] 50-02-PLAN.md — Log + event collectors: dockerLogsFn (per-node `docker logs --since`), k8sEventsFn (in-node kubectl with locked Warnings-only filter), RunDecode orchestrator threading single time.Duration to both sources
-- [x] 50-03-PLAN.md — `kinder doctor decode` CLI subcommand (additive peer per locked decision #1; bare `kinder doctor` unchanged): --name/--since 30m/--output/--auto-fix/--include-normal flags; FormatDecodeHumanReadable + FormatDecodeJSON renderers carry all four SC3 fields per match
-- [x] 50-04-PLAN.md — Auto-fix whitelist: 3 SafeMitigation factories (inotify-raise, coredns-restart, node-container-restart) with NeedsFix preconditions + idempotent Apply; ApplyDecodeAutoFix orchestrator dedupes by Name and respects NeedsRoot; PreviewDecodeAutoFix is side-effect-free
-- [x] 50-05-PLAN.md — Build-tagged integration tests (catalog-coverage orphan/stale guards + SC3 render end-to-end) + live UAT human-verify checkpoint against openshell-dev cluster
-
-### Phase 51: Upstream Sync & K8s 1.36
-**Goal**: Kinder adopts kind's HAProxy-to-Envoy LB transition, ships K8s 1.36 as the default node image, and protects users from the silent IPVS removal breakage introduced in 1.36
-**Depends on**: Phase 50
-**Requirements**: SYNC-01, SYNC-02, SYNC-03, SYNC-04
-**Success Criteria** (what must be TRUE):
-  1. HA clusters created with kinder use Envoy as the load-balancer container instead of HAProxy; `kindest/haproxy` is no longer pulled
-  2. Running `kinder create cluster` without an explicit `image:` field provisions a K8s 1.36.x node (latest stable patch at ship time, >=1.36.4)
-  3. A cluster config with `kubeProxyMode: ipvs` is rejected at validation time with a clear error message pointing to the iptables migration path when the node version is 1.36 or higher
-  4. The kinder website has a "What's new in K8s 1.36" recipe page with working examples demonstrating User Namespaces (GA) and In-Place Pod Resize (GA) on a kinder cluster
-**Plans**: 4 plans
-- [x] 51-01-envoy-lb-migration-PLAN.md — SYNC-01: HAProxy → Envoy LB migration; port upstream kind PR #4127 (const + three Envoy templates + Config(data, template) + GenerateBootstrapCommand); rewrite actions/loadbalancer/loadbalancer.go to atomic-swap LDS+CDS via mv; wire GenerateBootstrapCommand into all three providers (docker/podman/nerdctl); update offlinereadiness image list to envoy
-- [x] 51-02-ipvs-deprecation-guard-PLAN.md — SYNC-03: IPVS-on-1.36+ guard inside Cluster.Validate(); reuse imageTagVersion + version.ParseSemantic; "deprecated, will be removed in a future release" framing + migration URL; 7 table-driven test cases covering ipvs+1.36 (rejected), ipvs+1.35 (passes), iptables+1.36 (passes), non-semver tag (skip)
-- [x] 51-03-website-k8s-1-36-recipe-PLAN.md — SYNC-04: kinder-site/src/content/docs/guides/k8s-1-36-whats-new.md (User Namespaces GA pod spec + In-Place Pod Resize container-level GA pod spec + kubeadm v1beta4 note); register in astro.config.mjs Guides sidebar
-- [~] 51-04-default-node-image-bump-PLAN.md — SYNC-02 (Wave 2, depends on 51-01): INCONCLUSIVE — Docker Hub probe returned count=0 for v1.36.x tags (2026-05-07); SC2 DEFERRED pending kind v0.32.0. Re-run plan 51-04 once kindest/node:v1.36.x is published.
-**UI hint**: yes
+Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Reload (`kinder dev`), Runtime Error Decoder (`kinder doctor decode` with 16-pattern catalog), Upstream Sync (HAProxy→Envoy LB across docker/podman/nerdctl + IPVS-on-1.36+ guard + K8s 1.36 website recipe). SYNC-02 (default node image bump to K8s 1.36.x) DEFERRED — `kindest/node:v1.36.x` not yet on Docker Hub.
 
 </details>
 
@@ -195,8 +115,4 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 35-37. v2.0 phases | v2.0 | 7/7 | Complete | 2026-03-05 |
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
-| 47. Cluster Pause/Resume | v2.3 | 6/6 | Complete (source-level); host/HA smoke + dev rebuild remain as human verification | 2026-05-05 |
-| 48. Cluster Snapshot/Restore | v2.3 | 6/6 | Complete | 2026-05-06 |
-| 49. Inner-Loop Hot Reload | v2.3 | 4/4 | Complete   | 2026-05-06 |
-| 50. Runtime Error Decoder | v2.3 | 5/5 | Complete | 2026-05-07 |
-| 51. Upstream Sync & K8s 1.36 | v2.3 | 4/4 | Complete (SC2 deferred — kindest/node:v1.36.x not on Docker Hub) | 2026-05-07 |
+| 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |

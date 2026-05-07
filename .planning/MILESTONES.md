@@ -1,5 +1,34 @@
 # Project Milestones: Kinder
 
+## v2.3 Inner Loop (Shipped: 2026-05-07)
+
+**Delivered:** Made daily iteration on a kinder cluster as fast as creating one — pause/resume with quorum-safe HA ordering, snapshot/restore with hard-fail compatibility checks, hot-reload via `kinder dev` (fsnotify + polling fallback), and a runtime error decoder extending the v2.1 doctor framework with 16 cataloged patterns. Adopted kind upstream's HAProxy→Envoy LB transition across docker/podman/nerdctl providers and shipped a K8s 1.36 recipe page (default node image bump deferred pending Docker Hub publication).
+
+**Phases completed:** 47-51 (25 plans total)
+
+**Key accomplishments:**
+- **Phase 47 — Cluster Pause/Resume**: `lifecycle.Pause`/`Resume` with explicit quorum-safe ordering (workers→CP→LB on pause, LB→CP→workers on resume), `cluster-resume-readiness` doctor check using `crictl exec <etcd-id> etcdctl ...` probe, `kinder status` command, JSON schema migration on `kinder get clusters`, two re-verification gap-closure plans (47-05 + 47-06) closing 5 UAT failures
+- **Phase 48 — Cluster Snapshot/Restore**: tar.gz bundle with sha256 sidecar capturing etcd + container images + local-path PVs, restore with K8s/topology/addon hard-fail compatibility checks BEFORE any mutation, 5 CLI subcommands (create/restore/list/show/prune), full integration test suite, live UAT approved
+- **Phase 49 — Inner-Loop Hot Reload**: `kinder dev --watch <dir> --target <deployment>` with fsnotify v1.10.1 (first new module dep since v2.0) + stdlib polling fallback, leading-trigger debouncer, `kinder load images` core reuse via public APIs, `--poll` mode for Docker Desktop macOS, live UAT 4.1s end-to-end cycle
+- **Phase 50 — Runtime Error Decoder**: `kinder doctor decode` with 16-pattern catalog (KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02), plain-English explanations + suggested fixes + doc links, `--auto-fix` whitelist with 3 SafeMitigation factories (preview-before-apply enforced), bare `kinder doctor` 24-check pipeline preserved
+- **Phase 51 — Upstream Sync & K8s 1.36**: HAProxy→Envoy LB migration (kind PR #4127 port) wired across all 3 providers with atomic xDS file-swap (no SIGHUP), IPVS-on-1.36+ validation guard with migration URL, K8s 1.36 "What's new" website recipe (User Namespaces GA + In-Place Pod Resize GA). SC2 (default node image bump) DEFERRED — `kindest/node:v1.36.x` not yet on Docker Hub
+
+**Stats:**
+- 125 code files created/modified (+23,683 / -91 lines)
+  - pkg/ Go: 123 files, +23,515 / -91
+  - kinder-site/ site: 2 files, +168 / -0
+- ~110 commits in v2.3 range (`test(47-01)` → `docs(51-04)`)
+- 5 phases, 25 plans, 21 requirements (20 satisfied, 1 deferred on external blocker)
+- 5 days (2026-05-03 → 2026-05-07)
+
+**Git range:** `test(47-01)` → `docs(51-04)`
+
+**Audit:** `.planning/milestones/v2.3-MILESTONE-AUDIT.md` — status `tech_debt`; 9/9 cross-phase integration points wired; 4/4 E2E flows complete; zero regressions.
+
+**What's next:** v2.4 (TBD) — likely candidates: SYNC-02 re-execution once kind v0.32.0 ships, addon bumps (cert-manager v1.20, Envoy Gateway v1.7, Headlamp v0.41), pause/resume support for podman + nerdctl providers, snapshot remote-storage backend.
+
+---
+
 ## v2.2 Cluster Capabilities (Shipped: 2026-04-10)
 
 **Delivered:** Added four cluster capabilities to kinder — multi-version per-node Kubernetes validation, offline/air-gapped cluster creation, local-path-provisioner dynamic storage, host-directory mounting pre-flight — plus a provider-abstracted `kinder load images` subcommand that ties the offline and multi-version workflows together. All features integrate using packages already in `go.mod` with zero new dependencies.
