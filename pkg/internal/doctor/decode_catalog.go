@@ -39,8 +39,8 @@ var Catalog = []DecodePattern{
 		Explanation: "Inotify watch limit exhausted — kubelet cannot watch required files. This is the most common kind cluster failure on Linux hosts with default kernel settings.",
 		Fix:         "sudo sysctl fs.inotify.max_user_watches=524288 && sudo sysctl fs.inotify.max_user_instances=512",
 		DocLink:     "https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files",
-		AutoFixable: false,
-		AutoFix:     nil,
+		AutoFixable: true,
+		AutoFix:     InotifyRaiseMitigation(),
 	},
 	{
 		ID:          "KUB-02",
@@ -49,8 +49,8 @@ var Catalog = []DecodePattern{
 		Explanation: "Same root cause as KUB-01 — kubelet failed to set up an inotify watcher because the inotify instance limit is exhausted.",
 		Fix:         "sudo sysctl fs.inotify.max_user_watches=524288 && sudo sysctl fs.inotify.max_user_instances=512",
 		DocLink:     "https://kind.sigs.k8s.io/docs/user/known-issues/",
-		AutoFixable: false,
-		AutoFix:     nil,
+		AutoFixable: true,
+		AutoFix:     InotifyRaiseMitigation(),
 	},
 	{
 		ID:          "KUB-03",
@@ -79,8 +79,8 @@ var Catalog = []DecodePattern{
 		Explanation: "Cgroup v2 hierarchy conflict — the node entrypoint had not finished cgroup setup when a container exec ran.",
 		Fix:         "Wait for node readiness before exec; run kinder doctor before re-creating the cluster.",
 		DocLink:     "https://github.com/kubernetes-sigs/kind/issues/2409",
-		AutoFixable: false,
-		AutoFix:     nil,
+		AutoFixable: true,
+		AutoFix:     nil, // nodeName is derived from match.Source at runtime by ApplyDecodeAutoFix
 	},
 
 	// -------------------------------------------------------------------------
@@ -103,8 +103,8 @@ var Catalog = []DecodePattern{
 		Explanation: "CoreDNS pod detected in events — if CoreDNS is stuck in Pending, the CNI plugin is not installed or misconfigured. Check pod status to confirm.",
 		Fix:         "kubectl get pods -n kube-system; verify kindnet/flannel is running. If Pending, check CNI DaemonSet logs.",
 		DocLink:     "https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/troubleshooting-kubeadm/",
-		AutoFixable: false,
-		AutoFix:     nil,
+		AutoFixable: true,
+		AutoFix:     nil, // binaryName+cpNodeName provided at runtime by ApplyDecodeAutoFix via DecodeAutoFixContext
 	},
 	{
 		ID:          "KADM-03",
