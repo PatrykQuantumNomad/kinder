@@ -546,6 +546,126 @@ func TestNodeValidate(t *testing.T) {
 	}
 }
 
+func TestIPVSDeprecationGuard(t *testing.T) {
+	t.Parallel()
+
+	// helper: build a cluster with the given kubeProxyMode and node images
+	makeCluster := func(mode ProxyMode, images ...string) Cluster {
+		c := Cluster{}
+		SetDefaultsCluster(&c)
+		c.Networking.KubeProxyMode = mode
+		nodes := make([]Node, 0, len(images))
+		for _, img := range images {
+			nodes = append(nodes, Node{Role: ControlPlaneRole, Image: img})
+		}
+		c.Nodes = nodes
+		return c
+	}
+
+	tests := []struct {
+		name            string
+		cluster         Cluster
+		expectIPVSError bool
+		// if expectIPVSError is true, these substrings must appear in the error
+		errorMustContain []string
+		// if expectIPVSError is true, these substrings must NOT appear in the error
+		errorMustNotContain []string
+	}{
+		{
+			name:             "ipvs_rejected_on_1_36_node",
+			cluster:          makeCluster(IPVSProxyMode, "kindest/node:v1.36.0"),
+			expectIPVSError:  true,
+			errorMustContain: []string{"ipvs is not supported with Kubernetes 1.36"},
+		},
+		{
+			name: "ipvs_rejected_on_mixed_with_one_1_36_node",
+			// one CP (v1.35.1) + one Worker (v1.36.0) — the 1.36 node trips the guard
+			cluster: func() Cluster {
+				c := Cluster{}
+				SetDefaultsCluster(&c)
+				c.Networking.KubeProxyMode = IPVSProxyMode
+				c.Nodes = []Node{
+					{Role: ControlPlaneRole, Image: "kindest/node:v1.35.1"},
+					{Role: WorkerRole, Image: "kindest/node:v1.36.0"},
+				}
+				return c
+			}(),
+			expectIPVSError:  true,
+			errorMustContain: []string{"ipvs is not supported with Kubernetes 1.36"},
+		},
+		{
+			name:            "ipvs_passes_on_1_35_only_cluster",
+			cluster:         makeCluster(IPVSProxyMode, "kindest/node:v1.35.1"),
+			expectIPVSError: false,
+		},
+		{
+			name:            "iptables_passes_on_1_36_node",
+			cluster:         makeCluster(IPTablesProxyMode, "kindest/node:v1.36.0"),
+			expectIPVSError: false,
+		},
+		{
+			name:            "ipvs_skipped_on_non_semver_tag",
+			cluster:         makeCluster(IPVSProxyMode, "kindest/node:latest"),
+			expectIPVSError: false,
+		},
+		{
+			name:            "ipvs_error_includes_migration_url",
+			cluster:         makeCluster(IPVSProxyMode, "kindest/node:v1.36.0"),
+			expectIPVSError: true,
+			errorMustContain: []string{
+				"ipvs is not supported with Kubernetes 1.36",
+				"https://kubernetes.io/docs/reference/networking/virtual-ips/",
+			},
+		},
+		{
+			name:            "ipvs_error_uses_deprecated_framing",
+			cluster:         makeCluster(IPVSProxyMode, "kindest/node:v1.36.0"),
+			expectIPVSError: true,
+			errorMustContain: []string{
+				"deprecated",
+			},
+			errorMustNotContain: []string{
+				"removed in 1.36",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.cluster.Validate()
+
+			if !tt.expectIPVSError {
+				// guard must not fire; other validation errors are fine
+				if err != nil {
+					errStr := err.Error()
+					if contains(errStr, "ipvs is not supported with Kubernetes") {
+						t.Errorf("expected NO ipvs-guard error, but got: %s", errStr)
+					}
+				}
+				return
+			}
+
+			// guard must fire
+			if err == nil {
+				t.Fatalf("expected ipvs-guard error, got nil")
+			}
+			errStr := err.Error()
+			for _, want := range tt.errorMustContain {
+				if !contains(errStr, want) {
+					t.Errorf("error %q does not contain %q", errStr, want)
+				}
+			}
+			for _, notWant := range tt.errorMustNotContain {
+				if contains(errStr, notWant) {
+					t.Errorf("error %q must NOT contain %q", errStr, notWant)
+				}
+			}
+		})
+	}
+}
+
 func TestPortValidate(t *testing.T) {
 	cases := []struct {
 		TestName    string
