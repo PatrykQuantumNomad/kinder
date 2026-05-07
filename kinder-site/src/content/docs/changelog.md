@@ -11,6 +11,56 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 ---
 
+## v1.5 — Inner Loop
+
+**Released:** May 7, 2026
+
+Daily iteration on a kinder cluster is now as fast as creating one. Five capabilities make the inner-loop tight: pause/resume to reclaim laptop CPU and RAM without losing state, snapshot/restore for instant clean-state reset, `kinder dev` for hot-reload from a watched directory, `kinder doctor decode` for plain-English explanations of cryptic runtime errors, and an upstream sync that adopts kind's HAProxy→Envoy load balancer transition. One new module dependency (`fsnotify` v1.10.1) — the first since v1.2.
+
+### Cluster Pause/Resume
+
+- **`kinder pause [cluster-name]`** — gracefully stops every node container in quorum-safe order (workers → control-plane → load balancer) so the host can reclaim CPU and RAM. Cluster state survives the pause; pods, PVCs, services, and node identities are intact on resume
+- **`kinder resume [cluster-name]`** — restarts containers in the reverse order (LB → CP → workers) and gates on all-nodes-Ready via kubectl with K8s 1.24 selector fallback
+- **`--timeout`/`--wait` accept duration strings** — flags use `cobra.DurationVar`, so `5m`, `30s`, `2m` parse cleanly. Bare integers are intentionally rejected
+- **`cluster-resume-readiness` doctor check** — runs before resume on HA clusters and warns when etcd quorum is at risk. Probes etcd health via `crictl exec <etcd-id> etcdctl endpoint health` (etcdctl ships only inside the etcd static-pod container)
+- **`kinder status [cluster-name]`** — new command surfacing container-runtime state plus a Status column on `kinder get clusters` (JSON schema migrated to `[]{name, status}`) and real container state on `kinder get nodes`
+- **HA pre-pause etcd snapshot** — captures `/kind/pause-snapshot.json` with leader ID before pause, so resume can detect quorum risk
+
+### Cluster Snapshot/Restore
+
+- **`kinder snapshot create [snap-name]`** — captures etcd state, all loaded container images, and local-path-provisioner PV contents into a single tar.gz bundle with a sha256 sidecar for integrity verification. Stored under `~/.kinder/snapshots/<cluster>/` with mode 0700
+- **`kinder snapshot restore [snap-name]`** — full pre-flight gauntlet (sha256 + disk space + K8s/topology/addon hard-fail compatibility checks) runs BEFORE any cluster mutation. HA-safe etcd restore uses a shared `--initial-cluster-token` with manifest-aside + atomic data-dir swap. Image re-import via the existing `LoadImageArchiveWithFallback` path
+- **No auto-rollback** — post-pause failures emit a recovery-hint error pointing the user to `kinder resume`. Restore has no `--yes` flag (intentional: hard overwrite signals destructiveness)
+- **`kinder snapshot list/show/prune`** — list shows NAME/AGE/SIZE/K8S/ADDONS/STATUS columns; show prints size, age, K8s version, addon versions, image-bundle digest. Prune refuses no-flag invocation and prompts y/N unless `--yes` is given. STATUS=corrupt detection via sidecar re-hash
+- **Air-gap reproducible metadata** — every snapshot records cluster K8s version, addon versions, and image-bundle digest
+
+### Inner-Loop Hot Reload
+
+- **`kinder dev --watch <dir> --target <deployment>`** — enters watch mode; saving a file in the watched directory triggers a build → load → rollout cycle automatically. Per-cycle timing printed in `%.1fs` format (build / load / rollout / total)
+- **fsnotify recursive watcher** — `fsnotify` v1.10.1 added (first new module dep since v1.2). Synthesises a trigger event on `ErrEventOverflow` so heavy builds writing thousands of files never silently drop the rebuild
+- **`--poll` mode for Docker Desktop on macOS** — switches to a stdlib polling watcher when fsnotify events are unreliable (the macOS volume-mount case). `--poll-interval` configurable
+- **Leading-trigger debouncer** — first event in a window arms the timer and fires immediately; subsequent events within `--debounce` (default 500ms) are absorbed. Build starts ASAP; doesn't wait for editor swap-rename to finish
+- **Reuses `kinder load images` core** — `LoadImagesIntoCluster` calls `nodeutils.LoadImageArchiveWithFallback` directly via public APIs rather than importing `pkg/cmd/kind/load`
+- **Host kubectl rollout** — `kubectl rollout restart` runs on the host with `--kubeconfig=<external>` so user Deployments are managed in the user's existing kubectl context. Concurrent-cycle prevention + `signal.NotifyContext` SIGINT/SIGTERM teardown
+
+### Runtime Error Decoder
+
+- **`kinder doctor decode`** — scans recent docker logs and `kubectl get events` and matches lines against a 16-pattern catalog covering kubelet, kubeadm, containerd, docker, and addon-startup failures (KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02). Bare `kinder doctor` is unchanged; decode is an additive sibling subcommand
+- **Plain-English output** — every match shows the pattern ID, plain-English explanation, suggested fix, and a doc/issue link where applicable. Both `--output=human` (default) and `--output=json` carry all four fields per match
+- **`--auto-fix` whitelist** — only three SafeMitigation factories are allowed (inotify-raise sysctl, coredns rollout restart, node container restart). Preview-before-apply enforced; `NeedsFix` precondition + `NeedsRoot` guard skip cleanly when conditions don't apply
+- **`--since` and `--include-normal`** — single duration applied to both docker logs and kubectl events; default filter is `type!=Normal` (Warnings only), `--include-normal` flips it
+- **First-match-wins matcher** — `sync.Map` regex cache keyed by pattern string; each unique regex compiles once across process lifetime. Catalog-coverage integration test guards against orphan/stale fixtures
+
+### Upstream Sync & K8s 1.36
+
+- **HAProxy → Envoy load balancer** — adopts kind PR #4127. HA clusters now use `docker.io/envoyproxy/envoy:v1.36.2` instead of `kindest/haproxy`. LDS+CDS atomic file swap via `chmod && mv && mv` (no SIGHUP needed; Envoy xDS polling picks up swapped files). Wired across docker, podman, and nerdctl providers
+- **`kinder delete cluster <name>`** — accepts a positional cluster name argument (previously only `--name` worked, with cobra.NoArgs rejecting positional input). Positional takes precedence over `--name`; consistent with pause/resume/status/get-nodes
+- **IPVS-on-1.36+ guard** — `kubeProxyMode: ipvs` is rejected at config validation time when the node K8s version is 1.36 or higher, with a clear error message ("deprecated, will be removed in a future release") and a link to the iptables migration path
+- **K8s 1.36 recipe page** — new [What's new in K8s 1.36](/guides/k8s-1-36-whats-new/) guide on the kinder website demonstrating User Namespaces (GA) and In-Place Pod Resize (GA) on a kinder cluster
+- **Default node image bump deferred** — `kindest/node:v1.36.x` is not yet published on Docker Hub (probe 2026-05-07). The default remains `kindest/node:v1.35.1`. The bump will land as a follow-up release once kind v0.32.0 publishes the v1.36 image
+
+---
+
 ## v1.4 — Cluster Capabilities
 
 **Released:** April 10, 2026
