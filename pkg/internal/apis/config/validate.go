@@ -74,6 +74,31 @@ func (c *Cluster) Validate() error {
 		errs = append(errs, errors.Errorf("invalid kubeProxyMode: %s", c.Networking.KubeProxyMode))
 	}
 
+	// IPVS-on-1.36+ guard: kube-proxy IPVS mode was deprecated in v1.35 and will
+	// be removed in a future release. Reject up-front rather than letting users
+	// create a cluster that may break on future patch releases.
+	if c.Networking.KubeProxyMode == IPVSProxyMode {
+		for _, n := range c.Nodes {
+			tag, err := imageTagVersion(n.Image)
+			if err != nil {
+				continue // version unknown, skip guard for this node
+			}
+			v, err := version.ParseSemantic(tag)
+			if err != nil {
+				continue // non-semver tag (e.g. "latest"), skip guard
+			}
+			if v.Minor() >= 36 {
+				errs = append(errs, errors.Errorf(
+					"kubeProxyMode: ipvs is not supported with Kubernetes 1.36+ "+
+						"(node image %q uses v1.%d); kube-proxy IPVS mode was deprecated in v1.35 "+
+						"and will be removed in a future release. Switch to iptables or nftables. "+
+						"Migration guide: https://kubernetes.io/docs/reference/networking/virtual-ips/",
+					n.Image, v.Minor()))
+				break // one error is enough
+			}
+		}
+	}
+
 	// validate nodes
 	numByRole := make(map[NodeRole]int32)
 	// All nodes in the config should be valid
