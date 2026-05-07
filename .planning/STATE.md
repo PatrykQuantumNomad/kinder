@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: verifying
-stopped_at: "Phase 51 Plan 02 complete — IPVS-on-1.36+ deprecation guard in Cluster.Validate(), 7 tests pass -race. Wave 1 still in-progress (51-01/03/04)."
-last_updated: "2026-05-07T12:35:38.540Z"
+status: executing
+stopped_at: "Phase 51 Wave 1 complete — 51-01 (Envoy LB), 51-02 (IPVS guard), 51-03 (K8s 1.36 website recipe) all landed. Wave 2: 51-04 (default node image bump) is next."
+last_updated: "2026-05-07T13:00:00.000Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 25
-  completed_plans: 22
-  percent: 88
+  completed_plans: 24
+  percent: 96
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 ## Current Position
 
 Phase: 51 of 51 — EXECUTING
-Plan: 2 of 4 — COMPLETE (51-02 IPVS deprecation guard done)
-Status: Wave 1 in-progress — 51-02 complete; 51-01/03/04 running in parallel
+Plan: 3 of 4 — COMPLETE (Wave 1 done: 51-01 Envoy LB, 51-02 IPVS guard, 51-03 K8s 1.36 website recipe)
+Status: Wave 2 next — 51-04 default node image bump (depends on 51-01)
 Last activity: 2026-05-07
 
-Progress: [█████████░] 88%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
