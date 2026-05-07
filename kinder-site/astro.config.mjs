@@ -80,6 +80,7 @@ export default defineConfig({
             { slug: 'guides/dynamic-storage' },
             { slug: 'guides/host-directory-mounting' },
             { slug: 'guides/multi-version-clusters' },
+            { slug: 'guides/k8s-1-36-whats-new' },
             { slug: 'guides/working-offline' },
           ],
         },
