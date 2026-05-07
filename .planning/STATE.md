@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
-status: executing
-stopped_at: Phase 50 complete — Runtime Error Decoder source-level + live UAT approved. Phase 51 (Upstream Sync & K8s 1.36) is next.
-last_updated: "2026-05-07T12:00:00.000Z"
+status: verifying
+stopped_at: Phase 50 complete — build-tagged integration tests + live UAT (openshell-dev, all 5 steps PASS). Phase 51 (Upstream Sync & K8s 1.36) is next.
+last_updated: "2026-05-07T12:35:38.540Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 21
-  completed_plans: 21
-  percent: 80
+  total_plans: 25
+  completed_plans: 22
+  percent: 88
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 Phase: 50 of 51 — COMPLETE
 Plan: 5 of 5 — COMPLETE
-Status: Phase 51 (Upstream Sync & K8s 1.36) is next
+Status: Phase complete — ready for verification
 Last activity: 2026-05-07
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [████████░░] 80%
 *Updated after each plan completion*
 | Phase 50 P03 | ~5m | 2 tasks | 5 files |
 | 50    | 05   | ~15m     | 3     | 2     | TDD RED+GREEN (3 commits: 2 RED tests + 1 GREEN fixtures). 16-subtest catalog-coverage integration test + SC3 render integration test under //go:build integration. Live UAT approved (openshell-dev, K8s 1.35.0): 5 UAT steps PASS (bare doctor unchanged, decode runs, JSON envelope valid, --auto-fix preview-then-apply gate honored, --include-normal expands scan). Phase 50 SC1-SC4 all met. DIAG-01..04 complete. |
+| Phase 51-upstream-sync-k8s-1-36 P03 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Progress: [████████░░] 80%
 - 2026-05-07 (50-05 UAT): Live UAT approved against openshell-dev cluster (K8s 1.35.0, 2 nodes: openshell-dev-control-plane + openshell-dev-worker). All 5 UAT steps PASS: (1) bare `kinder doctor` regression-free (24 checks, 7 ok, 3 warning, exit 2); (2) decode happy path runs, healthy cluster returns 0 matches; (3) JSON envelope valid, jq parses .cluster/.matches/.unmatched/.summary; (4) --auto-fix preview-before-apply gate honored (shows "no whitelisted remediations apply" on healthy cluster); (5) --include-normal --since 5m expands scan from 3 to 4 lines. Phase 50 SC1, SC2, SC3, SC4 all met.
 - 2026-05-07 (50-05 UAT): Pre-existing race in pkg/internal/doctor/check_test.go and socket_test.go (allChecks global mutated under t.Parallel) confirmed as pre-50 baseline regression at commit c138ad62 — NOT a Phase 50 regression. Added to Pending Todos for future resolution.
 - 2026-05-07 (50-05): --auto-fix preview-then-apply flow validated: decode results printed first, then auto-fix section with whitelisted remediations (or "no whitelisted remediations apply" if cluster healthy). Bare `kinder doctor decode` invocation never triggers any Apply path — the --auto-fix flag is the explicit gate.
+- [Phase ?]: Container-level In-Place Pod Resize (GA) demonstrated in guide; pod-level (Beta) only mentioned in callout
+- [Phase ?]: K8s 1.36 guide sidebar entry placed after multi-version-clusters per chronological grouping
 
 ### Pending Todos
 
@@ -179,6 +182,6 @@ None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot
 
 ## Session Continuity
 
-Last session: 2026-05-07T12:00:00.000Z
+Last session: 2026-05-07T12:35:35.666Z
 Stopped at: Phase 50 complete — build-tagged integration tests + live UAT (openshell-dev, all 5 steps PASS). Phase 51 (Upstream Sync & K8s 1.36) is next.
 Resume file: None

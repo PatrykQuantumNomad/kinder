@@ -172,8 +172,8 @@ Phases 42-46: Multi-Version Node Validation, Air-Gapped Cluster Creation, Local-
   4. The kinder website has a "What's new in K8s 1.36" recipe page with working examples demonstrating User Namespaces (GA) and In-Place Pod Resize (GA) on a kinder cluster
 **Plans**: 4 plans
 - [ ] 51-01-envoy-lb-migration-PLAN.md — SYNC-01: HAProxy → Envoy LB migration; port upstream kind PR #4127 (const + three Envoy templates + Config(data, template) + GenerateBootstrapCommand); rewrite actions/loadbalancer/loadbalancer.go to atomic-swap LDS+CDS via mv; wire GenerateBootstrapCommand into all three providers (docker/podman/nerdctl); update offlinereadiness image list to envoy
-- [ ] 51-02-ipvs-deprecation-guard-PLAN.md — SYNC-03: IPVS-on-1.36+ guard inside Cluster.Validate(); reuse imageTagVersion + version.ParseSemantic; "deprecated, will be removed in a future release" framing + migration URL; 7 table-driven test cases covering ipvs+1.36 (rejected), ipvs+1.35 (passes), iptables+1.36 (passes), non-semver tag (skip)
-- [ ] 51-03-website-k8s-1-36-recipe-PLAN.md — SYNC-04: kinder-site/src/content/docs/guides/k8s-1-36-whats-new.md (User Namespaces GA pod spec + In-Place Pod Resize container-level GA pod spec + kubeadm v1beta4 note); register in astro.config.mjs Guides sidebar
+- [x] 51-02-ipvs-deprecation-guard-PLAN.md — SYNC-03: IPVS-on-1.36+ guard inside Cluster.Validate(); reuse imageTagVersion + version.ParseSemantic; "deprecated, will be removed in a future release" framing + migration URL; 7 table-driven test cases covering ipvs+1.36 (rejected), ipvs+1.35 (passes), iptables+1.36 (passes), non-semver tag (skip)
+- [x] 51-03-website-k8s-1-36-recipe-PLAN.md — SYNC-04: kinder-site/src/content/docs/guides/k8s-1-36-whats-new.md (User Namespaces GA pod spec + In-Place Pod Resize container-level GA pod spec + kubeadm v1beta4 note); register in astro.config.mjs Guides sidebar
 - [ ] 51-04-default-node-image-bump-PLAN.md — SYNC-02 (Wave 2, depends on 51-01): bump pkg/apis/config/defaults/image.go to kindest/node:v1.36.x; gating Docker Hub pre-flight (Task 1) returns INCONCLUSIVE if no v1.36.x image is published yet; updates website tag references that imply "current default"
 **UI hint**: yes
 
@@ -199,4 +199,4 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 48. Cluster Snapshot/Restore | v2.3 | 6/6 | Complete | 2026-05-06 |
 | 49. Inner-Loop Hot Reload | v2.3 | 4/4 | Complete   | 2026-05-06 |
 | 50. Runtime Error Decoder | v2.3 | 5/5 | Complete | 2026-05-07 |
-| 51. Upstream Sync & K8s 1.36 | v2.3 | 0/4 | Not started | - |
+| 51. Upstream Sync & K8s 1.36 | v2.3 | 2/4 | In Progress|  |
