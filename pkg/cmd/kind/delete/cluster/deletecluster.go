@@ -34,14 +34,23 @@ type flagpole struct {
 	Kubeconfig string
 }
 
+// deleteClusterFn is the test-injection point for the delete call. Production
+// code calls deleteCluster which creates a real provider; tests substitute a
+// fake to capture the resolved cluster name without hitting a container runtime.
+var deleteClusterFn = deleteCluster
+
 // NewCommand returns a new cobra.Command for cluster deletion
 func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	flags := &flagpole{}
 	cmd := &cobra.Command{
-		Args:  cobra.NoArgs,
-		Use:   "cluster",
+		Args:  cobra.MaximumNArgs(1),
+		Use:   "cluster [cluster-name]",
 		Short: "Deletes a cluster",
 		Long: `Deletes a Kind cluster from the system.
+
+The cluster to delete may be given as a positional argument or via --name; the
+positional argument takes precedence when both are provided. If neither is set,
+the default cluster name is used.
 
 This is an idempotent operation, meaning it may be called multiple times without
 failing (like "rm -f"). If the cluster resources exist they will be deleted, and
@@ -51,7 +60,11 @@ Errors will only occur if the cluster resources exist and are not able to be del
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cli.OverrideDefaultName(cmd.Flags())
-			return deleteCluster(logger, flags)
+			name := flags.Name
+			if len(args) == 1 {
+				name = args[0]
+			}
+			return deleteClusterFn(logger, name, flags.Kubeconfig)
 		},
 	}
 	cmd.Flags().StringVarP(
@@ -70,15 +83,15 @@ Errors will only occur if the cluster resources exist and are not able to be del
 	return cmd
 }
 
-func deleteCluster(logger log.Logger, flags *flagpole) error {
+func deleteCluster(logger log.Logger, name, kubeconfig string) error {
 	provider := cluster.NewProvider(
 		cluster.ProviderWithLogger(logger),
 		runtime.GetDefault(logger),
 	)
 	// Delete individual cluster
-	logger.V(0).Infof("Deleting cluster %q ...", flags.Name)
-	if err := provider.Delete(flags.Name, flags.Kubeconfig); err != nil {
-		return errors.Wrapf(err, "failed to delete cluster %q", flags.Name)
+	logger.V(0).Infof("Deleting cluster %q ...", name)
+	if err := provider.Delete(name, kubeconfig); err != nil {
+		return errors.Wrapf(err, "failed to delete cluster %q", name)
 	}
 	return nil
 }
