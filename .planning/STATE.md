@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: executing
-stopped_at: Phase 49 source-level COMPLETE — Plan 49-04 closed; ready for verifier gate.
-last_updated: "2026-05-07T10:41:56.093Z"
+stopped_at: Phase 50 Plan 02 complete — RunDecode orchestrator + live collectors shipped. Plan 50-03 (cobra command) is next.
+last_updated: "2026-05-07T10:50:24.588Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 21
-  completed_plans: 18
-  percent: 86
+  completed_plans: 19
+  percent: 90
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 ## Current Position
 
 Phase: 50 of 51 — IN PROGRESS
-Plan: 2 of 5 — COMPLETE
+Plan: 3 of 5 — COMPLETE
 Status: Ready to execute
 Last activity: 2026-05-07
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [█████████░] 86%
 | 49    | 04   | ~6m      | 2     | 3     | TDD RED→GREEN for Task 1 (3 commits total: test + feat for Task 1, single feat for Task 2 root.go registration). 17 -race tests pass in 1.5s for pkg/cmd/kind/dev/. Phase 49 SC1 delivered (kinder dev is a registered top-level command). 2 Rule 1 deviations: (1) lifecycle.ProviderBinaryName signature is func() string not (logger) (string, error) as plan body draft showed; (2) TestDevCmd_HelpListsCriticalFlags needed c.SetOut(buf) for --help capture in isolated test. AddCommand inserted between delete-export (the alphabetical slot) not delete-doctor (those aren't adjacent in current root.go layout). Zero new module deps. |
 | 50    | 01   | ~15m     | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 11 -race tests pass. matchLines pure engine (sync.Map regex cache, first-match-wins). 16-entry Catalog: KUB-01..05, KADM-01..03, CTD-01..03, DOCK-01..03, ADDON-01..02. All 5 DecodeScope values covered (SC2/DIAG-02). DIAG-03/SC3 fields: ID/Match/Explanation/Fix non-empty on every entry. AutoFixable+AutoFix pre-declared zero for Plan 50-04. Zero new module deps. |
 | 50    | 02   | ~6m      | 2     | 2     | TDD RED→GREEN (2 commits: 1 RED + 1 GREEN; both task sets committed together — single-file boundary). 12 -race tests pass. dockerLogsFn / k8sEventsFn / execCommand injection points; realDockerLogs (--since argv); realK8sEvents (type!=Normal default filter + includeNormal override + client-side LAST SEEN age filter per RESEARCH pitfall 4); RunDecode orchestrator (best-effort scan; locked decisions #2+#3 end-to-end). Zero new module deps. 1 TDD gate deviation (4 expected commits, 2 delivered — same-file constraint). |
+| 50    | 04   | ~4m      | 2     | 4     | TDD RED→GREEN × 2 tasks (4 commits). 20 new -race tests pass. Three SafeMitigation factories (inotify-raise/coredns-restart/node-container-restart) with NeedsFix preconditions and fn-var injection; ApplyDecodeAutoFix dedup-by-Name + NeedsFix/NeedsRoot orchestration; PreviewDecodeAutoFix side-effect-free. Catalog wired: KUB-01/02 AutoFix=InotifyRaiseMitigation(); KADM-02/KUB-05 AutoFixable=true+AutoFix=nil. Zero new module deps. 0 deviations. |
 
 *Updated after each plan completion*
 
@@ -149,6 +150,11 @@ Progress: [█████████░] 86%
 - 2026-05-07 (50-02): RunDecode errors from individual sources are non-fatal — best-effort scan with V(1) logging; only returns error on caller misuse (empty inputs).
 - 2026-05-07 (50-02): sinceStr = opts.Since.String() — Docker accepts "30m0s"; deterministic string for test assertions; NOT stripped to "30m" form.
 - 2026-05-07 (50-02): TDD gate delivered as 2 commits instead of 4 — both task test groups in one file, both implementations in one file; RED gate satisfied (compile failure on undefined symbols for all 12 tests).
+- 2026-05-07 (50-04): geteuidFn injected as fn-var for NeedsRoot test without requiring real OS privilege change — consistent with project's t.Cleanup-swap pattern for OS-level primitives.
+- 2026-05-07 (50-04): realInspectStateAuto intentionally duplicates resumereadiness.go's realInspectState body to avoid doctor→lifecycle import cycle; no shared helper to avoid duplication because the cycle is a hard constraint (lifecycle imports doctor).
+- 2026-05-07 (50-04): execCommand referenced from decode_collectors.go (50-02) without redeclaration — 50-02 was on disk before 50-04 ran; no filesystem park-aside needed. Single-file ownership pattern confirmed: Plan 50-02 owns execCommand.
+- 2026-05-07 (50-04): KUB-05 node name extracted from match.Source "docker-logs:<node>" prefix — k8s-events source returns nil from mitigationFor (no node name extractable, skip is correct).
+- 2026-05-07 (50-04): ApplyDecodeAutoFix dedupes by sm.Name so KUB-01+KUB-02 both embedding inotify-raise fires the mitigation exactly once per run (dedup before NeedsFix/NeedsRoot checks).
 
 ### Pending Todos
 
@@ -160,10 +166,10 @@ Three issues uncovered during phase 47 live UAT — all pre-existing or cosmetic
 
 ### Blockers/Concerns
 
-None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed. Phase 50 Plans 01+02 complete: matchLines engine + 16-entry Catalog (Plan 01); live collectors (dockerLogsFn, k8sEventsFn) + RunDecode orchestrator (Plan 02). Plans 50-03..05 remain.
+None. Phase 47 fully delivers LIFE-01..LIFE-04. Phase 48 fully delivers snapshot/restore. Phase 49 source-level COMPLETE: Plan 04's kinder dev cobra command + root.go registration is landed. Phase 50 Plans 01+02+04 complete: matchLines engine + 16-entry Catalog (Plan 01); live collectors + RunDecode orchestrator (Plan 02); auto-fix whitelist + ApplyDecodeAutoFix/PreviewDecodeAutoFix (Plan 04). Plans 50-03 and 50-05 remain.
 
 ## Session Continuity
 
-Last session: 2026-05-07T10:41:56.093Z
-Stopped at: Phase 50 Plan 02 complete — RunDecode orchestrator + live collectors shipped. Plan 50-03 (cobra command) is next.
+Last session: 2026-05-07T10:48:34Z
+Stopped at: Phase 50 Plan 04 complete — auto-fix whitelist (inotify-raise/coredns-restart/node-container-restart) + ApplyDecodeAutoFix/PreviewDecodeAutoFix + Catalog wiring shipped. Plan 50-03 (cobra command) is next.
 Resume file: None
