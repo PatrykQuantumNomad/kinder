@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/cmd/kind/doctor/decode"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 	"sigs.k8s.io/kind/pkg/internal/apis/config/encoding"
 	"sigs.k8s.io/kind/pkg/internal/doctor"
@@ -50,6 +51,7 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	}
 	c.Flags().StringVar(&flags.Output, "output", "", "output format; supported values: \"\", \"json\"")
 	c.Flags().StringVar(&flags.Config, "config", "", "path to cluster config file; enables host mount checks against configured extraMounts")
+	c.AddCommand(decode.NewCommand(logger, streams))
 	return c
 }
 
