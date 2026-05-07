@@ -81,6 +81,58 @@ func TestCatalogIDsUnique(t *testing.T) {
 	}
 }
 
+// TestCatalog_AutoFixableEntries verifies that exactly four catalog entries have
+// AutoFixable=true: KUB-01, KUB-02, KADM-02, KUB-05. KUB-01 and KUB-02 must have
+// non-nil AutoFix pointers (parameterless inotify mitigation). KADM-02 and KUB-05
+// must have AutoFix=nil (parameterized at runtime by the orchestrator).
+// All other entries must have AutoFixable=false and AutoFix=nil.
+func TestCatalog_AutoFixableEntries(t *testing.T) {
+	autoFixableIDs := map[string]bool{
+		"KUB-01":  true,
+		"KUB-02":  true,
+		"KADM-02": true,
+		"KUB-05":  true,
+	}
+	// KUB-01 and KUB-02 have embedded AutoFix pointers (parameterless inotify factory).
+	// KADM-02 and KUB-05 have AutoFix=nil (constructed from ctx at runtime).
+	autoFixPointerIDs := map[string]bool{
+		"KUB-01": true,
+		"KUB-02": true,
+	}
+
+	for _, p := range Catalog {
+		if autoFixableIDs[p.ID] {
+			if !p.AutoFixable {
+				t.Errorf("Catalog entry %s: AutoFixable=false, want true", p.ID)
+			}
+			if autoFixPointerIDs[p.ID] && p.AutoFix == nil {
+				t.Errorf("Catalog entry %s: AutoFix=nil, want non-nil pointer (parameterless factory)", p.ID)
+			}
+			if !autoFixPointerIDs[p.ID] && p.AutoFix != nil {
+				t.Errorf("Catalog entry %s: AutoFix non-nil, want nil (parameterized at runtime)", p.ID)
+			}
+		} else {
+			if p.AutoFixable {
+				t.Errorf("Catalog entry %s: AutoFixable=true, want false (not in whitelist)", p.ID)
+			}
+			if p.AutoFix != nil {
+				t.Errorf("Catalog entry %s: AutoFix non-nil, want nil (AutoFixable=false)", p.ID)
+			}
+		}
+	}
+
+	// Verify exactly 4 entries have AutoFixable=true.
+	count := 0
+	for _, p := range Catalog {
+		if p.AutoFixable {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Errorf("expected exactly 4 AutoFixable=true entries, got %d", count)
+	}
+}
+
 // TestCatalogMatchesKnownLines verifies five concrete fixture lines (one per
 // scope) each match exactly one Catalog entry via matchLines.
 // Lines taken verbatim from RESEARCH §"Pattern Catalog Seed".
