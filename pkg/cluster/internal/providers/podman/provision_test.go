@@ -22,8 +22,74 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/kind/pkg/cluster/internal/loadbalancer"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 )
+
+// TestRunArgsForLoadBalancerAppendsBootstrap_Podman verifies that podman's
+// runArgsForLoadBalancer appends GenerateBootstrapCommand args after the LB image.
+func TestRunArgsForLoadBalancerAppendsBootstrap_Podman(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Cluster{
+		Name: "test-cluster",
+		Networking: config.Networking{
+			IPFamily:         config.IPv4Family,
+			APIServerAddress: "127.0.0.1",
+			APIServerPort:    0,
+		},
+	}
+	// Use no generic args to keep the slice small and predictable.
+	args, err := runArgsForLoadBalancer(cfg, "test-cluster-external-load-balancer", nil)
+	if err != nil {
+		t.Fatalf("runArgsForLoadBalancer() error: %v", err)
+	}
+
+	// Find position of loadbalancer.Image (sanitized) in returned args.
+	// podman's runArgsForLoadBalancer calls sanitizeImage which may strip or transform the image ref.
+	imageIdx := -1
+	for i, a := range args {
+		if strings.Contains(a, "envoyproxy/envoy") {
+			imageIdx = i
+			break
+		}
+	}
+	if imageIdx < 0 {
+		t.Fatalf("LB image (envoyproxy/envoy) not found in args: %v", args)
+	}
+
+	// Find "bash" and "-c" after the image.
+	bashIdx := -1
+	dashCIdx := -1
+	for i := imageIdx + 1; i < len(args); i++ {
+		if args[i] == "bash" {
+			bashIdx = i
+		}
+		if args[i] == "-c" {
+			dashCIdx = i
+		}
+	}
+	if bashIdx < 0 {
+		t.Errorf("'bash' not found after LB image in args: %v", args)
+	}
+	if dashCIdx < 0 {
+		t.Errorf("'-c' not found after LB image in args: %v", args)
+	}
+
+	// Verify the mkdir bootstrap arg is present.
+	foundMkdir := false
+	for _, a := range args[imageIdx+1:] {
+		if strings.Contains(a, "mkdir -p /home/envoy") {
+			foundMkdir = true
+			break
+		}
+	}
+	if !foundMkdir {
+		t.Errorf("no arg containing 'mkdir -p /home/envoy' found after LB image; args: %v", args)
+	}
+
+	// Suppress unused import warning — loadbalancer.Image is used indirectly via the image check.
+	_ = loadbalancer.Image
+}
 
 // Test_generatePortMappings tests the generatePortMappings function for the podman provider.
 func Test_generatePortMappings(t *testing.T) {
