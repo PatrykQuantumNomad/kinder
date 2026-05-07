@@ -124,3 +124,22 @@ func TestAllAddonImages_CountMatchesExpected(t *testing.T) {
 		t.Errorf("len(allAddonImages) = %d, want %d", len(allAddonImages), expected)
 	}
 }
+
+// TestOfflineReadinessIncludesEnvoyImage verifies that the offline readiness check
+// lists the Envoy image (not HAProxy) for the Load Balancer (HA) addon.
+func TestOfflineReadinessIncludesEnvoyImage(t *testing.T) {
+	t.Parallel()
+	const envoyImage = "docker.io/envoyproxy/envoy:v1.36.2"
+	foundEnvoy := false
+	for _, entry := range allAddonImages {
+		if strings.Contains(entry.Image, "kindest/haproxy") {
+			t.Errorf("allAddonImages contains kindest/haproxy image %q; expected Envoy LB image instead", entry.Image)
+		}
+		if entry.Image == envoyImage {
+			foundEnvoy = true
+		}
+	}
+	if !foundEnvoy {
+		t.Errorf("allAddonImages does not contain Envoy LB image %q", envoyImage)
+	}
+}
