@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Inner Loop
 status: verifying
-stopped_at: Phase 50 complete — build-tagged integration tests + live UAT (openshell-dev, all 5 steps PASS). Phase 51 (Upstream Sync & K8s 1.36) is next.
+stopped_at: "Phase 51 Plan 02 complete — IPVS-on-1.36+ deprecation guard in Cluster.Validate(), 7 tests pass -race. Wave 1 still in-progress (51-01/03/04)."
 last_updated: "2026-05-07T12:35:38.540Z"
 last_activity: 2026-05-07
 progress:
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-03 for v2.3 milestone start)
 
 ## Current Position
 
-Phase: 50 of 51 — COMPLETE
-Plan: 5 of 5 — COMPLETE
-Status: Phase complete — ready for verification
+Phase: 51 of 51 — EXECUTING
+Plan: 2 of 4 — COMPLETE (51-02 IPVS deprecation guard done)
+Status: Wave 1 in-progress — 51-02 complete; 51-01/03/04 running in parallel
 Last activity: 2026-05-07
 
 Progress: [█████████░] 88%
@@ -73,13 +73,15 @@ Progress: [█████████░] 88%
 *Updated after each plan completion*
 | Phase 50 P03 | ~5m | 2 tasks | 5 files |
 | 50    | 05   | ~15m     | 3     | 2     | TDD RED+GREEN (3 commits: 2 RED tests + 1 GREEN fixtures). 16-subtest catalog-coverage integration test + SC3 render integration test under //go:build integration. Live UAT approved (openshell-dev, K8s 1.35.0): 5 UAT steps PASS (bare doctor unchanged, decode runs, JSON envelope valid, --auto-fix preview-then-apply gate honored, --include-normal expands scan). Phase 50 SC1-SC4 all met. DIAG-01..04 complete. |
-| Phase 51-upstream-sync-k8s-1-36 P03 | 8min | 2 tasks | 2 files |
+| 51    | 02   | ~8m      | 2     | 2     | TDD RED→GREEN (2 commits). 7 new TestIPVSDeprecationGuard cases pass -race. IPVS-on-1.36+ guard in Cluster.Validate() using imageTagVersion + version.ParseSemantic. "deprecated, will be removed in a future release" framing. Migration URL in error. 1 Rule-1 fix (mixed-node test used 2 CPs, switched to CP+Worker). Zero new deps. SYNC-03/SC3 delivered. |
 
 ## Accumulated Context
 
 ### Decisions
 
 - v1.0–v2.2: See PROJECT.md Key Decisions table (full log moved there at v2.2 milestone completion)
+- 2026-05-07 (51-02): IPVS guard uses "deprecated and will be removed in a future release" framing — NOT "removed in 1.36". IPVS was deprecated in v1.35; hard rejection at validate time is justified by SC3 but message must be technically accurate.
+- 2026-05-07 (51-02): Mixed-node IPVS test uses CP (v1.35.1) + Worker (v1.36.0) to avoid validateVersionSkew HA mismatch firing on two CP nodes with different minor versions; guard runs before skew check in validate.go.
 - 2026-05-03: v2.3 theme chosen as "Inner Loop" — strongest user-value-per-day signal; defers pure tech debt and pure differentiator features to v2.4
 - 2026-05-03: Phase 49 (kinder dev) may introduce `github.com/fsnotify/fsnotify` as first new module dep since v2.0; poll-based stdlib alternative acceptable to keep zero-dep streak
 - 2026-05-03 (47-01): Shared lifecycle helpers package located at `pkg/internal/lifecycle/` (not `pkg/cluster/internal/lifecycle/` as the plan specified) — Go's internal-package rule blocks `pkg/cmd/kind/...` consumers from `pkg/cluster/internal/`. Plans 47-02/03/04 must update their `files_modified` lists accordingly.
