@@ -74,25 +74,41 @@ func (a *Action) Execute(ctx *actions.ActionContext) error {
 		backendServers[n.String()] = fmt.Sprintf("%s:%d", n.String(), common.APIServerInternalPort)
 	}
 
-	// create loadbalancer config data
-	loadbalancerConfig, err := loadbalancer.Config(&loadbalancer.ConfigData{
+	loadbalancerConfigData := &loadbalancer.ConfigData{
 		ControlPlanePort: common.APIServerInternalPort,
 		BackendServers:   backendServers,
 		IPv6:             ctx.Config.Networking.IPFamily == config.IPv6Family || ctx.Config.Networking.IPFamily == config.DualStackFamily,
-	})
+	}
+
+	// Generate the Dynamic Config strings
+	ldsConfig, err := loadbalancer.Config(loadbalancerConfigData, loadbalancer.ProxyLDSConfigTemplate)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate loadbalancer config data")
+		return errors.Wrap(err, "failed to generate loadbalancer LDS config")
+	}
+	cdsConfig, err := loadbalancer.Config(loadbalancerConfigData, loadbalancer.ProxyCDSConfigTemplate)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate loadbalancer CDS config")
 	}
 
-	// create loadbalancer config on the node
-	if err := nodeutils.WriteFile(loadBalancerNode, loadbalancer.ConfigPath, loadbalancerConfig); err != nil {
-		// TODO: logging here
-		return errors.Wrap(err, "failed to copy loadbalancer config to node")
+	// Atomic update inside the container: write to tmp files then mv-swap.
+	tmpLDS := loadbalancer.ProxyConfigPathLDS + ".tmp"
+	tmpCDS := loadbalancer.ProxyConfigPathCDS + ".tmp"
+
+	if err := nodeutils.WriteFile(loadBalancerNode, tmpLDS, ldsConfig); err != nil {
+		return errors.Wrap(err, "failed to copy LDS config to load balancer node")
+	}
+	if err := nodeutils.WriteFile(loadBalancerNode, tmpCDS, cdsConfig); err != nil {
+		return errors.Wrap(err, "failed to copy CDS config to load balancer node")
 	}
 
-	// reload the config. haproxy will reload on SIGHUP
-	if err := loadBalancerNode.Command("kill", "-s", "HUP", "1").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload loadbalancer")
+	// Atomically swap the tmp files into place so Envoy picks them up via
+	// its filesystem-based xDS polling (no SIGHUP needed).
+	cmd := fmt.Sprintf("chmod 666 %s %s && mv %s %s && mv %s %s",
+		tmpLDS, tmpCDS,
+		tmpLDS, loadbalancer.ProxyConfigPathLDS,
+		tmpCDS, loadbalancer.ProxyConfigPathCDS)
+	if err := loadBalancerNode.Command("sh", "-c", cmd).Run(); err != nil {
+		return errors.Wrap(err, "failed to reload Envoy load balancer config")
 	}
 
 	ctx.Status.End(true)

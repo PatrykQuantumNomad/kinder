@@ -250,8 +250,10 @@ func runArgsForLoadBalancer(cfg *config.Cluster, name string, args []string) ([]
 	}
 	args = append(args, mappingArgs...)
 
-	// finally, specify the image to run
-	return append(args, loadbalancer.Image), nil
+	// finally, specify the image to run, then append the Envoy bootstrap command
+	args = append(args, loadbalancer.Image)
+	args = append(args, loadbalancer.GenerateBootstrapCommand(cfg.Name, name)...)
+	return args, nil
 }
 
 func getProxyEnv(cfg *config.Cluster, networkName string, nodeNames []string, binaryName string) (map[string]string, error) {
