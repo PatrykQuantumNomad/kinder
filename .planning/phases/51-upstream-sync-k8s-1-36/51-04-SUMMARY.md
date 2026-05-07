@@ -85,7 +85,7 @@ No retry needed — the 200 response is authoritative.
 1. **Task 1: Gating pre-flight — Outcome B** — no source commit (per plan protocol)
 2. **Task 2: Skipped** — gated by Task 1 Outcome A; not reached
 
-**Plan metadata / docs commit:** (hash recorded below after commit)
+**Plan metadata / docs commit:** `5630c1ff` (docs: inconclusive — kindest/node:v1.36.x not yet on Docker Hub)
 
 ## Files Created/Modified
 
