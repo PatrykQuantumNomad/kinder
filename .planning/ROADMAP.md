@@ -123,7 +123,13 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
   2. A fresh `kinder create cluster --config ha.yaml` followed by `kinder pause` + `kinder resume` passes `etcdctl endpoint health --cluster` with all members healthy
   3. Single-CP clusters incur zero overhead — no cert or network operations fire for non-HA topologies
   4. If Docker IPAM feasibility probe (Plan 52-01 Task 1) succeeds, the fix uses IP pinning via `docker network connect --ip`; if infeasible, the fallback cert-regen approach is documented and implemented instead
-**Plans**: TBD (2-3 plans: feasibility probe + implementation + integration test)
+**Plans**: 4 plans
+
+Plans:
+- [ ] 52-01-PLAN.md — IPAM feasibility probe + doctor `ipam-probe` check (Roadmap pre-flight gate; Task 1 IS the probe)
+- [ ] 52-02-PLAN.md — IP-pin module + create-time hook in docker provider (records IP, writes /kind/ipam-state.json, sets resume-strategy label)
+- [ ] 52-03-PLAN.md — Cert-regen fallback module + Resume() dispatch (pre-CP-start IP reapply for ip-pinned; post-start reactive wholesale regen for cert-regen/legacy)
+- [ ] 52-04-PLAN.md — `ha-resume-strategy` doctor check + count test bump to 26
 
 **RISK NOTE**: This phase has the highest blast radius of any v2.4 item. Discuss with `/gsd:discuss-phase 52` before planning. Task 1 of the first plan MUST be the Docker IPAM feasibility probe — no code is written until the probe result is known. See PITFALLS research items 1-4.
 
@@ -269,7 +275,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
-| 52. HA Etcd Peer-TLS Fix | v2.4 | 0/TBD | Not started | - |
+| 52. HA Etcd Peer-TLS Fix | v2.4 | 0/4 | Planned | - |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 0/TBD | Not started | - |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
