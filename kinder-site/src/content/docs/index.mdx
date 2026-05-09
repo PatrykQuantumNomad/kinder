@@ -84,6 +84,33 @@ Powerful extras enabled by default — disable with `--profile minimal` for ligh
   </Card>
 </CardGrid>
 
+## Daily Iteration
+
+A small set of lifecycle verbs that make iterating on a kinder cluster as fast as creating one.
+
+<CardGrid>
+  <Card title="Pause &amp; Resume" icon="pause">
+    `kinder pause` stops every container in quorum-safe order to free laptop CPU/RAM. `kinder resume` brings it back exactly as it was.
+
+    [Quick start](/quick-start/#pause-resume-snapshot)
+  </Card>
+  <Card title="Snapshot &amp; Restore" icon="seti:db">
+    Capture etcd state, container images, and PV contents into a single bundle. Restore in seconds for an instant clean-state reset.
+
+    [Quick start](/quick-start/#pause-resume-snapshot)
+  </Card>
+  <Card title="Hot Reload" icon="rocket">
+    `kinder dev --watch ./src --target myapp` watches a directory and runs a build → load → rollout cycle on every save.
+
+    [Local dev workflow](/guides/local-dev-workflow/)
+  </Card>
+  <Card title="Runtime Decoder" icon="magnifier">
+    `kinder doctor decode` scans recent logs and events and explains cryptic kubelet/kubeadm/containerd errors in plain English.
+
+    [Troubleshooting](/cli-reference/troubleshooting/#kinder-doctor-decode)
+  </Card>
+</CardGrid>
+
 ---
 
 <p style="text-align: center; opacity: 0.6; font-size: 0.85rem;">

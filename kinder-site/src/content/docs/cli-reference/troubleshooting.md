@@ -113,3 +113,61 @@ if [ $? -ne 0 ]; then
 fi
 ```
 :::
+
+## kinder doctor decode
+
+`kinder doctor` checks **prerequisites** (host environment, Docker daemon, kernel limits). When a cluster has already been created and a workload misbehaves, the cryptic kubelet/kubeadm/containerd error in the logs is usually the real signal — and that's what `kinder doctor decode` is for.
+
+```sh
+kinder doctor decode
+```
+
+The decoder scans recent docker logs from every node and `kubectl get events` (Warnings only by default), matches lines against a 16-pattern catalog covering kubelet, kubeadm, containerd, docker, and addon-startup failures, and prints plain-English explanations with suggested fixes.
+
+### Flags
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--name` | `kind` | Cluster to scan (positional cluster name also accepted) |
+| `--since` | `30m` | Time window for docker logs and event filtering (Go duration: `30m`, `2h`, `90s`) |
+| `--output` | `human` | Output format: `human` or `json` |
+| `--auto-fix` | `false` | Apply whitelisted, non-destructive remediations (preview shown first) |
+| `--include-normal` | `false` | Include `Normal`-type Kubernetes events (default: Warnings only) |
+
+### Catalog scopes
+
+| Scope | Pattern IDs | Examples |
+|-------|-------------|----------|
+| `kubelet` | KUB-01..05 | inotify exhaustion, image-pull failures, node not ready, kubelet OOM |
+| `kubeadm` | KADM-01..03 | preflight failures, certificate-mismatch, CoreDNS rollout stuck |
+| `containerd` | CTD-01..03 | image-import errors, snapshotter failures, OCI runtime errors |
+| `docker` | DOCK-01..03 | daemon socket errors, disk-pressure events, volume-mount failures |
+| `addon` | ADDON-01..02 | MetalLB CRD-not-ready, Envoy Gateway controller crash |
+
+### Auto-fix whitelist
+
+`--auto-fix` only applies these three remediations, all idempotent and non-destructive:
+
+| Remediation | Triggered by | Action |
+|-------------|--------------|--------|
+| `inotify-raise` | KUB-01, KUB-02 | Raise `fs.inotify.max_user_watches` and `max_user_instances` via `sudo sysctl` |
+| `coredns-restart` | KADM-02 | `kubectl rollout restart deployment/coredns -n kube-system` |
+| `node-container-restart` | KUB-05 | `docker start <node-container>` for the node identified in the matched line |
+
+Cluster delete/recreate is **never** auto-fixable. The preview is always printed before any apply, and `--auto-fix` is skipped silently when the process is not running as root.
+
+### Common usage
+
+```sh
+# Default scan: last 30 minutes, human output, warnings-only events
+kinder doctor decode
+
+# Wider scan with normal events included
+kinder doctor decode --since 2h --include-normal
+
+# JSON output for piping into log-aggregation tools
+kinder doctor decode --output json | jq '.matches[] | select(.scope == "kubelet")'
+
+# Apply known-safe fixes on a workstation (you'll be prompted via preview)
+sudo kinder doctor decode --auto-fix
+```

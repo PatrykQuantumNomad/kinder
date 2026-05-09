@@ -285,6 +285,36 @@ containers:
 
 `kinder load images` also handles Docker Desktop 27+ containerd image store compatibility automatically via a two-attempt `ctr import` fallback. See the [Load Images CLI reference](/cli-reference/load-images/) for details on flags, provider behavior, and smart-load semantics.
 
+## Even faster: `kinder dev`
+
+The two iteration loops above (registry + `kinder load images`) still leave you typing the same three or four commands after every save. `kinder dev` collapses them into a single watch process:
+
+```sh
+kinder dev --watch . --target myapp
+```
+
+That's it. On every file change in the watched directory, `kinder dev` runs a debounced cycle:
+
+1. **Build** — `docker build -t myapp:dev .`
+2. **Load** — pipes the image into every cluster node (same path as `kinder load images`)
+3. **Rollout** — `kubectl rollout restart deployment/myapp` and waits for ready
+
+Per-step timing is printed per cycle so you can see exactly where your loop is slow. Rapid file saves coalesce into one cycle via a configurable debounce window (default 500ms).
+
+```sh
+kinder dev --watch ./src --target myapp --debounce 750ms
+
+# Docker Desktop on macOS: fsnotify events are unreliable on bind-mounted
+# directories. Switch to a polling watcher.
+kinder dev --watch ./src --target myapp --poll --poll-interval 1s
+```
+
+Set `imagePullPolicy: IfNotPresent` on the target Deployment so Kubernetes uses the freshly-loaded image instead of trying to pull from a registry.
+
+:::tip[When to use kinder dev]
+Use `kinder dev` for the **single-file-edit / save / try / repeat** dev loop where you don't want a registry, you don't want to remember the iteration command sequence, and you want immediate feedback on every save. Stick with the registry workflow for multi-image apps, team-shared clusters, or any flow where image push to a real registry is part of the contract.
+:::
+
 ## Clean up
 
 ```sh

@@ -4,7 +4,7 @@ description: Create a kinder cluster, see what you get, and verify every addon i
 ---
 
 :::tip
-The default cluster name is `kind`. You can choose a different name by passing `--name <name>` to `kinder create cluster`.
+The default cluster name is `kind`. Pick a different name with `--name <name>` on `kinder create cluster`. Lifecycle commands (`pause`, `resume`, `status`, `delete cluster`, `get nodes`, `snapshot`) accept the cluster name as a **positional argument** — for example `kinder delete cluster my-cluster`.
 :::
 
 ## Create a Cluster
@@ -258,6 +258,36 @@ kinder load images myapp:dev
 
 This works with all three providers (docker, podman, nerdctl) and skips re-importing if the image is already present on every node. See the [Load Images CLI reference](/cli-reference/load-images/) for full details.
 
+## Pause, resume, snapshot
+
+Once your cluster is up, kinder gives you a small set of lifecycle verbs for daily iteration:
+
+```sh
+# Free CPU/RAM without losing state — pods, PVCs, services all survive
+kinder pause my-cluster
+kinder resume my-cluster
+
+# Capture a complete snapshot (etcd + images + PV contents) for instant reset
+kinder snapshot create my-cluster baseline
+kinder snapshot list my-cluster
+kinder snapshot restore my-cluster baseline
+
+# See cluster + per-node container state
+kinder status my-cluster
+```
+
+Snapshots refuse to restore across mismatched Kubernetes versions, topologies, or addon versions, so the captured state is always consistent. See the changelog [v1.5 entry](/changelog/#v15--inner-loop) for the full surface.
+
+## Hot-reload your app with `kinder dev`
+
+Skip the manual build → push → rollout loop:
+
+```sh
+kinder dev --watch ./src --target myapp
+```
+
+`kinder dev` watches the directory, builds a Docker image on every change, loads it into every node via the `kinder load images` pipeline, and rolls the target Deployment automatically — printing per-step timing per cycle. Use `--poll` on Docker Desktop for macOS where fsnotify events are unreliable. Pair with the [Local Dev Workflow guide](/guides/local-dev-workflow/) for the full inner-loop pattern.
+
 ## Something wrong?
 
 Run `kinder doctor` to check prerequisites and identify issues:
@@ -268,10 +298,20 @@ kinder doctor
 
 This checks that Docker (or Podman/nerdctl), kubectl, and other dependencies are installed and reachable.
 
+For cryptic errors that surface AFTER cluster creation (kubelet stuck, addon won't roll out, image pull mysteriously failing), `kinder doctor decode` scans recent docker logs and `kubectl get events` against a catalog of known patterns and prints plain-English explanations with suggested fixes:
+
+```sh
+kinder doctor decode --since 30m
+```
+
+See the [Troubleshooting reference](/cli-reference/troubleshooting/#kinder-doctor-decode) for the full catalog and `--auto-fix` whitelist.
+
 ## Delete the Cluster
 
 When you are done:
 
 ```sh
-kinder delete cluster
+kinder delete cluster                # deletes the default "kind" cluster
+kinder delete cluster my-cluster     # delete by positional name
+kinder delete cluster --name my-cluster   # or by --name flag
 ```
