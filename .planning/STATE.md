@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: ""
-status: shipped
-stopped_at: "v2.3 Inner Loop SHIPPED 2026-05-07 — 20/21 requirements delivered, 1 deferred (SYNC-02 default node image, external blocker). Ready for /gsd:new-milestone."
-last_updated: "2026-05-07T15:30:00.000Z"
-last_activity: 2026-05-07
+milestone: v2.4
+milestone_name: "Hardening"
+status: defining_requirements
+stopped_at: "v2.4 Hardening — scope locked (SYNC-02 conditional + addon bumps + DEBT-04 + etcd peer-TLS + Phase 47/51 UAT + ad-hoc codesign + Windows CI + cosmetics). Research stage next, then REQUIREMENTS.md."
+last_updated: "2026-05-09T00:00:00.000Z"
+last_activity: 2026-05-09
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 25
-  completed_plans: 25
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-07 after v2.3 milestone)
+See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening started)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.3 SHIPPED. Planning next milestone (v2.4) — likely candidates: SYNC-02 re-execution (kind v0.32.0), addon bumps, podman/nerdctl pause-resume, snapshot remote-storage backend.
+**Current focus:** v2.4 Hardening — scope: SYNC-02 conditional re-execution, addon version audit + bump (all 7), DEBT-04 doctor test race, HA pause/resume etcd peer-TLS architectural fix, Phase 47 + 51 live UAT closure, macOS ad-hoc code-signing, Windows PR-CI build step, cosmetic doctor improvements.
 
 ## Current Position
 
-Phase: — (no active milestone)
+Phase: — (defining requirements)
 Plan: — (no active plan)
-Status: v2.3 milestone complete and archived. Ready to plan v2.4 via `/gsd:new-milestone`.
-Last activity: 2026-05-07 — v2.3 milestone shipped and archived
+Status: Defining requirements (research stage)
+Last activity: 2026-05-09 — milestone v2.4 Hardening started
 
-Progress: [██████████] v2.3 100% — 25/25 plans complete, 20/21 requirements satisfied (SYNC-02 deferred on external blocker)
+Progress: [░░░░░░░░░░] v2.4 0% — research → requirements → roadmap pending
 
 ## Performance Metrics
 

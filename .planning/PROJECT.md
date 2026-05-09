@@ -8,6 +8,21 @@ Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-includ
 
 A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
 
+## Current Milestone: v2.4 Hardening
+
+**Goal:** Close v2.3 tech debt, bring all addons to current stable, fix the HA pause/resume etcd-TLS architectural gap, and unblock distribution UX via macOS ad-hoc signing and a Windows PR-CI build step.
+
+**Target features:**
+- SYNC-02 default `kindest/node` bump to K8s 1.36.x (conditional on kind v0.32.0 publishing the image)
+- Addon version audit + bump for all 7 addons (MetalLB, Metrics Server, Envoy Gateway, Headlamp, cert-manager, local-path-provisioner, local registry)
+- DEBT-04 race fix in `pkg/internal/doctor/{check,socket}_test.go` (`allChecks` global mutated under `t.Parallel()`)
+- HA pause/resume etcd peer-TLS regeneration (or container-IP pinning) so cross-pause IP reassignment cannot break peer connectivity
+- Phase 47 live HA UAT closure — pause/resume ordering, resource observation, cluster-state round-trip
+- Phase 51 live UAT closure — Envoy LB image probe, IPVS-config CLI rejection, K8s 1.36 guide spot-check
+- macOS ad-hoc code-signing in GoReleaser (`codesign --sign -` + Info.plist embed)
+- Cross-platform CI: `GOOS=windows go build ./...` step on PR CI
+- Cosmetic doctor improvements: `cluster-node-skew` LB version warn fix, `cluster-resume-readiness` reason text parsing
+
 ## Requirements
 
 ### Validated
@@ -85,7 +100,17 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 
 ### Active
 
-(No active milestone — v2.3 shipped. Use `/gsd:new-milestone` to define v2.4.)
+<!-- v2.4 Hardening — milestone goals; REQ-IDs assigned in REQUIREMENTS.md -->
+
+- [ ] Default `kindest/node` bumped to K8s 1.36.x once kind v0.32.0 publishes the image
+- [ ] All 7 addons audited and bumped to current stable (or held on documented compatibility blocker)
+- [ ] `allChecks`-global race in `pkg/internal/doctor/{check,socket}_test.go` eliminated under `-race`
+- [ ] HA pause/resume etcd peer-TLS regeneration / IP-pinning so peer connectivity survives container-IP reassignment
+- [ ] Phase 47 live HA UAT closed (pause/resume ordering, resource observation, state round-trip)
+- [ ] Phase 51 live UAT closed (Envoy LB image probe, IPVS-config CLI rejection, 1.36 guide spot-check)
+- [ ] macOS GoReleaser artifacts ad-hoc-signed (`codesign --sign -` + Info.plist embed)
+- [ ] PR CI gains a `GOOS=windows go build ./...` step
+- [ ] `cluster-node-skew` doctor check no longer warns on LB containers; `cluster-resume-readiness` parses partial-failure JSON for actionable reason text
 
 ### Deferred / Carried Forward
 
@@ -199,4 +224,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Zero new Go module dependencies in v2.2 | All five features use packages already in go.mod | ✓ Good |
 
 ---
-*Last updated: 2026-05-03 — milestone v2.3 Inner Loop started*
+*Last updated: 2026-05-09 — milestone v2.4 Hardening started*
