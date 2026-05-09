@@ -19,7 +19,6 @@ package snapshot
 import (
 	"errors"
 	"fmt"
-	"syscall"
 )
 
 // ErrInsufficientDiskSpace is returned by EnsureDiskSpace when the filesystem
@@ -27,23 +26,23 @@ import (
 var ErrInsufficientDiskSpace = errors.New("insufficient disk space")
 
 // EnsureDiskSpace returns nil if the filesystem containing path has at least
-// required bytes free (available to non-root processes). On failure, wraps
-// ErrInsufficientDiskSpace with the observed free bytes and the path.
+// required bytes free (available to non-root processes on Unix; equivalent
+// for the calling user on Windows). On failure, wraps ErrInsufficientDiskSpace
+// with the observed free bytes and the path.
+//
+// The platform-specific freeBytes implementation lives in diskspace_unix.go
+// and diskspace_windows.go.
 func EnsureDiskSpace(path string, required int64) error {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
+	free, err := freeBytes(path)
+	if err != nil {
 		return fmt.Errorf("statfs %s: %w", path, err)
 	}
-	return ensureFromStatfs(st, required, path)
+	return ensureFromBytes(int64(free), required, path)
 }
 
-// ensureFromStatfs is the pure inner function that performs the space check
-// against a pre-populated Statfs_t. This is exported for testing without
-// relying on real filesystem state.
-//
-// Bsize is the fundamental block size; Bavail is blocks available to non-root.
-func ensureFromStatfs(st syscall.Statfs_t, required int64, path string) error {
-	free := int64(st.Bavail) * int64(st.Bsize)
+// ensureFromBytes is the pure inner check used by tests so they do not depend
+// on real filesystem state or platform-specific syscall types.
+func ensureFromBytes(free, required int64, path string) error {
 	if free < required {
 		return fmt.Errorf("%w: need %d bytes, %d available at %s",
 			ErrInsufficientDiskSpace, required, free, path)

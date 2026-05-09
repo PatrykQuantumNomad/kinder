@@ -19,37 +19,39 @@ package snapshot
 import (
 	"errors"
 	"os"
-	"syscall"
 	"testing"
 )
 
 // ---------------------------------------------------------------------------
 // EnsureDiskSpace tests
+//
+// These tests are platform-portable: they exercise EnsureDiskSpace via the
+// real OS temp dir and the pure inner ensureFromBytes helper. They do not
+// reference any syscall.Statfs_t / windows.GetDiskFreeSpaceEx symbols, so
+// the same test file builds on Linux, macOS, and Windows.
 // ---------------------------------------------------------------------------
 
 func TestEnsureDiskSpaceSufficient(t *testing.T) {
-	// Any modern dev box has at least 1 byte free in /tmp.
+	// Any modern dev box has at least 1 byte free in the temp dir.
 	if err := EnsureDiskSpace(os.TempDir(), 1); err != nil {
 		t.Fatalf("expected nil, got: %v", err)
 	}
 }
 
 func TestEnsureDiskSpaceMissingPath(t *testing.T) {
-	err := EnsureDiskSpace("/nonexistent/path/xyz/abc123", 1)
-	if err == nil {
+	// Use os.PathSeparator so the test works on both Unix and Windows.
+	bogus := string(os.PathSeparator) + "nonexistent" + string(os.PathSeparator) + "path-xyz-abc123"
+	if err := EnsureDiskSpace(bogus, 1); err == nil {
 		t.Fatal("expected error for nonexistent path, got nil")
 	}
 }
 
-// TestEnsureDiskSpaceInsufficient tests via the pure inner function with a
-// synthetic small-filesystem result to avoid relying on real disk state.
+// TestEnsureDiskSpaceInsufficient exercises the pure inner function with a
+// synthetic small free-byte count to avoid relying on real disk state.
 func TestEnsureDiskSpaceInsufficient(t *testing.T) {
-	// Construct a Statfs_t that reports a very small free space.
-	st := syscall.Statfs_t{
-		Bavail: 10,   // 10 available blocks
-		Bsize:  4096, // 4KB block size → 40960 bytes free
-	}
-	err := ensureFromStatfs(st, 1<<30, "/tmp") // require 1GB
+	const free = int64(40960)   // 40 KiB free
+	const required = int64(1) << 30 // require 1 GiB
+	err := ensureFromBytes(free, required, "/tmp")
 	if err == nil {
 		t.Fatal("expected ErrInsufficientDiskSpace, got nil")
 	}
@@ -58,14 +60,10 @@ func TestEnsureDiskSpaceInsufficient(t *testing.T) {
 	}
 }
 
-// TestErrInsufficientDiskSpaceSentinel verifies the sentinel via ensureFromStatfs.
+// TestErrInsufficientDiskSpaceSentinel verifies the sentinel via the pure
+// helper.
 func TestErrInsufficientDiskSpaceSentinel(t *testing.T) {
-	st := syscall.Statfs_t{
-		Bavail: 1,
-		Bsize:  512, // 512 bytes free
-	}
-	err := ensureFromStatfs(st, 1024, "/tmp") // require 1KB
-	if !errors.Is(err, ErrInsufficientDiskSpace) {
+	if err := ensureFromBytes(512, 1024, "/tmp"); !errors.Is(err, ErrInsufficientDiskSpace) {
 		t.Errorf("expected ErrInsufficientDiskSpace sentinel, got: %v", err)
 	}
 }
