@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: All releases and changes since kinder was forked from kind.
+description: All kinder releases since the fork from kind — version history, new addons, CLI verbs, doctor checks, and breaking changes by release.
 ---
 
 All notable changes to kinder since forking from [kind](https://kind.sigs.k8s.io/) at commit `89ff06bd`.

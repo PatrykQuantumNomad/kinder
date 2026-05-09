@@ -1,6 +1,6 @@
 ---
 title: Envoy Gateway
-description: Envoy Gateway addon for Gateway API routing in kinder clusters.
+description: Envoy Gateway addon for Kubernetes Gateway API routing in kinder clusters — pre-configured GatewayClass, server-side apply for large CRDs, and enabled by default.
 ---
 
 Envoy Gateway brings the Kubernetes [Gateway API](https://gateway-api.sigs.k8s.io/) to kinder clusters. It replaces Ingress with a more expressive routing model and supports HTTP, TLS, and TCP routes with a single controller.

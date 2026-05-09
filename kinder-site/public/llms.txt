@@ -2,24 +2,60 @@
 
 > kind, but with everything you actually need.
 
-kinder is a batteries-included tool for running local Kubernetes clusters. It wraps kind (Kubernetes in Docker) and pre-installs MetalLB, Envoy Gateway, Metrics Server, CoreDNS tuning, and the Headlamp dashboard.
+kinder is a fork of kind (Kubernetes IN Docker) that ships a batteries-included local Kubernetes development experience. Where kind gives you a bare cluster, kinder pre-installs and tunes nine addons, exposes a small set of lifecycle verbs (`pause`, `resume`, `snapshot`, `dev`, `doctor`, `doctor decode`), and ships diagnostic tooling so common environment problems surface before they cause cryptic failures.
+
+A single command — `kinder create cluster` — gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, dashboards, dynamic storage, a private container registry, and self-signed TLS all work out of the box. Daily iteration is fast: pause/resume reclaims laptop CPU/RAM without losing state, snapshot/restore captures and replays full cluster state, `kinder dev` watches a directory and runs a build → load → rollout cycle on every save, and `kinder doctor decode` translates cryptic kubelet/containerd errors into plain-English explanations with actionable fixes.
 
 ## Links
 
 - Documentation: https://kinder.patrykgolabek.dev
+- Changelog: https://kinder.patrykgolabek.dev/changelog/
 - Source: https://github.com/PatrykQuantumNomad/kinder
 - Author: https://patrykgolabek.dev
 
-## Pages
+## Getting started
 
-- [Installation](https://kinder.patrykgolabek.dev/installation/): How to install kinder by building from source.
-- [Quick Start](https://kinder.patrykgolabek.dev/quick-start/): Create a kinder cluster and verify all addons are working in 5 steps.
-- [Configuration](https://kinder.patrykgolabek.dev/configuration/): Complete reference for kinder cluster configuration including all addon fields.
-- [MetalLB Addon](https://kinder.patrykgolabek.dev/addons/metallb/): MetalLB addon for LoadBalancer service support in kinder clusters.
-- [Envoy Gateway Addon](https://kinder.patrykgolabek.dev/addons/envoy-gateway/): Envoy Gateway addon for Gateway API routing in kinder clusters.
-- [Metrics Server Addon](https://kinder.patrykgolabek.dev/addons/metrics-server/): Metrics Server addon for resource metrics and autoscaling in kinder clusters.
-- [CoreDNS Tuning Addon](https://kinder.patrykgolabek.dev/addons/coredns/): CoreDNS performance tuning applied by kinder to improve DNS resolution.
-- [Headlamp Dashboard Addon](https://kinder.patrykgolabek.dev/addons/headlamp/): Headlamp web dashboard addon for visual Kubernetes cluster management.
+- [Installation](https://kinder.patrykgolabek.dev/installation/): Install kinder via Homebrew, pre-built binary, or `make install` from source.
+- [Quick Start](https://kinder.patrykgolabek.dev/quick-start/): Create a kinder cluster, verify every addon, learn the new lifecycle verbs (pause, resume, snapshot, dev), and run kinder doctor decode.
+- [Configuration](https://kinder.patrykgolabek.dev/configuration/): Complete reference for kinder cluster configuration including all addon fields and v1alpha4 compatibility with upstream kind.
+
+## Addons (all installed by default)
+
+- [MetalLB](https://kinder.patrykgolabek.dev/addons/metallb/): LoadBalancer service IP assignment from your Docker or Podman subnet, no BGP required.
+- [Envoy Gateway](https://kinder.patrykgolabek.dev/addons/envoy-gateway/): Kubernetes Gateway API routing with the `eg` GatewayClass pre-configured. Replaces HAProxy as the HA cluster load balancer (v1.5+).
+- [Metrics Server](https://kinder.patrykgolabek.dev/addons/metrics-server/): Resource metrics for `kubectl top` and Horizontal Pod Autoscaler support.
+- [CoreDNS Tuning](https://kinder.patrykgolabek.dev/addons/coredns/): Autopath short names, verified pod records, doubled cache TTL.
+- [Headlamp Dashboard](https://kinder.patrykgolabek.dev/addons/headlamp/): Web-based cluster UI with auto-printed access token at creation.
+- [Local Path Provisioner](https://kinder.patrykgolabek.dev/addons/local-path-provisioner/): Dynamic PVC provisioning with `local-path` as the default StorageClass.
+- [Local Registry](https://kinder.patrykgolabek.dev/addons/local-registry/): Private container registry at `localhost:5001` with dev-tool auto-discovery via the `local-registry-hosting` ConfigMap.
+- [cert-manager](https://kinder.patrykgolabek.dev/addons/cert-manager/): TLS certificate management with a self-signed `selfsigned-issuer` ClusterIssuer ready immediately.
+- [NVIDIA GPU](https://kinder.patrykgolabek.dev/addons/nvidia-gpu/): Optional opt-in addon for GPU workloads on Linux hosts with NVIDIA drivers and the container toolkit.
+
+## Guides
+
+- [TLS Web App](https://kinder.patrykgolabek.dev/guides/tls-web-app/): Deploy a TLS-secured web app using Envoy Gateway and cert-manager.
+- [HPA Auto-Scaling](https://kinder.patrykgolabek.dev/guides/hpa-auto-scaling/): Configure HorizontalPodAutoscaler against the bundled Metrics Server.
+- [Local Dev Workflow](https://kinder.patrykgolabek.dev/guides/local-dev-workflow/): The complete code → build → push → deploy → iterate loop with the local registry; includes the `kinder dev` hot-reload alternative.
+- [Dynamic Storage](https://kinder.patrykgolabek.dev/guides/dynamic-storage/): PVC patterns with local-path-provisioner including multi-pod sharing.
+- [Host Directory Mounting](https://kinder.patrykgolabek.dev/guides/host-directory-mounting/): The two-hop host-to-pod mount pattern via `extraMounts` and `hostPath` PVs.
+- [Multi-Version Clusters](https://kinder.patrykgolabek.dev/guides/multi-version-clusters/): Per-node Kubernetes versions, version-skew validation, and upgrade rehearsal.
+- [What's New in K8s 1.36](https://kinder.patrykgolabek.dev/guides/k8s-1-36-whats-new/): User Namespaces (GA) and In-Place Pod Resize (GA) demos.
+- [Working Offline](https://kinder.patrykgolabek.dev/guides/working-offline/): The two-mode air-gapped workflow — pre-create image baking and post-create `kinder load images`.
+
+## CLI reference
+
+- [Profile Comparison](https://kinder.patrykgolabek.dev/cli-reference/profile-comparison/): Compare `--profile` presets — minimal, full, gateway, ci.
+- [JSON Output](https://kinder.patrykgolabek.dev/cli-reference/json-output/): Use `--output json` with kinder commands and pipe results through jq.
+- [Troubleshooting](https://kinder.patrykgolabek.dev/cli-reference/troubleshooting/): Diagnose issues with `kinder env`, `kinder doctor`, and `kinder doctor decode`. Includes the runtime error decoder catalog and `--auto-fix` whitelist.
+- [Load Images](https://kinder.patrykgolabek.dev/cli-reference/load-images/): Provider-abstracted `kinder load images` with smart-load skip and Docker Desktop 27+ containerd compatibility.
+- [Cluster Lifecycle](https://kinder.patrykgolabek.dev/cli-reference/cluster-lifecycle/): `kinder pause`, `kinder resume`, `kinder status` — quorum-safe cluster start/stop without losing state.
+- [Snapshot &amp; Restore](https://kinder.patrykgolabek.dev/cli-reference/snapshot/): `kinder snapshot create/restore/list/show/prune` — capture and replay full cluster state.
+- [kinder dev](https://kinder.patrykgolabek.dev/cli-reference/dev/): `kinder dev --watch <dir> --target <deployment>` — hot-reload watcher with fsnotify or polling, debounced build → load → rollout cycles.
+
+## Reference
+
+- [Known Issues](https://kinder.patrykgolabek.dev/known-issues/): Every diagnostic check (24 total across 9 categories) that `kinder doctor` runs, what each detects, why it matters, and how to fix it.
+- [Changelog](https://kinder.patrykgolabek.dev/changelog/): All kinder releases since the fork — version history, new addons, CLI verbs, doctor checks, and breaking changes.
 
 ## Optional
 

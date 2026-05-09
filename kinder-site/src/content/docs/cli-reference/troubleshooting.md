@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Diagnose issues with kinder env and kinder doctor.
+description: Diagnose issues with kinder env, kinder doctor, and kinder doctor decode — exit codes, common errors, runtime error catalog, and the auto-fix whitelist.
 ---
 
 This page covers exit codes, check results, and common errors for `kinder env` and `kinder doctor`.

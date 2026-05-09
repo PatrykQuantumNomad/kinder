@@ -1,6 +1,6 @@
 ---
 title: Profile Comparison
-description: "Compare --profile presets: minimal, full, gateway, and ci."
+description: "Compare kinder's --profile presets — minimal, full, gateway, and ci — and pick the right addon set for your local Kubernetes development workflow."
 ---
 
 The `--profile` flag is a shortcut for preset addon configurations; see the [Configuration Reference](/configuration) for manual control of individual addons.

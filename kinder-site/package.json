@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "npm run build:llms && astro build",
+    "build:llms": "node scripts/build-llms-full.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

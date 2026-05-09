@@ -9,18 +9,16 @@ export default defineConfig({
       favicon: '/favicon.ico',
       disable404Route: true,
       head: [
-        // Open Graph
+        // Site-wide social-share image and Twitter card type. Title and
+        // description are intentionally NOT set here — Starlight populates
+        // og:title / og:description / twitter:title / twitter:description
+        // per page from the page frontmatter, which is what we want.
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://kinder.patrykgolabek.dev/og.png' } },
-        { tag: 'meta', attrs: { property: 'og:title', content: 'kinder' } },
-        { tag: 'meta', attrs: { property: 'og:description', content: 'kind, but with everything you actually need.' } },
-        // Twitter Card
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://kinder.patrykgolabek.dev/og.png' } },
-        { tag: 'meta', attrs: { name: 'twitter:title', content: 'kinder' } },
-        { tag: 'meta', attrs: { name: 'twitter:description', content: 'kind, but with everything you actually need.' } },
         // Author & SEO
         { tag: 'meta', attrs: { name: 'author', content: 'Patryk Golabek' } },
-        { tag: 'meta', attrs: { name: 'keywords', content: 'kinder, kind, kubernetes, local cluster, docker, metallb, envoy gateway, metrics server, headlamp, k8s, devtools' } },
+        { tag: 'meta', attrs: { name: 'keywords', content: 'kinder, kind, kubernetes, local cluster, docker, metallb, envoy gateway, metrics server, headlamp, cert-manager, local-path-provisioner, kinder dev, kinder snapshot, kinder pause, kinder doctor decode, k8s, devtools' } },
         { tag: 'link', attrs: { rel: 'author', href: 'https://patrykgolabek.dev' } },
         // JSON-LD Structured Data
         { tag: 'script', attrs: { type: 'application/ld+json' }, content: JSON.stringify({
