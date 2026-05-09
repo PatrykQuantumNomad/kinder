@@ -92,30 +92,28 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 
 ## Traceability
 
-Empty initially; populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIFE-09 | TBD | Pending |
-| ADDON-01 | TBD | Pending |
-| ADDON-02 | TBD | Pending |
-| ADDON-03 | TBD | Pending |
-| ADDON-04 | TBD | Pending |
-| ADDON-05 | TBD | Pending |
-| SYNC-05 | TBD | Pending |
-| DIST-01 | TBD | Pending |
-| DIST-02 | TBD | Pending |
-| DEBT-04 | TBD | Pending |
-| DIAG-05 | TBD | Pending |
-| DIAG-06 | TBD | Pending |
-| UAT-01 | TBD | Pending |
-| UAT-02 | TBD | Pending |
+| LIFE-09 | Phase 52 | Pending |
+| ADDON-01 | Phase 53 | Pending |
+| ADDON-02 | Phase 53 | Pending |
+| ADDON-03 | Phase 53 | Pending |
+| ADDON-04 | Phase 53 | Pending |
+| ADDON-05 | Phase 53 | Pending |
+| SYNC-05 | Phase 53 | Pending |
+| DIST-01 | Phase 54 | Pending |
+| DIST-02 | Phase 55 | Pending |
+| DEBT-04 | Phase 56 | Pending |
+| DIAG-05 | Phase 57 | Pending |
+| DIAG-06 | Phase 57 | Pending |
+| UAT-01 | Phase 58 | Pending |
+| UAT-02 | Phase 58 | Pending |
 
 **Coverage:**
 - v2.4 requirements: 14 total
-- Mapped to phases: 0 (filled by roadmapper)
-- Unmapped: 14 ⚠️
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-09*
-*Last updated: 2026-05-09 after initial definition*
+*Last updated: 2026-05-09 — traceability populated by roadmapper*
