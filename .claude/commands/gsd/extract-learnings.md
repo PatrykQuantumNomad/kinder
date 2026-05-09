@@ -16,7 +16,7 @@ Extract structured learnings from completed phase artifacts (PLAN.md, SUMMARY.md
 </objective>
 
 <execution_context>
-@/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/extract_learnings.md
+@/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/extract-learnings.md
 </execution_context>
 
-Execute the extract-learnings workflow from @/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/extract_learnings.md end-to-end.
+Execute the extract-learnings workflow from @/Users/patrykattc/work/git/kinder/.claude/get-shit-done/workflows/extract-learnings.md end-to-end.
