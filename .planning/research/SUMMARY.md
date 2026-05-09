@@ -1,156 +1,337 @@
-# Research Summary: v2.3 Inner Loop
+# Project Research Summary
 
-**Project:** kinder — v2.3 Inner Loop (cluster lifecycle, snapshot/restore, hot reload, runtime diagnostics, upstream sync)
-**Researched:** 2026-05-03
-**Discovery method:** Two parallel research streams — ecosystem feature-gap analysis (competitor matrix, kind issue tracker, HN/Reddit pain points) and upstream/addon update audit (kind main branch, K8s 1.35-1.36 release notes, addon changelogs).
-**Overall confidence:** HIGH for ecosystem signals (sourced from issue reactions, recent release notes, comparable tools), HIGH for upstream sync data (verified against kind PRs, K8s release blogs, addon GitHub releases).
-
-## TL;DR
-
-Kinder v2.2 made cluster *creation* powerful (multi-version, air-gap, host-mount, image-load). v2.3 makes daily *iteration* fast: pause/resume to reclaim laptop resources, snapshot/restore to reset cluster state in seconds, `kinder dev` for inner-loop hot reload, and runtime error decoding that extends v2.1's doctor framework. A deliberate sync phase keeps kinder current with kind upstream's HAProxy→Envoy LB transition and K8s 1.36's default-image bump (avoiding silent IPVS-removal breakage).
-
-Every feature builds on existing kinder infrastructure (v2.0 GoReleaser/GPU, v2.1 doctor framework, v2.2 image-load + air-gap). **Zero new module dependencies expected** — fsnotify watching for `kinder dev` is the only new candidate dep, and stdlib `inotify`/`kqueue` wrappers exist if we want to keep the zero-dep streak.
+**Project:** kinder v2.4 Hardening
+**Domain:** Brownfield maintenance milestone — batteries-included kind fork (Go CLI, Kubernetes addon manager)
+**Researched:** 2026-05-09
+**Confidence:** HIGH
 
 ---
 
-## Top Feature Candidates (selected for v2.3)
+## Executive Summary
 
-### 1. `kinder pause` / `kinder resume` (LIFE category)
+kinder v2.4 is a locked-scope hardening milestone. v2.3 shipped 2026-05-07 and left three carry-forward items (SYNC-02 node image gated on Docker Hub, Phase 47 + 51 live UAT unclosed) plus known technical debt (DEBT-04 race). The v2.4 scope adds macOS ad-hoc signing, a Windows cross-compile CI gate, and an HA etcd peer-TLS fix for pause/resume. Research across all four domains confirms the scope is well-bounded, patterns are established in the codebase, and no new architectural primitives are required. Execution risk is concentrated in two areas: the etcd peer-TLS approach (where researchers diverged) and the Envoy Gateway version target (where researchers disagreed sharply).
 
-**Pitch:** Stop all node containers without losing state; resume in seconds. Reclaims RAM/CPU on laptops without killing the cluster.
+The recommended approach is minimal-invasive throughout: fix the etcd TLS issue via IP pinning at resume time rather than cert regeneration (lower blast radius, matching the k3d precedent), hold Envoy Gateway at v1.3.1 with documented EOL acceptance (v1.4+ requires dedicated HTTPRoute UAT outside the hardening scope), bump cert-manager to v1.16.5 only (safe patch of the current EOL line; skip the major jump to v1.20.2 for this milestone), and bump Headlamp to v0.42.0 with one specific pre-commit verification. All other addon bumps are either holds (MetalLB v0.15.3, Metrics Server v0.8.1) or security-mandatory bumps (local-path-provisioner v0.0.36).
 
-**Evidence:** kind issue [#2715](https://github.com/kubernetes-sigs/kind/issues/2715) — 75 reactions, 70 thumbs-up, third-most-reacted enhancement. Currently kind users do `docker stop` manually with no guarantee HA reboot doesn't break.
-
-**Complexity:** LOW. `docker stop`/`start` orchestrated in correct order (control-plane first/last), kubelet/etcd validation post-resume.
-
-**Dependencies:** None new. Reuses `pkg/cluster/internal/providers/{docker,podman,nerdctl}/provider.go` for stop/start primitives. Optional: doctor pre-flight check for HA reboot risk (kind issue [#1689](https://github.com/kubernetes-sigs/kind/issues/1689)).
-
-**Risk:** HA cluster restart order; etcd quorum must form. Mitigation: explicit pre-flight check in v2.1 doctor framework.
-
-**Synergy:** Doctor checks (v2.1) gate the resume; pairs with snapshot (#2) for "freeze a known-good state."
-
-### 2. `kinder snapshot` / `kinder restore` (LIFE category)
-
-**Pitch:** Snapshot a cluster's full state (etcd + loaded images + PV contents) to a named local archive; restore it in seconds when integration tests pollute state.
-
-**Evidence:** kind issue [#3508](https://github.com/kubernetes-sigs/kind/issues/3508) — open since Feb 2024 with no native solution. Reset-time is the dominant inner-loop cost for integration testers; v2.2's `kinder load images` cuts cold-start; snapshots cut warm-start to near zero.
-
-**Complexity:** MEDIUM. etcd `etcdctl snapshot save/restore` is well-documented (kubeadm uses it). Need to capture loaded images + local-path-provisioner PV contents.
-
-**Dependencies:** Uses existing local-path-provisioner addon (v2.2), existing etcd in node containers. Zero new Go module deps.
-
-**Risk:** Snapshot becomes stale across kube versions — must enforce version-matching on restore. Disk usage — gate behind `kinder snapshot prune` and quota warnings.
-
-**Synergy:** Compounds v2.2's image-loading and air-gap story — a snapshot can include the offline image bundle, making "offline reproducible cluster fixtures" a kinder superpower.
-
-### 3. `kinder dev` — inner-loop hot reload (DEV category)
-
-**Pitch:** Watch a directory, build an image, import via existing `kinder load images`, and roll the target Deployment — Tilt/Skaffold ergonomics with zero YAML/DSL.
-
-**Evidence:** Inner-loop tooling is the #1 friction area for K8s dev ([Northflank Tilt-alternatives](https://northflank.com/blog/tilt-alternatives), [DevSpace's "95% iteration-time reduction"](https://www.vcluster.com/blog/skaffold-vs-tilt-vs-devspace)). None of kind/k3d/minikube ship this. DevSpace/Skaffold/Tilt all require YAML/DSL setup; the kinder pitch is "single command, no config."
-
-**Complexity:** MEDIUM-HIGH. fsnotify watcher, debounced builds, image digest tracking, `kubectl rollout restart` shim.
-
-**Dependencies:** Reuses `kinder load images` (v2.2). The fsnotify dep (`github.com/fsnotify/fsnotify`) is a candidate new dep — small, ubiquitous, MIT-licensed. Alternative: poll-based watcher in stdlib (lower fidelity).
-
-**Risk:** Easy to overscope into a Tilt clone. Keep deliberately minimal: single-deployment, single watch-dir, no Tiltfile DSL, no helm-chart awareness.
-
-**Synergy:** Makes v2.2's image-loading work pay rent on every code save, not just on cluster create. Differentiates kinder from kind hard.
-
-### 4. `kinder doctor decode` — runtime error decoder (DIAG category)
-
-**Pitch:** A built-in dictionary that maps cryptic Docker/kubeadm/kubelet/containerd errors to plain-English fixes, with `--auto-fix` for known-safe remediations. Wraps `docker logs` and `kubectl get events` into one curated stream.
-
-**Evidence:** kind issue [#3795](https://github.com/kubernetes-sigs/kind/issues/3795) (containerd image loading) has 64 comments of users debugging the same handful of errors. v2.1 already has 23 doctor checks — extending to runtime/post-create errors is the obvious next step. Reddit 2026 pain point: "diagnosing Kubernetes is like drinking from an angry firehose."
-
-**Complexity:** MEDIUM. Error-pattern catalog (regex → remediation), event watcher, formatter.
-
-**Dependencies:** None new. Direct extension of v2.1 doctor framework.
-
-**Risk:** Catalog needs upkeep. Mitigation: source patterns from v2.1 checks, integration-test failures, and existing kind issue triage. Start narrow (top 10-15 patterns), expand based on user reports.
-
-**Synergy:** Direct extension of v2.1 doctor framework; turns one-shot pre-flight into continuous diagnostics.
-
-### 5. Upstream Sync — Envoy LB + K8s 1.36 default + IPVS warn (SYNC category)
-
-**Pitch:** Adopt kind's HAProxy→Envoy load-balancer transition, bump default node image to K8s 1.36 ("Haru"), reject `kubeProxyMode: ipvs` on 1.36+ (silent breakage otherwise), and ship a recipe for User Namespaces (GA in 1.36) + In-Place Pod Resize (GA in 1.36).
-
-**Evidence:**
-- [kind PR #4127](https://github.com/kubernetes-sigs/kind/pull/4127) merged 2026-04-03 — replaces HAProxy with Envoy in providers + loadbalancer; +400/-276 lines well-isolated. Future kinder→kind syncs will conflict if not adopted.
-- [K8s 1.36 release blog](https://kubernetes.io/blog/2026/04/22/kubernetes-v1-36-release/) (2026-04-22): User Namespaces GA, In-Place Pod Resize GA, IPVS removed from kube-proxy, `gitRepo` volume removed.
-- [kind issue #4131](https://github.com/kubernetes-sigs/kind/issues/4131): K8s 1.35.0/1.35.1 ship with `MaxUnavailableStatefulSet` regression — fix in 1.35.4.
-
-**Complexity:** LOW-MEDIUM. Envoy LB sync is a focused port of #4127. Image bump is hours; recipes a couple of days.
-
-**Dependencies:** None new. Drops `kindest/haproxy` image dependency.
-
-**Risk:** Envoy LB config differs subtly from HAProxy — must regression-test HA cluster create flow. K8s 1.36 may surface kubeadm v1beta3 deprecation warnings (not yet blocking; v1beta4 generator deferred to v2.4).
-
-**Synergy:** Avoids accumulating drift; positions kinder for next year's K8s releases without forced migrations.
+Key risks: (1) etcd peer-TLS — whichever approach is chosen must gate on all CP containers being stopped before any cert or network operation; partial-state transition causes split-brain. (2) Addon bumps must be executed one-per-plan, not batched — a single ambiguous test failure across 7 simultaneous bumps is undiagnosable. (3) macOS ad-hoc signing requires a macOS CI runner for the release job; the current ubuntu-latest runner cannot produce a signed darwin binary. (4) DEBT-04 must be fixed at test scope only — adding a mutex to the production RunAllChecks read path would serialize all doctor checks.
 
 ---
 
-## Out of scope for v2.3 (explicitly deferred)
+## Key Findings
 
-| Feature | Why deferred |
-|---|---|
-| `kinder fleet` multi-cluster | High value but vind/k3d coverage exists; doesn't fit "inner loop" theme |
-| `kinder observe` LGTM stack preset | Fits "Observability" theme (Option C); resource-heavy on dev laptops |
-| `kinder gpu ollama` | Fits "AI" theme (Option C); narrower audience than inner loop |
-| `kinder gitops` Argo/Flux preset | Niche; defer until requested by users |
-| `kinder runner` GitHub Actions | Niche; defer until requested by users |
-| Provider de-duplication refactor | Pure tech debt; v2.4 milestone candidate |
-| context.Context cancellation through Create | Pure tech debt; v2.4 milestone candidate |
-| kubeadm v1beta4 generator | Not yet blocking; v2.4 milestone candidate |
-| cert-manager v1.16.3 → v1.20.x | UID change requires audit; defer to v2.4 |
-| Envoy Gateway v1.3.1 → v1.7 | 4-major bump needs staged testing; defer to v2.4 |
-| Cluster pause for podman/nerdctl providers | Start with docker; expand based on demand |
+### Recommended Stack
 
-## Anti-features (won't pursue)
+kinder v2.4 introduces no new language-level or infrastructure dependencies. The Go build toolchain, GoReleaser v2.x, and the existing go:embed addon manifest pipeline are unchanged. All changes are confined to: version string constants in addon packages, a new resume.go phase for etcd TLS, minor changes to two doctor check files, release pipeline YAML for signing, and a new GHA workflow file for Windows CI.
 
-| Anti-feature | Reason |
-|---|---|
-| Cilium-by-default CNI swap | Kernel/Docker Desktop pain; blast radius too large; opt-in only |
-| Tiltfile-style DSL for `kinder dev` | Compete-with-Tilt = lose; stay imperative-CLI |
-| Velero bundle for backup/restore | Overkill for laptops; lightweight `kinder snapshot` covers actual dev pain |
-| Web UI for cluster management | Headlamp covers it; UX treadmill |
-| Apple Containerization runtime support | Unstable surface; revisit in 6-12 months |
+**Addon version decisions (synthesized):**
+
+| Addon | From | To | Action | Rationale |
+|-------|------|----|--------|-----------|
+| cert-manager | v1.16.3 | v1.16.5 | Bump | Safe CVE/security patch; v1.20.2 jump carries rotationPolicy breaking default — defer to v2.5 |
+| Envoy Gateway | v1.3.1 | v1.3.1 | HOLD | 4 breaking changes in v1.4; requires dedicated HTTPRoute UAT outside hardening scope |
+| Headlamp | v0.40.1 | v0.42.0 | Bump | Verify token flow before commit (2 days old at research time) |
+| MetalLB | v0.15.3 | v0.15.3 | Hold | Latest; no v0.16 exists |
+| Metrics Server | v0.8.1 | v0.8.1 | Hold | Latest stable |
+| local-path-provisioner | v0.0.35 | v0.0.36 | Bump | HIGH priority — GHSA-7fxv-8wr2-mfc4 security fix |
+| registry:2 | floating | floating | Hold | registry:3 explicitly out of scope |
+
+**GoReleaser signing:** Split build approach — separate kinder-darwin build entry with post_hooks running codesign --force --sign -. Requires macos-latest CI runner for release job. GoReleaser v2.x (current ~v2.15); no version bump needed.
+
+**Windows CI:** ubuntu-24.04 runner with GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./... plus go vet. New file .github/workflows/build-check.yml. Informational (non-blocking) for v2.4.
+
+### Expected Features
+
+**Must have (table stakes):**
+- Addon version audit + bump for all 7 addons — users expect a maintained tool to track upstream; local-path-provisioner is a security fix
+- macOS ad-hoc signing — resolves AMFI: has no CMS blob? kernel kill on Apple Silicon for cross-compiled release binaries
+- Windows PR-CI build gate — prevents silent Windows compilation regressions on every PR
+- etcd peer-TLS fix for HA pause/resume — v2.3 delivered pause/resume; silent etcd quorum failure on resume is a regression
+- Phase 47 + 51 live UAT closure — v2.3 carry-forward; must be formally closed before v2.4 ships
+- cluster-node-skew LB false-positive fix — Envoy LB container has no /kind/version; spurious doctor warn on every HA cluster
+- cluster-resume-readiness structured output — "1/3 etcd members healthy, quorum at risk" instead of raw JSON blob
+
+**Should have (competitive):**
+- DEBT-04 race fix — go test -race ./... clean; quality signal visible to contributors
+- cert-manager rotationPolicy disclosure in CHANGELOG — proactive breaking-change communication for v1.17+ default
+- Conditional etcd-TLS (only when IP changes) — zero overhead when IPs are stable
+
+**Defer to v2.5+:**
+- Envoy Gateway bump to v1.4+ (breaking changes require dedicated HTTPRoute UAT)
+- cert-manager bump to v1.20.2 (rotationPolicy: Always breaking default requires validation)
+- Windows runtime test suite
+- Apple notarization (paid Developer ID cert, out of scope)
+
+**Anti-features (must NOT enter v2.4):**
+- macOS notarization (Apple Developer cert, paid) — explicit out of scope
+- Helm-based addon manager — violates go:embed static manifest approach
+- kinder upgrade in-place addon bump on existing clusters — create-destroy model is kinder's architecture
+- Unconditional etcd cert regen on every resume — 5-15s overhead, partial-failure risk
+- Strict-Windows-build CI failure block before Windows is a supported runtime — informational-only for v2.4
+- registry:3 — deprecated storage drivers; kind ecosystem is on v2
+
+### Architecture Approach
+
+All v2.4 changes slot into existing extension points with no new architectural primitives. The addon pipeline (per-package var Images + go:embed manifest + offlinereadiness.go inline duplicate) requires a mandatory dual-update on every image string change — this is the highest-frequency mechanical error source. The resume lifecycle already has a three-phase start order (LB → CP → readiness hook → workers) with a Phase 3 window that is the exact insertion point for etcd TLS work. The doctor check registry (allChecks global, 24 checks, pinned count test) will require count updates only if a new check is added (not the case in v2.4).
+
+**Key integration points per feature:**
+
+1. Addon bumps: pkg/cluster/internal/create/actions/install<Addon>/<addon>.go (var Images) + manifests/<file>.yaml + pkg/internal/doctor/offlinereadiness.go (allAddonImages). Three files per addon; offlinereadiness_test.go pins count at 14 — will fail on count mismatch.
+2. etcd peer-TLS: pkg/internal/lifecycle/resume.go only — new function in Phase 3 window before readiness hook.
+3. DEBT-04: pkg/internal/doctor/check.go + check_test.go + socket_test.go — fix at test scope, not production read path.
+4. macOS signing: .goreleaser.yaml only — no Go source changes.
+5. Windows CI: .github/workflows/build-check.yml only — new file.
+6. Doctor cosmetics: pkg/internal/doctor/clusterskew.go (LB role guard, ~5 lines) + pkg/internal/doctor/resumereadiness.go (JSON parsing refactor).
+
+**Parallel-wave conflicts:** DEBT-04 and cosmetic doctor fixes both touch pkg/internal/doctor/; must be sequential (DEBT-04 first). Addon bumps and offlinereadiness.go update must be sequential (bumps first, then single follow-up commit).
+
+### Critical Pitfalls
+
+1. **Etcd regen while any CP is running causes quorum loss** — gate ALL cert/network operations on all-stopped state. Never regen live. Recovery cost: HIGH.
+
+2. **Partial SAN coverage = split-brain** — all CP peer certs must be regenerated (or IPs pinned) in a single atomic pass before any CP node starts. One-node-at-a-time regen is worse than no regen.
+
+3. **Batching all 7 addon bumps in one plan makes failures undiagnosable** — one plan per addon (53-01 through 53-07), one make test gate between each.
+
+4. **cert-manager CRD annotation limit silently fails without --server-side** — both v1.16.5 and v1.20.2 manifests exceed 256 KB. Flag is a locked decision; verify it is present and add integration test asserting CRD version post-install.
+
+5. **GoReleaser signing fan-out misses one architecture** — darwin/amd64 and darwin/arm64 must each be verified with codesign -vvv in CI. Sign must be the LAST operation before packaging.
+
+6. **DEBT-04 over-broad mutex serializes doctor run** — allChecks global is written only in tests, never in production after init. Fix belongs entirely in test scope. Adding sync.RWMutex to production RunAllChecks read path serializes all doctor checks.
+
+7. **kubeadm certs subcommand is not version-stable** — if cert regen approach is chosen over IP pinning, do not rely on kubeadm; implement via Go crypto/x509 or openssl exec.
 
 ---
 
-## Stack additions
+## Divergences Synthesized
 
-**No new module dependencies expected** for pause/resume, snapshot/restore, doctor decode, or upstream sync. Only candidate: `github.com/fsnotify/fsnotify` for `kinder dev` file watching — small, MIT, ubiquitous. Alternative: poll-based watcher in stdlib (acceptable trade-off if zero-dep is preserved).
+### Divergence 1: Envoy Gateway Version Target
 
-**Image dependencies dropped:** `kindest/haproxy:v20260131-7181c60a` (replaced by Envoy LB image already used elsewhere in kinder).
+STACK.md recommended bumping to v1.7.2 (v1.3.1 two major versions EOL; v1.6 EOLs 2026-05-13). FEATURES.md recommended holding at v1.3.1 (v1.4 has 4 breaking changes: readiness port 19003, JSON access log default, xDS snapshot behavior, extension manager error handling; hardening milestone is not the place to absorb them). PITFALLS.md confirmed EG CRD version is locked to Gateway API CRDs version — cannot bump EG without bumping companion CRDs simultaneously.
 
-**Image dependencies bumped:** `kindest/node:v1.35.x` → `kindest/node:v1.36.x` (default; older versions still selectable via `image:` config).
+**Recommendation: HOLD at v1.3.1 with documented EOL acceptance.**
 
-## Watch out for
+The hardening milestone's primary mandate is "do not regress." Absorbing 4 breaking changes from v1.3 to v1.4 without dedicated HTTPRoute end-to-end UAT violates that mandate. kinder's use case (embedded GatewayClass + single HTTPRoute for demo) is not externally exposed — EOL security posture is acceptable for one maintenance milestone.
 
-1. **HA reboot fragility (kind #1689):** Pause/resume on HA clusters can leave etcd in a bad state if quorum doesn't reform. Mitigation: doctor pre-flight check before resume.
-2. **Snapshot version drift:** Restoring a snapshot with mismatched Kubernetes versions silently corrupts state. Mitigation: store version in snapshot metadata; refuse restore on mismatch.
-3. **fsnotify on macOS Docker Desktop:** Volume-mount fsnotify events on Docker Desktop for Mac are flaky. Mitigation: poll-fallback flag + clear docs.
-4. **Envoy LB regression on HA:** Subtle differences from HAProxy may surface as healthcheck timing changes. Mitigation: HA integration test in CI before ship.
-5. **K8s 1.36 IPVS removal:** Anyone with `kubeProxyMode: ipvs` in their config gets silent broken nodes on 1.36. Mitigation: validation rejects ipvs on 1.36+; clear error message points to iptables migration.
-6. **`gitRepo` volume removal:** Audit all kinder docs/examples; remove any gitRepo references.
-7. **Doctor decode catalog upkeep:** Pattern catalog rots without active triage. Mitigation: source patterns from v2.1 checks, CI failures, kind issue tracker.
+CHANGELOG for v2.4 must state: "Envoy Gateway remains at v1.3.1 (EOL); v1.4+ bump planned for v2.5 with dedicated HTTPRoute UAT."
+
+Options surfaced for REQUIREMENTS decision:
+- (a) Hold at v1.3.1 + document EOL acceptance — RECOMMENDED
+- (b) Bump to v1.4 only — requires Gateway API CRD version audit + readiness probe port update + access log format change; 3 coordinated changes on a hardening milestone; not recommended
+- (c) Bump to v1.7.2 with HTTPRoute UAT plan — only viable if v2.4 scope is expanded; scope is locked; reject
+
+### Divergence 2: Etcd Peer-TLS Approach
+
+ARCHITECTURE.md recommended kubeadm certs renew etcd-peer via docker exec, inserted in resume.go Phase 3 between CP start and readiness hook. FEATURES.md recommended IP pinning via docker network connect --ip (k3d model — prevents problem rather than recovering; 5-15s overhead avoided). PITFALLS.md flagged both: kubeadm not version-stable (Pitfall 4); partial SAN coverage = split-brain (Pitfall 2); CA key extraction risk (Pitfall 3); IP pinning Docker IPAM feasibility is MEDIUM confidence.
+
+**Recommendation: IP pinning is preferred; cert regen is the fallback.**
+
+kinder's locked decision history favors preventing problems over recovering from them. IP pinning matches the k3d precedent and produces zero overhead on the common case.
+
+Implementation: (1) kinder create cluster HA mode: record {containerName: assignedIP} in cluster state after container creation. (2) kinder resume: before starting CP containers, call docker network connect --ip <stored-ip> <network> <container> for each CP. (3) No cert operations required.
+
+**Critical gap:** Can docker network connect --ip reliably restore a stored IP after container stop (not remove)? Feasibility must be verified empirically in Phase 52 plan Task 1 before any code is written. If Docker IPAM has reassigned the IP, this approach fails.
+
+Fallback cert regen constraints (if IP pinning proves infeasible):
+- Gate entirely on all-stopped state (Pitfall 1)
+- Generate all peer certs in single atomic pass (Pitfall 2)
+- Extract CA key via docker cp from stopped container only (Pitfall 3)
+- Do NOT use kubeadm; use Go crypto/x509 or openssl exec (Pitfall 4)
+
+### Divergence 3: cert-manager Version Target
+
+STACK.md flagged both v1.16.5 (safe minimal patch, v1.16 EOL 2025-06-10) and v1.20.2 (current stable). FEATURES.md flagged that v1.18+ introduces breaking default rotationPolicy: Always and recommended v1.17 as a lower-risk intermediate step.
+
+**Recommendation: Bump to v1.16.5 only for v2.4.**
+
+v1.16.5 is a pure CVE/security-dependency patch with no API changes and no behavioral changes for kinder's embedded ClusterIssuer use case. v1.17+ introduces user-visible behavioral changes (rotationPolicy: Always, UID/GID change to 65532/65532) that require CHANGELOG disclosure. That disclosure work is appropriate for v2.5, not a hardening milestone.
+
+CHANGELOG requirement: Note v1.16 EOL 2025-06-10; v2.5 will target v1.20.x with full breaking-change disclosure.
+
+### Divergence 4: Headlamp Version + Token Flow Confidence
+
+STACK.md recommended v0.42.0 (released 2026-05-07, no breaking changes per release notes). FEATURES.md had lower confidence on token flow stability — v0.41 changed ServiceAccount token bootstrap flow; v0.42 may have continued that change.
+
+**Recommendation: Bump to v0.42.0 with one mandatory pre-commit verification.**
+
+Before writing the bump plan, verify: does kubectl create token against the v0.42.0 Headlamp ServiceAccount produce a valid token? Run kubectl auth can-i --token=<printed> get pods -n kube-system. If the token is empty or auth fails, update the token-print step or remove it and update the success message. If the check reveals a regression, hold at v0.40.1 and document.
 
 ---
 
-## Source URLs
+## Implications for Roadmap
 
-- [kind issue #2715 — start/stop](https://github.com/kubernetes-sigs/kind/issues/2715)
-- [kind issue #3508 — snapshot/restore](https://github.com/kubernetes-sigs/kind/issues/3508)
-- [kind issue #3795 — containerd image loading errors](https://github.com/kubernetes-sigs/kind/issues/3795)
-- [kind issue #1689 — HA reboot](https://github.com/kubernetes-sigs/kind/issues/1689)
-- [kind PR #4127 — Envoy LB](https://github.com/kubernetes-sigs/kind/pull/4127)
-- [Kubernetes 1.36 release blog](https://kubernetes.io/blog/2026/04/22/kubernetes-v1-36-release/)
-- [palark 1.36 deep-dive](https://palark.com/blog/kubernetes-1-36-release-features/)
-- [Northflank Tilt alternatives 2026](https://northflank.com/blog/tilt-alternatives)
-- [vCluster Skaffold vs Tilt vs DevSpace](https://www.vcluster.com/blog/skaffold-vs-tilt-vs-devspace)
-- [DevSpace](https://www.devspace.sh/)
+### Phase 52: HA Etcd Peer-TLS Fix
+**Rationale:** Highest blast radius of any v2.4 item. PITFALLS.md explicitly flags as "first phase or standalone phase with zero other concurrent changes." Closing it first means all subsequent testing is done against a working HA resume path.
+**Delivers:** Reliable kinder resume for HA clusters; no false etcd quorum failures after Docker IP reassignment.
+**Implements:** IP pinning via Docker network reconnect in pkg/internal/lifecycle/resume.go (preferred), or conditional cert regen fallback.
+**Avoids:** ETCD-TLS Pitfalls 1-4 (quorum loss, split-brain, CA key extraction, kubeadm version-stability).
+**Research flag:** NEEDS validation — Docker IPAM static IP feasibility must be verified as first task of the plan before any code is written.
+
+### Phase 53: Addon Version Audit + Bumps (+ SYNC-02 conditional)
+**Rationale:** One plan per addon prevents ambiguous test failures. SYNC-02 belongs here as sub-plan 53-00 because it shares the offlinereadiness.go dual-update pattern with addon bumps.
+**Delivers:** All 7 addons at verified current versions; local-path-provisioner security fix closed; SYNC-02 promoted if Docker Hub probe passes.
+**Sub-plan order (lowest risk to highest):**
+- 53-00: SYNC-02 probe + conditional node image bump (two-step probe: existence + manifest digest)
+- 53-01: local-path-provisioner v0.0.35 → v0.0.36 (security fix; update CVE threshold in doctor)
+- 53-02: MetalLB HOLD verification (confirm v0.15.3 still latest; no file changes)
+- 53-03: Metrics Server HOLD verification (confirm v0.8.1 still latest)
+- 53-04: Headlamp v0.40.1 → v0.42.0 (token flow pre-check mandatory)
+- 53-05: cert-manager v1.16.3 → v1.16.5 (verify --server-side flag; CRD version assertion)
+- 53-06: Envoy Gateway HOLD at v1.3.1 (update EOL documentation; no image changes)
+- 53-07: offlinereadiness.go consolidation (single commit updating allAddonImages after all bumps)
+**Avoids:** Pitfalls 5-14 (batch bumps, annotation limit, webhook race, EG CRD lock, MetalLB legacy format, Headlamp token, Metrics Server flag, local-path air-gap, SYNC-02 incomplete push, stale version strings).
+**Research flag:** No additional research needed for holds. Headlamp token flow and SYNC-02 probe are plan-time verifications.
+
+### Phase 54: macOS Ad-Hoc Code Signing
+**Rationale:** Release pipeline change only — no Go source changes. Independent of all other phases.
+**Delivers:** darwin/amd64 and darwin/arm64 binaries signed with codesign --sign - in GoReleaser release job. Resolves Apple Silicon AMFI kernel kill for cross-compiled binaries.
+**Implements:** Split build entries in .goreleaser.yaml. macos-latest release runner.
+**Avoids:** Pitfalls 15 (symbol strip after sign invalidates signature), 16 (fan-out misses one arch), 17 (ad-hoc conflated with notarization in docs — communication requirement).
+**Research flag:** Standard GoReleaser pattern; no additional research needed.
+
+### Phase 55: Windows PR-CI Build Step
+**Rationale:** Infrastructure change only — new GHA workflow file. Independent of all other phases. Informational (non-blocking) for v2.4.
+**Delivers:** Every PR cross-compiled for windows/amd64 on ubuntu-24.04. Prevents silent Windows compilation regressions.
+**Implements:** .github/workflows/build-check.yml — new file with windows-build job (go build + go vet under GOOS=windows).
+**Avoids:** Pitfalls 18 (cgo transitive deps), 19 (path separator failures masked by build-only check).
+**Research flag:** Standard GHA pattern. Run cross-compile probe locally before writing CI YAML.
+
+### Phase 56: DEBT-04 Race Fix
+**Rationale:** Low-complexity, high-confidence fix. Placed after addon bumps so stable test infrastructure is in place before doctor cosmetic fixes (Phase 57) land — both touch pkg/internal/doctor/.
+**Delivers:** go test -race ./pkg/internal/doctor/... -count=100 passes with zero races. Clean contributor CI.
+**Implements:** Test-scope save/restore pattern for allChecks in check_test.go and socket_test.go. Production check.go unchanged or minimally changed (unexported runChecks(checks []Check) if parameter-injection approach chosen).
+**Avoids:** Pitfall 20 (mutex held during check execution serializes doctor run — do NOT add mutex to production read path).
+**Research flag:** Standard Go concurrency fix; no additional research needed.
+
+### Phase 57: Doctor Cosmetic Fixes
+**Rationale:** Depends on DEBT-04 (Phase 56) being complete because both fixes touch pkg/internal/doctor/ files.
+**Delivers:** No false-positive version-skew warn on HA clusters. Actionable "N/M etcd members healthy" output replacing raw JSON.
+**Sub-plans:**
+- 57-01: cluster-node-skew LB role guard (clusterskew.go ~5 lines + test case)
+- 57-02: cluster-resume-readiness JSON parsing (resumereadiness.go refactor + test fixtures for etcd 3.4.x and 3.5.x JSON shapes)
+**Avoids:** Pitfalls 21 (LB node in skew calculation), 22 (etcdctl JSON shape variance).
+**Research flag:** No additional research needed. etcdctl JSON fields confirmed stable across etcd 3.4-3.6.
+
+### Phase 58: Phase 47 + 51 Live UAT Closure
+**Rationale:** Must run against the final v2.4 binary — not before Phases 52-57 are complete. PITFALLS.md Pitfall 23 is definitive: run make build and confirm ./bin/kinder version shows the v2.4 build hash before any UAT script. Never run smoke against PATH kinder.
+**Delivers:**
+- scripts/uat-47-ha-smoke.sh — shell script: create 3-CP HA cluster, pause, verify containers stopped, resume, verify kubectl get nodes returns Ready on current binary
+- .planning/phases/47-cluster-pause-resume/47-UAT.md — status fields updated from issue to pass
+- .planning/phases/51-upstream-sync-k8s-1-36/51-UAT.md — new file with Envoy LB image probe, IPVS CLI rejection, K8s 1.36 guide spot-check evidence
+**Avoids:** Pitfall 23 (stale binary, recording drift).
+**Research flag:** No additional research needed. Existing 47-UAT.md format is the established evidence template.
+
+### Phase Ordering Rationale
+
+The ordering above synthesizes three competing suggestions from research:
+- PITFALLS.md said etcd-TLS first (Phase 52) — adopted; matches blast-radius logic
+- ARCHITECTURE.md said DEBT-04 → bumps → cosmetics → etcd-TLS → SYNC-02 → UAT → signing+CI — partially adopted; swapped etcd-TLS to first; moved DEBT-04 after bumps to respect the pkg/internal/doctor/ sequential conflict
+- FEATURES.md said UAT closure first (close v2.3 carry-forward before opening new fronts) — rejected for UAT specifically (UAT must verify the hardened binary); accepted as principle by treating SYNC-02 as Phase 53's first sub-plan
+
+Dependency chain:
+```
+Phase 52 (etcd-TLS)
+  → Phase 53 (addon bumps + SYNC-02)
+    → Phase 56 (DEBT-04)
+      → Phase 57 (doctor cosmetics)
+        → Phase 58 (UAT closure, on final binary)
+
+Phase 54 (macOS signing)  — independent after Phase 52
+Phase 55 (Windows CI)     — independent after Phase 52
+```
+
+### Velocity Estimate
+
+Reference milestones: v2.1 (4 phases / 10 plans / 1 day); v2.3 (5 phases / 25 plans / 5 days).
+
+v2.4 estimate: 7 phases / ~20 plans / 3-4 days. Phase 53 alone accounts for 7-8 sub-plans. Scope is closer to v2.3 than v2.1 due to etcd TLS complexity and addon count, but fewer unknown-unknowns than v2.3 which introduced pause/resume from scratch. The etcd IP pinning feasibility verification could extend Phase 52 by 0.5-1 day if Docker IPAM requires the fallback cert-regen approach.
+
+### Research Flags
+
+**Needs validation before plan execution:**
+- Phase 52: Docker IPAM static IP feasibility — run verification before writing any code
+- Phase 53-04 (Headlamp): Token flow verification — verify before writing bump plan
+- Phase 53-00 (SYNC-02): Docker Hub two-step probe — run before any file changes
+
+**Standard patterns (skip additional research):**
+- Phase 54 (macOS signing): GoReleaser post_hooks pattern established; STACK.md has exact YAML
+- Phase 55 (Windows CI): GHA cross-compile pattern is standard; STACK.md has exact YAML
+- Phase 56 (DEBT-04): Go test-scope concurrency fix is standard; pattern verified
+- Phase 57 (doctor cosmetics): Code locations verified by ARCHITECTURE.md; exact fix described
+- Phase 58 (UAT): Existing 47-UAT.md template; no new patterns needed
 
 ---
 
-*Research synthesized: 2026-05-03 from two discovery streams (ecosystem gap analysis + upstream/addon audit).*
+## Decisions Needed
+
+These go/no-go decisions must be recorded in REQUIREMENTS before any plan execution begins:
+
+1. **Envoy Gateway: Hold at v1.3.1 or bump?** Recommended: Hold with documented EOL acceptance. If stakeholder requires a bump, commit to v1.4 only (not v1.7) and extend scope to include a dedicated HTTPRoute UAT sub-plan.
+
+2. **Etcd peer-TLS: IP pinning or cert regen?** Recommended: IP pinning (Docker network connect). Requires feasibility verification in Phase 52 plan Task 1. If infeasible, fall back to cert regen via Go crypto/x509 (not kubeadm). Decision must be locked before Phase 52 plan is written.
+
+3. **cert-manager: v1.16.5 only or also v1.20.2?** Recommended: v1.16.5 only for v2.4. Document v1.20.2 target for v2.5. If schedule permits after all other phases close, v1.20.2 can be added as Phase 53-05b but must include CHANGELOG disclosure for rotationPolicy: Always.
+
+4. **Headlamp v0.42.0: include or hold?** Recommended: Include with mandatory token-flow pre-check. If pre-check reveals token flow regression, hold at v0.40.1 and document.
+
+5. **macOS signing CI runner: macos-latest or document-and-defer?** Recommended: macos-latest for release job (~$0.80/release on GHA — acceptable). Option C (document xattr -d com.apple.quarantine in release notes, zero CI cost) is the fallback.
+
+6. **Windows CI: informational or blocking?** Recommended: Informational (non-blocking, continue-on-error: true) for v2.4. Upgrade to blocking in v2.5 once path-separator audit is complete.
+
+7. **SYNC-02: Include in v2.4 or remain externally gated?** As of 2026-05-09, Docker Hub shows kindest/node latest is v1.35.1 (not v1.36.x). Include Phase 53-00 as a conditional plan that halts INCONCLUSIVE if the probe fails. Do not force a deadline on Docker Hub.
+
+---
+
+## Confidence Assessment
+
+| Area | Confidence | Notes |
+|------|------------|-------|
+| Stack | HIGH | All addon versions fetched from upstream GitHub releases; GoReleaser docs fetched from goreleaser.com; kubeadm docs from kubernetes.io. Single gap: Headlamp v0.42.0 token flow (2 days old at research time) |
+| Features | HIGH | Official cert-manager, MetalLB, Envoy Gateway docs; k3d IPAM precedent verified; etcd JSON fields confirmed stable 3.4-3.6 |
+| Architecture | HIGH | All integration points verified against actual source files. Integration map is authoritative for file locations and conflict detection |
+| Pitfalls | HIGH | Grounded in v2.3 audit record and direct codebase review. CA key extraction risk and kubeadm version-stability caveat are critical for Phase 52 |
+
+**Overall confidence: HIGH**
+
+### Gaps to Address
+
+- **Docker IPAM static IP feasibility:** PITFALLS.md rates IP pinning as MEDIUM confidence. Must be verified empirically in Phase 52 plan Task 1. Failure mode is well-defined (fall back to cert regen); gap does not block planning.
+
+- **Headlamp v0.42.0 token flow:** 2 days old at research time. Resolve with a 5-minute manual verification before writing Phase 53-04 plan.
+
+- **Envoy Gateway CRD version for v1.4+:** Not fully researched because FEATURES.md recommends holding. If the REQUIREMENTS decision changes to bump, a targeted research task is needed to identify the exact Gateway API CRD version required by EG v1.4 and any HTTPRoute behavioral changes.
+
+---
+
+## Sources
+
+### Primary (HIGH confidence)
+- cert-manager GitHub releases (github.com/cert-manager/cert-manager/releases) — v1.16.5 date, v1.20.2 date, EOL status
+- cert-manager supported releases page (cert-manager.io/docs/releases/) — v1.16 EOL 2025-06-10, v1.20 current stable
+- Envoy Gateway releases (github.com/envoyproxy/gateway/releases) — v1.7.2 date, v1.6.7 date
+- Envoy Gateway compatibility matrix (gateway.envoyproxy.io/news/releases/matrix/) — v1.7 K8s 1.32-1.35 requirement
+- Envoy Gateway v1.4 announcement (gateway.envoyproxy.io/news/releases/v1.4/) — 4 breaking changes documented
+- Headlamp releases (github.com/headlamp-k8s/headlamp/releases) — v0.42.0 date 2026-05-07
+- MetalLB release notes (metallb.universe.tf/release-notes/) — v0.15.3 latest; no v0.16
+- metrics-server releases (github.com/kubernetes-sigs/metrics-server/releases) — v0.8.1 latest
+- local-path-provisioner releases (github.com/rancher/local-path-provisioner/releases) — v0.0.36 GHSA-7fxv-8wr2-mfc4
+- GoReleaser build hooks docs (goreleaser.com/customization/builds/hooks/) — hook schema, template vars
+- golang/go#42684 (github.com/golang/go/issues/42684) — codesign -s - fixes arm64 macOS AMFI kill
+- kubeadm certs renew docs (kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm-certs/) — subcommand confirmed
+- Go race detector (go.dev/doc/articles/race_detector) — t.Parallel + global mutation pattern
+- k3d IPAM feature request (github.com/k3d-io/k3d/issues/550) — implemented v4.4.5; IP pinning precedent
+- etcd cluster status tutorial (etcd.io/docs/v3.5/tutorials/how-to-check-cluster-status/) — JSON field names
+- v2.3 Milestone Audit (.planning/milestones/v2.3-MILESTONE-AUDIT.md) — deferred items, tech debt
+- Codebase Architecture (.planning/codebase/ARCHITECTURE.md) — verified source of integration point truth
+- Direct source code inspection (all pkg/internal/doctor/, pkg/internal/lifecycle/, pkg/cluster/internal/create/actions/ files)
+
+### Secondary (MEDIUM confidence)
+- docker network connect docs (docs.docker.com/reference/cli/docker/network/connect/) — --ip flag behavior; feasibility for kinder's IPAM setup requires empirical testing
+- Headlamp v0.42.0 token flow — 2 days old at research; verify before plan execution
+
+### Tertiary (LOW confidence — needs validation)
+- kindest/node v1.36.x Docker Hub availability — not published as of 2026-05-09 (probe shows v1.35.1); SYNC-02 remains externally gated
+
+---
+
+*Research completed: 2026-05-09*
+*Ready for roadmap: yes — pending 7 locked decisions listed in "Decisions Needed" section*
