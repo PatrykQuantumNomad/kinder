@@ -34,6 +34,7 @@ package lifecycle
 
 import (
 	kindippin "sigs.k8s.io/kind/pkg/internal/ippin"
+	"sigs.k8s.io/kind/pkg/cluster/constants"
 	"sigs.k8s.io/kind/pkg/log"
 )
 
@@ -41,6 +42,17 @@ import (
 // This is a type alias for ippin.IPAMState so callers in the lifecycle package
 // do not need a direct import of pkg/internal/ippin.
 type IPAMState = kindippin.IPAMState
+
+// ResumeStrategyLabel, StrategyIPPinned, and StrategyCertRegen are re-exported
+// from pkg/cluster/constants so that resume.go (and other lifecycle callers)
+// can use them as unqualified names — no `constants.` qualifier needed.
+// This is the W2 naming requirement: resume.go calls StrategyIPPinned, not
+// constants.StrategyIPPinned.
+const (
+	ResumeStrategyLabel = constants.ResumeStrategyLabel
+	StrategyIPPinned    = constants.StrategyIPPinned
+	StrategyCertRegen   = constants.StrategyCertRegen
+)
 
 // ippinCmder and probeIPAMFn are package-level shims that delegate to the
 // corresponding variables in pkg/internal/ippin. Tests in lifecycle/ippin_test.go

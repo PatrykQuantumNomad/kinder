@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +29,7 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/exec"
+	kindippin "sigs.k8s.io/kind/pkg/internal/ippin"
 	"sigs.k8s.io/kind/pkg/log"
 )
 
@@ -771,4 +774,863 @@ func TestResume_InlineReadinessHook_SkippedOnPartialStartFailure(t *testing.T) {
 	if called {
 		t.Error("hook MUST NOT be called when a CP failed to start")
 	}
+}
+
+// ============================================================================
+// HA resume strategy tests (Plan 52-03)
+// ============================================================================
+//
+// NOTE: These tests swap kindippin.IppinCmder (for ReadIPAMState / docker cp)
+// AND defaultCmder (for start, inspect, network, kubeadm, mv).
+// MUST NOT use t.Parallel() — they mutate shared package-level globals.
+
+// withIPPinCmderFn swaps kindippin.IppinCmder for the duration of the test.
+// MUST NOT be used with t.Parallel().
+func withIPPinCmderFn(t *testing.T, fn kindippin.Cmder) {
+	t.Helper()
+	prev := kindippin.IppinCmder
+	kindippin.IppinCmder = fn
+	t.Cleanup(func() { kindippin.IppinCmder = prev })
+}
+
+// withCertRegenSleeper swaps certRegenSleeper for the duration of the test.
+func withCertRegenSleeper(t *testing.T, fn func(time.Duration)) {
+	t.Helper()
+	prev := certRegenSleeper
+	certRegenSleeper = fn
+	t.Cleanup(func() { certRegenSleeper = prev })
+}
+
+// withResumeBinaryName swaps resumeBinaryName for the duration of the test.
+func withResumeBinaryName(t *testing.T, name string) {
+	t.Helper()
+	prev := resumeBinaryName
+	resumeBinaryName = func() string { return name }
+	t.Cleanup(func() { resumeBinaryName = prev })
+}
+
+// haTestCall records a single CLI invocation.
+type haTestCall struct {
+	name string
+	args []string
+}
+
+func (c haTestCall) joined() string {
+	return strings.Join(append([]string{c.name}, c.args...), " ")
+}
+
+// haTestCmder is a flexible Cmder for HA strategy tests. It dispatches on the
+// docker subcommand and returns scripted responses.
+type haTestCmder struct {
+	mu    sync.Mutex
+	calls []haTestCall
+
+	// containerStates maps container name → state string ("exited", "running").
+	// Used for `inspect --format {{.State.Status}} <name>`.
+	containerStates map[string]string
+
+	// strategyLabel maps container name → strategy label value.
+	// Used for `inspect --format '{{index .Config.Labels "io.x-k8s.kinder.resume-strategy"}}' <name>`.
+	strategyLabel map[string]string
+
+	// currentIPs maps container name → current IP (after start).
+	// Used for `inspect --format {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}} <name>`.
+	currentIPs map[string]string
+
+	// startErrors maps container → error to return from `start`.
+	startErrors map[string]error
+
+	// networkDisconnectErrors maps container → error for `network disconnect`.
+	networkDisconnectErrors map[string]error
+
+	// networkConnectErrors maps container → error for `network connect`.
+	networkConnectErrors map[string]error
+
+	// kubeadmRenewErrors maps container → error for `kubeadm certs renew etcd-peer`.
+	kubeadmRenewErrors map[string]error
+
+	// mvErrors: if set, error returned on the first `mv` call.
+	mvErrors map[string]error
+}
+
+func (h *haTestCmder) cmder() Cmder {
+	return func(name string, args ...string) exec.Cmd {
+		h.mu.Lock()
+		argsCopy := make([]string, len(args))
+		copy(argsCopy, args)
+		h.calls = append(h.calls, haTestCall{name: name, args: argsCopy})
+		h.mu.Unlock()
+
+		if len(args) == 0 {
+			return &fakeCmd{err: fmt.Errorf("no args")}
+		}
+
+		switch args[0] {
+		case "start":
+			container := args[len(args)-1]
+			err := h.startErrors[container]
+			return &fakeCmd{err: err}
+
+		case "inspect":
+			container := args[len(args)-1]
+			// Determine which format is being requested.
+			formatIdx := -1
+			for i, a := range args {
+				if a == "--format" && i+1 < len(args) {
+					formatIdx = i + 1
+					break
+				}
+			}
+			format := ""
+			if formatIdx >= 0 {
+				format = args[formatIdx]
+			}
+			if strings.Contains(format, "State.Status") {
+				state := h.containerStates[container]
+				if state == "" {
+					state = "exited"
+				}
+				return &fakeCmd{stdout: state + "\n"}
+			}
+			if strings.Contains(format, "Config.Labels") || strings.Contains(format, "resume-strategy") {
+				label := h.strategyLabel[container]
+				return &fakeCmd{stdout: label + "\n"}
+			}
+			if strings.Contains(format, "NetworkSettings.Networks") || strings.Contains(format, "IPAddress") {
+				ip := h.currentIPs[container]
+				return &fakeCmd{stdout: ip + "\n"}
+			}
+			// Unknown inspect format
+			return &fakeCmd{stdout: "\n"}
+
+		case "network":
+			if len(args) < 2 {
+				return &fakeCmd{err: fmt.Errorf("network: too few args")}
+			}
+			container := args[len(args)-1]
+			switch args[1] {
+			case "disconnect":
+				err := h.networkDisconnectErrors[container]
+				return &fakeCmd{err: err}
+			case "connect":
+				err := h.networkConnectErrors[container]
+				return &fakeCmd{err: err}
+			}
+			return &fakeCmd{}
+
+		case "kubeadm":
+			// kubeadm certs renew etcd-peer — called via node.Command, so args
+			// start with "certs" (the binary is the node name, not "kubeadm").
+			// Actually node.Command("kubeadm", ...) routes through defaultCmder
+			// as: defaultCmder("kubeadm", "certs", "renew", "etcd-peer")
+			// But wait — fakeNode.Command calls defaultCmder(c, a...) where c="kubeadm".
+			// So name="kubeadm" and args=["certs", "renew", "etcd-peer"].
+			// The container name for error lookup must be known from context.
+			// Since fakeNode.Command doesn't pass node name to defaultCmder, we
+			// need to track which node is being processed via call ordering.
+			// Simpler approach: record the call and return a canned error based
+			// on the call index (or use a global error map keyed by call index).
+			// For now, use a call-count approach embedded in the test.
+			return &fakeCmd{}
+
+		case "mv":
+			return &fakeCmd{}
+		}
+
+		return &fakeCmd{err: fmt.Errorf("haTestCmder: unhandled subcommand %q (args=%v)", args[0], args)}
+	}
+}
+
+func (h *haTestCmder) startCalls() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []string
+	for _, c := range h.calls {
+		if len(c.args) > 0 && c.args[0] == "start" {
+			out = append(out, c.args[len(c.args)-1])
+		}
+	}
+	return out
+}
+
+func (h *haTestCmder) networkCalls() []haTestCall {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []haTestCall
+	for _, c := range h.calls {
+		if len(c.args) > 0 && c.args[0] == "network" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (h *haTestCmder) allCalls() []haTestCall {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]haTestCall, len(h.calls))
+	copy(out, h.calls)
+	return out
+}
+
+// writeIPAMStateForHA writes per-CP ipam-state.json files to tmpDir, and
+// configures ippinCmder to succeed on docker cp (file is already in tmpDir).
+// Returns a configured ippinCmderFake.
+func writeIPAMStateForHA(t *testing.T, tmpDir string, cpNetworks, cpIPs map[string]string) *ippinCmderFake {
+	t.Helper()
+	// Build responses in cp-sorted order. The exact order depends on ClassifyNodes.
+	// We pre-write all files and return a cmder that always succeeds on cp.
+	for container, ip := range cpIPs {
+		network := cpNetworks[container]
+		state := kindippin.IPAMState{Network: network, IPv4: ip}
+		data, err := json.Marshal(state)
+		if err != nil {
+			t.Fatalf("writeIPAMStateForHA: %v", err)
+		}
+		hostPath := filepath.Join(tmpDir, container+"-ipam.json")
+		if err := os.WriteFile(hostPath, data, 0o600); err != nil {
+			t.Fatalf("writeIPAMStateForHA: %v", err)
+		}
+	}
+	// Return a cmder that always succeeds on docker cp (file already written).
+	// Number of responses = number of cp nodes (one cp per ReadIPAMState call).
+	responses := make([]ippinCmdResp, len(cpIPs))
+	return &ippinCmderFake{responses: responses}
+}
+
+// ---- Tests ------------------------------------------------------------------
+
+// TestResume_HAWithIPPinned_ReconnectsBeforeCPStart: 3 CPs labeled ip-pinned.
+// Asserts: disconnect+connect per CP BEFORE the first `docker start` on a CP.
+// NetworkName comes from IPAMState.Network (per-CP).
+// MUST NOT call t.Parallel().
+func TestResume_HAWithIPPinned_ReconnectsBeforeCPStart(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	cpNetworks := map[string]string{"cp1": "kind-net-1", "cp2": "kind-net-2", "cp3": "kind-net-3"}
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	ippinFk := writeIPAMStateForHA(t, tmpDir, cpNetworks, cpIPs)
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+		currentIPs:      cpIPs,
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+	// Override tmpDir in IPDriftDetected. Since IPDriftDetected is called by
+	// the cert-regen path (not ip-pinned), this is not critical here.
+	// applyPinnedIPsBeforeCPStart calls ReadIPAMState with os.TempDir() —
+	// we wrote files there via ippinFk which routes docker cp.
+
+	res, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Verify: for each CP, disconnect+connect appeared BEFORE docker start.
+	allCalls := tc.allCalls()
+	cpNames := []string{"cp1", "cp2", "cp3"}
+	for _, cpName := range cpNames {
+		disconnectIdx := -1
+		connectIdx := -1
+		startIdx := -1
+		for i, c := range allCalls {
+			joined := c.joined()
+			if strings.Contains(joined, "network disconnect") && strings.Contains(joined, cpName) {
+				disconnectIdx = i
+			}
+			if strings.Contains(joined, "network connect") && strings.Contains(joined, cpName) {
+				connectIdx = i
+			}
+			if len(c.args) > 0 && c.args[0] == "start" && strings.Contains(joined, cpName) {
+				startIdx = i
+			}
+		}
+		if disconnectIdx < 0 {
+			t.Errorf("no network disconnect for %s", cpName)
+		}
+		if connectIdx < 0 {
+			t.Errorf("no network connect for %s", cpName)
+		}
+		if startIdx < 0 {
+			t.Errorf("no start for %s", cpName)
+		}
+		if disconnectIdx >= startIdx {
+			t.Errorf("%s: disconnect (idx=%d) must appear BEFORE start (idx=%d)", cpName, disconnectIdx, startIdx)
+		}
+		if connectIdx >= startIdx {
+			t.Errorf("%s: connect (idx=%d) must appear BEFORE start (idx=%d)", cpName, connectIdx, startIdx)
+		}
+	}
+
+	// Verify networkName per CP comes from IPAMState.Network.
+	netCalls := tc.networkCalls()
+	for _, cpName := range cpNames {
+		expectedNet := cpNetworks[cpName]
+		for _, c := range netCalls {
+			if strings.Contains(c.joined(), cpName) {
+				if !strings.Contains(c.joined(), expectedNet) {
+					t.Errorf("%s: expected networkName %q in call %q", cpName, expectedNet, c.joined())
+				}
+			}
+		}
+	}
+
+	// Verify --ip flag with recorded IP in the connect call.
+	for _, cpName := range cpNames {
+		recordedIP := cpIPs[cpName]
+		foundConnect := false
+		for _, c := range netCalls {
+			if c.args[1] == "connect" && strings.Contains(c.joined(), cpName) {
+				foundConnect = true
+				if !strings.Contains(c.joined(), "--ip") || !strings.Contains(c.joined(), recordedIP) {
+					t.Errorf("%s: connect call should have --ip %s: %q", cpName, recordedIP, c.joined())
+				}
+			}
+		}
+		if !foundConnect {
+			t.Errorf("no network connect call for %s", cpName)
+		}
+	}
+}
+
+// TestResume_HAIPPin_ReadIPAMStateFailureHalts: W2 Option A.
+// cp2's docker cp fails → Resume halts with structured diagnostic.
+// cp3 NOT processed. Phase 2 (docker start on CPs) NOT reached.
+// MUST NOT call t.Parallel().
+func TestResume_HAIPPin_ReadIPAMStateFailureHalts(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	// cp1 has valid ipam-state.json; cp2 docker cp fails.
+	state := kindippin.IPAMState{Network: "kind", IPv4: "172.18.0.5"}
+	data, _ := json.Marshal(state)
+	_ = os.WriteFile(filepath.Join(tmpDir, "cp1-ipam.json"), data, 0o600)
+
+	// IppinCmder: call 0 = cp1 docker cp succeeds, call 1 = cp2 docker cp fails.
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{
+			{},                                             // cp1 docker cp: success
+			{err: fmt.Errorf("No such file or directory")}, // cp2 docker cp: failure
+		},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err == nil {
+		t.Fatal("expected error for ReadIPAMState failure on cp2, got nil")
+	}
+
+	// Error must match W2 Option A diagnostic pattern.
+	if !strings.Contains(err.Error(), "ip-pin resume halted") {
+		t.Errorf("error should contain 'ip-pin resume halted': %v", err)
+	}
+	if !strings.Contains(err.Error(), "cp2") {
+		t.Errorf("error should mention cp2: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Cluster state is undefined") {
+		t.Errorf("error should contain 'Cluster state is undefined': %v", err)
+	}
+
+	// cp3 must NOT have disconnect/connect.
+	allCalls := tc.allCalls()
+	for _, c := range allCalls {
+		if len(c.args) > 0 && c.args[0] == "network" && strings.Contains(c.joined(), "cp3") {
+			t.Errorf("cp3 must NOT be touched after cp2 failure; got: %v", c.joined())
+		}
+	}
+
+	// docker start on CPs must NOT have been called.
+	starts := tc.startCalls()
+	for _, s := range starts {
+		if strings.HasPrefix(s, "cp") {
+			t.Errorf("docker start on CP %s must NOT have been called after ip-pin halt", s)
+		}
+	}
+}
+
+// TestResume_HAWithCertRegen_NoIPDrift_SkipsRegen: 3 CPs labeled cert-regen;
+// all CPs report same IP before and after start. No kubeadm calls.
+// MUST NOT call t.Parallel().
+func TestResume_HAWithCertRegen_NoIPDrift_SkipsRegen(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	// Write ipam-state.json files with same IPs.
+	for cpName, ip := range cpIPs {
+		state := kindippin.IPAMState{Network: "kind", IPv4: ip}
+		data, _ := json.Marshal(state)
+		_ = os.WriteFile(filepath.Join(tmpDir, cpName+"-ipam.json"), data, 0o600)
+	}
+	// IppinCmder: 3 docker cp calls succeed (one per CP for IPDriftDetected).
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{{}, {}, {}},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyCertRegen, "cp2": StrategyCertRegen, "cp3": StrategyCertRegen},
+		currentIPs:      cpIPs, // same IPs as recorded → no drift
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// No kubeadm calls expected (no drift).
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			t.Errorf("kubeadm must NOT be called when no drift: %v", c.joined())
+		}
+	}
+}
+
+// TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen: 3 CPs labeled cert-regen;
+// cp1 reports drift. kubeadm renew must run on ALL 3 CPs (wholesale).
+// MUST NOT call t.Parallel().
+func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	recordedIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	// Write ipam-state.json files with recorded IPs.
+	for cpName, ip := range recordedIPs {
+		state := kindippin.IPAMState{Network: "kind", IPv4: ip}
+		data, _ := json.Marshal(state)
+		_ = os.WriteFile(filepath.Join(tmpDir, cpName+"-ipam.json"), data, 0o600)
+	}
+	// IppinCmder: 3 docker cp calls succeed.
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{{}, {}, {}},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyCertRegen, "cp2": StrategyCertRegen, "cp3": StrategyCertRegen},
+		// cp1 reports a DIFFERENT IP → drift detected on first CP → wholesale regen.
+		currentIPs: map[string]string{"cp1": "172.18.0.99", "cp2": "172.18.0.6", "cp3": "172.18.0.7"},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// kubeadm certs renew etcd-peer must have been called on all 3 CPs.
+	kubeadmCount := 0
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			kubeadmCount++
+		}
+	}
+	if kubeadmCount != 3 {
+		t.Errorf("expected kubeadm certs renew on all 3 CPs, got %d calls; calls=%v",
+			kubeadmCount, joinedCallsHA(tc.allCalls()))
+	}
+}
+
+// TestResume_HALegacyNoLabel_RunsWholesaleRegen: 3 CPs with NO resume-strategy
+// label (legacy). Treated as cert-regen. Wholesale regen runs (legacy=drift always).
+// MUST NOT call t.Parallel().
+func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	// IppinCmder: 3 docker cp calls fail with "No such file" (legacy = no ipam-state.json).
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+		},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+	_ = tmpDir
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		// No strategy label set (legacy).
+		strategyLabel: map[string]string{},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// kubeadm certs renew should have been called on all 3 CPs (legacy = drift=true always).
+	kubeadmCount := 0
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			kubeadmCount++
+		}
+	}
+	if kubeadmCount != 3 {
+		t.Errorf("expected kubeadm calls on all 3 CPs for legacy cluster, got %d; calls=%v",
+			kubeadmCount, joinedCallsHA(tc.allCalls()))
+	}
+}
+
+// TestResume_SingleCP_NoStrategyDispatch: 1 CP, no label. Strategy dispatch
+// is bypassed entirely (no probe, no inspect of /kind/ipam-state.json, no kubeadm).
+// MUST NOT call t.Parallel().
+func TestResume_SingleCP_NoStrategyDispatch(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	cpCallCount := 0
+	withIPPinCmderFn(t, func(name string, args ...string) exec.Cmd {
+		cpCallCount++
+		return &fakeCmd{err: fmt.Errorf("ippinCmder: should not be called on single-CP")}
+	})
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1"),
+		strategyLabel:   map[string]string{},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cpCallCount > 0 {
+		t.Errorf("IppinCmder (docker cp for ReadIPAMState) must NOT be called on single-CP cluster")
+	}
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			t.Errorf("kubeadm must NOT be called on single-CP cluster; got: %v", c.joined())
+		}
+		if len(c.args) > 0 && c.args[0] == "network" {
+			t.Errorf("network op must NOT be called on single-CP cluster; got: %v", c.joined())
+		}
+	}
+}
+
+// TestResume_HAIPPin_DisconnectFailsHaltsResume: disconnect on cp2 fails.
+// Resume returns aggregated error; cp3 NOT reconnected; readiness gate NOT entered.
+// MUST NOT call t.Parallel().
+func TestResume_HAIPPin_DisconnectFailsHaltsResume(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+
+	probeCalled := false
+	withReadinessProber(t, func(_ context.Context, _ nodes.Node, _ time.Time) error {
+		probeCalled = true
+		return nil
+	})
+
+	tmpDir := t.TempDir()
+	for _, cp := range []string{"cp1", "cp2", "cp3"} {
+		state := kindippin.IPAMState{Network: "kind", IPv4: "172.18.0.5"}
+		data, _ := json.Marshal(state)
+		_ = os.WriteFile(filepath.Join(tmpDir, cp+"-ipam.json"), data, 0o600)
+	}
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{{}, {}, {}},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates:         pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:           map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+		networkDisconnectErrors: map[string]error{"cp2": fmt.Errorf("disconnect: permission denied")},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err == nil {
+		t.Fatal("expected error for cp2 disconnect failure, got nil")
+	}
+
+	// cp3 must NOT be reconnected.
+	for _, c := range tc.networkCalls() {
+		if strings.Contains(c.joined(), "cp3") {
+			t.Errorf("cp3 must NOT be reconnected after cp2 disconnect failure: %v", c.joined())
+		}
+	}
+
+	// Readiness gate must NOT be entered.
+	if probeCalled {
+		t.Error("readiness gate must NOT be entered after ip-pin failure")
+	}
+}
+
+// TestResume_HACertRegen_RegenFailsHaltsResume: regen on cp2 fails.
+// Resume returns wrapped error directing user to delete+recreate.
+// Readiness gate skipped.
+// MUST NOT call t.Parallel().
+func TestResume_HACertRegen_RegenFailsHaltsResume(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+
+	probeCalled := false
+	withReadinessProber(t, func(_ context.Context, _ nodes.Node, _ time.Time) error {
+		probeCalled = true
+		return nil
+	})
+
+	tmpDir := t.TempDir()
+	// Legacy: no ipam-state.json → always drift → runs regen.
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+		},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+	_ = tmpDir
+
+	// The kubeadm renew on cp2 will fail. Since fakeNode.Command routes through
+	// defaultCmder (which is tc.cmder()), we need tc.cmder() to fail on the
+	// 4th kubeadm call (cp2's kubeadm = after cp1's 3 calls: renew+mv+mv).
+	kubeadmCallCount := 0
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{},
+	}
+	// We'll use a custom cmder that wraps tc.cmder() to inject the kubeadm error.
+	baseCmder := tc.cmder()
+	kubeadmErrCmder := func(name string, args ...string) exec.Cmd {
+		if name == "kubeadm" {
+			kubeadmCallCount++
+			if kubeadmCallCount == 2 { // second kubeadm call = cp2
+				return &fakeCmd{err: fmt.Errorf("kubeadm: cert renew failed on cp2")}
+			}
+		}
+		return baseCmder(name, args...)
+	}
+	withCmder(t, kubeadmErrCmder)
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err == nil {
+		t.Fatal("expected error for cert regen failure on cp2, got nil")
+	}
+	if !strings.Contains(err.Error(), "delete and recreate") {
+		t.Errorf("error should direct user to delete+recreate: %v", err)
+	}
+	if probeCalled {
+		t.Error("readiness gate must NOT be entered after cert-regen failure")
+	}
+}
+
+// TestResume_HAIPPin_NerdctlPath: when binaryName=="nerdctl", the resume-strategy
+// is downgraded to cert-regen regardless of the label value (defense in depth).
+// MUST NOT call t.Parallel().
+func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
+	withResumeBinaryName(t, "nerdctl")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	tmpDir := t.TempDir()
+	// Legacy (no ipam-state.json) → drift = true → regen runs.
+	ippinFk := &ippinCmderFake{
+		responses: []ippinCmdResp{
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+			{err: fmt.Errorf("No such file or directory")},
+		},
+	}
+	withIPPinCmderFn(t, ippinFk.cmder)
+	_ = tmpDir
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		// Label says ip-pinned but nerdctl should downgrade to cert-regen.
+		strategyLabel: map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Must NOT have called network disconnect/connect (ip-pinned path).
+	for _, c := range tc.networkCalls() {
+		t.Errorf("nerdctl path must NOT call network ops; got: %v", c.joined())
+	}
+	// Should have called kubeadm (cert-regen path after downgrade).
+	kubeadmCount := 0
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			kubeadmCount++
+		}
+	}
+	if kubeadmCount == 0 {
+		t.Error("nerdctl path should fall back to cert-regen; expected kubeadm calls")
+	}
+}
+
+// joinedCallsHA formats haTestCall slice for debug output.
+func joinedCallsHA(calls []haTestCall) []string {
+	out := make([]string, len(calls))
+	for i, c := range calls {
+		out[i] = c.joined()
+	}
+	return out
 }
