@@ -123,3 +123,39 @@ func TestImages(t *testing.T) {
 		t.Error("Images missing busybox")
 	}
 }
+
+// TestImagesPinsV0036 pins the Images slice to local-path-provisioner v0.0.36
+// (ADDON-01: CVE GHSA-7fxv-8wr2-mfc4 fix).
+func TestImagesPinsV0036(t *testing.T) {
+	t.Parallel()
+	const want = "docker.io/rancher/local-path-provisioner:v0.0.36"
+	for _, img := range Images {
+		if img == want {
+			return
+		}
+	}
+	t.Errorf("Images = %v; want to contain %q", Images, want)
+}
+
+// TestManifestPinsBusybox guards Pitfall LPP-01: upstream v0.0.36 manifest uses
+// unpinned busybox; kinder's vendored manifest MUST re-pin busybox:1.37.0 in
+// BOTH occurrences (helperPod template image + helper-image flag).
+func TestManifestPinsBusybox(t *testing.T) {
+	t.Parallel()
+	const tag = "busybox:1.37.0"
+	count := strings.Count(localPathManifest, tag)
+	if count < 2 {
+		t.Errorf("localPathManifest contains %q %d time(s); want >= 2 (helperPod image + helper-image flag)", tag, count)
+	}
+}
+
+// TestStorageClassIsDefault guards Pitfall LPP-02: upstream manifest does NOT
+// set is-default-class; kinder's vendored manifest MUST add it so PVCs without
+// storageClassName are bound automatically.
+func TestStorageClassIsDefault(t *testing.T) {
+	t.Parallel()
+	const annotation = `storageclass.kubernetes.io/is-default-class: "true"`
+	if !strings.Contains(localPathManifest, annotation) {
+		t.Errorf("localPathManifest missing annotation %q (PVCs without explicit class will hang Pending)", annotation)
+	}
+}
