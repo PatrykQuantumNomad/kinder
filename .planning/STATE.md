@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Plan 52-01 complete — IPAM probe + doctor check. Commits: bb31049e (Task 1), 143c4588 (Task 2). Next: plan 52-02 (ip-pin) or 52-03 (cert-regen)."
-last_updated: "2026-05-10T11:32:20.999Z"
-last_activity: 2026-05-10 — Plan 52-01 complete; ProbeIPAM + ipam-probe doctor check; allChecks 24→25
+stopped_at: "Plan 52-03 complete — certregen module + HA resume strategy wiring. Commits: e1f2cce8 (T1-RED), cab777cc (T1-GREEN), 6b881d7b (T2-RED), c38bbdf1 (T2-GREEN). Next: plan 52-04 (doctor check)."
+last_updated: "2026-05-10T11:45:00Z"
+last_activity: 2026-05-10 — Plan 52-03 complete; IPDriftDetected + RegenerateEtcdPeerCertsWholesale + resume.go Phase 1.5/4.5 hooks
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 52 of 58 (HA Etcd Peer-TLS Fix — Plan 01 complete)
-Plan: 52-02 (next: ip-pin lifecycle path) or 52-03 (cert-regen fallback)
-Status: In progress — Phase 52, Plan 01 landed
-Last activity: 2026-05-10 — Plan 52-01 complete; ProbeIPAM + ipam-probe doctor check; allChecks 24→25
+Phase: 52 of 58 (HA Etcd Peer-TLS Fix — Plans 01-03 complete)
+Plan: 52-04 (next: doctor check for resume-strategy)
+Status: In progress — Phase 52, Plans 01-03 landed
+Last activity: 2026-05-10 — Plan 52-03 complete; IPDriftDetected + RegenerateEtcdPeerCertsWholesale + resume.go Phase 1.5/4.5 hooks
 
 Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 
@@ -50,6 +50,8 @@ Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 | Phase | Plans | Duration |
 |-------|-------|----------|
 | 52-01 | 2 tasks | ~8 min |
+| 52-02 | 2 tasks | ~35 min |
+| 52-03 | 2 tasks | ~11 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -65,6 +67,10 @@ Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 - 2026-05-09 (roadmap): Phase 52 approach — IP pinning preferred (k3d precedent); cert regen is fallback. Docker IPAM feasibility probe is Plan 52-01 Task 1; no code until probe result known.
 - 2026-05-10 (52-01): ProbeIPAM API locked — (Verdict, string, error) signature; Verdict constants VerdictIPPinned/VerdictCertRegen/VerdictUnsupported. Tests that use package-level ipamProbeCmder global must NOT be parallel (documented in ipamprobe_test.go).
 - 2026-05-10 (52-01): allChecks count: 24 (before 52-01) → 25 (after 52-01) → 26 expected after 52-04. TestAllChecks_CountIs25 must be renamed to CountIs26 in plan 52-04.
+- 2026-05-10 (52-03): certRegenSleeper package-level var injection prevents 45s+ test blocks; same pattern as ipamProbeCmder in doctor package.
+- 2026-05-10 (52-03): applyPinnedIPsBeforeCPStart uses os.TempDir() as tmpDir; tests pre-write ipam-state.json there with t.Cleanup removal.
+- 2026-05-10 (52-03): Strategy constants re-exported as typed const in lifecycle/ippin.go so resume.go calls StrategyIPPinned (not constants.StrategyIPPinned) — W2 naming requirement satisfied.
+- 2026-05-10 (52-03): haTestCmder dispatch: switch on name first (kubeadm, mv) then args[0] (start, inspect, network) — covers node.Command() routing through defaultCmder.
 - 2026-05-09 (roadmap): Phase 53 sub-plans are strictly sequential (not parallel wave) — ambiguous failures across simultaneous addon bumps are undiagnosable.
 - 2026-05-09 (roadmap): Phase 56 (DEBT-04) must precede Phase 57 (doctor cosmetics) — same package, race-clean baseline required.
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
@@ -87,6 +93,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T11:32:20.992Z
-Stopped at: Plan 52-01 complete — IPAM probe + doctor check. Commits: bb31049e (Task 1), 143c4588 (Task 2). Next: plan 52-02 (ip-pin) or 52-03 (cert-regen).
+Last session: 2026-05-10T11:45:00Z
+Stopped at: Plan 52-03 complete — certregen module + HA resume strategy wiring. Commits: e1f2cce8, cab777cc, 6b881d7b, c38bbdf1. Next: plan 52-04.
 Resume file: None
