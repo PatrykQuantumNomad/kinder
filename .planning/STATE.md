@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: ready_to_plan
-stopped_at: "Phase 52 verified human_needed (must-haves 3+4 verified statically; 1+2 carry forward to Phase 58 live UAT). User approved as-is. Phase 53 next — discuss before planning (Headlamp token flow + EG v1.7.2 CRD audit)."
-last_updated: "2026-05-10T14:10:00Z"
-last_activity: 2026-05-10 — Phase 52 closed: ROADMAP/STATE updated; VERIFICATION.md status human_needed accepted; UAT-1/UAT-2 deferred to Phase 58; doctor test race deferred to Phase 56 (DEBT-04, planned)
+status: in_progress
+stopped_at: "Phase 53 Plan 53-00 COMPLETE (INCONCLUSIVE — Outcome B). SYNC-05 deferred. Sub-plans 53-01 through 53-07 proceed."
+last_updated: "2026-05-10T00:05:00Z"
+last_activity: 2026-05-10 — Plan 53-00 complete; SYNC-05 probe Outcome B (count=0); kindest/node:v1.36.x not yet on Docker Hub; DEFERRED
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 14
+  total_plans: 8
+  completed_plans: 5
+  percent: 18
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 52 (HA Etcd Peer-TLS Fix) — highest blast radius; discuss before planning.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plan 53-00 done (SYNC-05 deferred); Plan 53-01 (local-path-provisioner bump) next.
 
 ## Current Position
 
-Phase: 52 of 58 (HA Etcd Peer-TLS Fix — ALL 4 plans complete)
-Plan: 52-04 COMPLETE (Phase 52 fully closed)
-Status: Phase 52 complete — next is Phase 53 (Addon Upgrades)
-Last activity: 2026-05-10 — Plan 52-04 complete; ha-resume-strategy doctor check; allChecks 25→26
+Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
+Plan: 53-00 COMPLETE (INCONCLUSIVE — Outcome B; SYNC-05 deferred)
+Status: Phase 53 in progress — Plan 53-00 done; Plan 53-01 (local-path-provisioner) next
+Last activity: 2026-05-10 — Plan 53-00 complete; SYNC-05 probe Outcome B; kindest/node:v1.36.x not on Docker Hub
 
-Progress: [█░░░░░░░░░] v2.4 ~14% (4/~28 plans done)
+Progress: [██░░░░░░░░] v2.4 ~18% (5/~28 plans done)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [█░░░░░░░░░] v2.4 ~14% (4/~28 plans done)
 | 52-02 | 2 tasks | ~35 min |
 | 52-03 | 2 tasks | ~11 min |
 | 52-04 | 2 tasks | ~12 min |
+| 53-00 | 1 task (Outcome B) | ~3 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -78,6 +79,7 @@ Progress: [█░░░░░░░░░] v2.4 ~14% (4/~28 plans done)
 - 2026-05-09 (roadmap): Phase 53 sub-plans are strictly sequential (not parallel wave) — ambiguous failures across simultaneous addon bumps are undiagnosable.
 - 2026-05-09 (roadmap): Phase 56 (DEBT-04) must precede Phase 57 (doctor cosmetics) — same package, race-clean baseline required.
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
+- 2026-05-10 (53-00): SYNC-05 DEFERRED — Docker Hub probe count=0 for kindest/node:v1.36.x (same as SYNC-02 on 2026-05-07). SC6 remains DEFERRED. Sub-plans 53-01 through 53-07 proceed normally. Re-run once kind publishes v1.36 image.
 
 ### Pending Todos
 
@@ -93,10 +95,10 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 - **Phase 52 (LIFE-09)**: Docker IPAM static IP feasibility is MEDIUM confidence. Must be verified empirically as first task. Failure triggers cert-regen fallback (not IP pinning). Recommend `/gsd:discuss-phase 52` before planning.
 - **Phase 53-02 (ADDON-02)**: Headlamp v0.42.0 token flow verification must precede writing the bump plan. Released 2026-05-07 (2 days before research). Hold at v0.40.1 if token auth regressed.
 - **Phase 53-04 (ADDON-04)**: Envoy Gateway v1.7.2 is a two-major-version jump. Companion Gateway API CRD version must be audited. `eg-gateway-helm-certgen` job name must be re-verified in v1.7.2 install.yaml.
-- **SYNC-05**: Still externally gated on Docker Hub publishing `kindest/node:v1.36.x`. Probe in Plan 53-00 before any source change.
+- **SYNC-05**: Probe ran in Plan 53-00 (2026-05-10) — Outcome B (count=0). DEFERRED. Re-run when kind publishes v1.36 image. Sub-plans 53-01 through 53-07 unblocked.
 
 ## Session Continuity
 
-Last session: 2026-05-10T12:00:00Z
-Stopped at: Phase 52 COMPLETE — all 4 plans done. Commits 52-04: 55b75533 (T1), 8eb9dfd1 (T2). allChecks=26. Phase 53 next.
+Last session: 2026-05-10T00:05:00Z
+Stopped at: Phase 53 Plan 53-00 COMPLETE — SYNC-05 Outcome B (INCONCLUSIVE). Commit: 69058a31. Plan 53-01 (local-path-provisioner bump) next.
 Resume file: None
