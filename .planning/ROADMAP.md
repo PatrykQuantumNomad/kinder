@@ -126,8 +126,8 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 **Plans**: 4 plans
 
 Plans:
-- [ ] 52-01-PLAN.md — IPAM feasibility probe + doctor `ipam-probe` check (Roadmap pre-flight gate; Task 1 IS the probe)
-- [ ] 52-02-PLAN.md — IP-pin module + create-time hook in docker provider (records IP, writes /kind/ipam-state.json, sets resume-strategy label)
+- [x] 52-01-PLAN.md — IPAM feasibility probe + doctor `ipam-probe` check (Roadmap pre-flight gate; Task 1 IS the probe)
+- [x] 52-02-PLAN.md — IP-pin module + create-time hook in docker provider (records IP, writes /kind/ipam-state.json, sets resume-strategy label)
 - [ ] 52-03-PLAN.md — Cert-regen fallback module + Resume() dispatch (pre-CP-start IP reapply for ip-pinned; post-start reactive wholesale regen for cert-regen/legacy)
 - [ ] 52-04-PLAN.md — `ha-resume-strategy` doctor check + count test bump to 26
 
@@ -275,7 +275,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
-| 52. HA Etcd Peer-TLS Fix | v2.4 | 0/4 | Planned | - |
+| 52. HA Etcd Peer-TLS Fix | v2.4 | 2/4 | In Progress|  |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 0/TBD | Not started | - |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.4
-milestone_name: "Hardening"
-status: in_progress
-stopped_at: "Plan 52-01 complete. IPAM probe + ipam-probe doctor check landed. allChecks count = 25. Proceed to plan 52-02 (ip-pin lifecycle path) or 52-03 (cert-regen fallback)."
-last_updated: "2026-05-10T00:00:00.000Z"
-last_activity: 2026-05-10
+milestone_name: Hardening
+status: executing
+stopped_at: "Plan 52-01 complete — IPAM probe + doctor check. Commits: bb31049e (Task 1), 143c4588 (Task 2). Next: plan 52-02 (ip-pin) or 52-03 (cert-regen)."
+last_updated: "2026-05-10T11:32:20.999Z"
+last_activity: 2026-05-10 — Plan 52-01 complete; ProbeIPAM + ipam-probe doctor check; allChecks 24→25
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 1
-  completed_plans: 1
-  percent: 5
+  total_plans: 4
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -72,6 +72,7 @@ Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 ### Pending Todos
 
 Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
+
 1. Etcd peer TLS / IP reassignment on pause/resume (→ LIFE-09, Phase 52)
 2. cluster-node-skew LB false-positive (→ DIAG-05, Phase 57)
 3. cluster-resume-readiness raw JSON dump (→ DIAG-06, Phase 57)
@@ -86,6 +87,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T00:00:00.000Z
+Last session: 2026-05-10T11:32:20.992Z
 Stopped at: Plan 52-01 complete — IPAM probe + doctor check. Commits: bb31049e (Task 1), 143c4588 (Task 2). Next: plan 52-02 (ip-pin) or 52-03 (cert-regen).
 Resume file: None

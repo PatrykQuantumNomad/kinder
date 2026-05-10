@@ -9,7 +9,7 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 
 ### Lifecycle
 
-- [ ] **LIFE-09**: HA pause/resume preserves etcd peer connectivity across container IP reassignment via IP pinning (`docker network connect --ip <stored-ip>`); cert regen is documented fallback if Docker IPAM is infeasible
+- [x] **LIFE-09**: HA pause/resume preserves etcd peer connectivity across container IP reassignment via IP pinning (`docker network connect --ip <stored-ip>`); cert regen is documented fallback if Docker IPAM is infeasible
 
 ### Addons
 
@@ -94,7 +94,7 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIFE-09 | Phase 52 | Pending |
+| LIFE-09 | Phase 52 | Complete |
 | ADDON-01 | Phase 53 | Pending |
 | ADDON-02 | Phase 53 | Pending |
 | ADDON-03 | Phase 53 | Pending |
