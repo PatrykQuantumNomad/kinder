@@ -104,7 +104,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 
 **Milestone Goal:** Close v2.3 tech debt, bring all addons to current stable, fix the HA pause/resume etcd-TLS architectural gap, and unblock distribution UX via macOS ad-hoc signing and a Windows PR-CI build step.
 
-- [ ] **Phase 52: HA Etcd Peer-TLS Fix** - IP-pin HA control-plane containers so Docker IPAM reassignment cannot break peer connectivity on resume
+- [x] **Phase 52: HA Etcd Peer-TLS Fix** - IP-pin HA control-plane containers so Docker IPAM reassignment cannot break peer connectivity on resume (completed 2026-05-10; live UAT carries forward to Phase 58)
 - [ ] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump
 - [ ] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner
 - [ ] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI
@@ -128,8 +128,8 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 Plans:
 - [x] 52-01-PLAN.md — IPAM feasibility probe + doctor `ipam-probe` check (Roadmap pre-flight gate; Task 1 IS the probe)
 - [x] 52-02-PLAN.md — IP-pin module + create-time hook in docker provider (records IP, writes /kind/ipam-state.json, sets resume-strategy label)
-- [ ] 52-03-PLAN.md — Cert-regen fallback module + Resume() dispatch (pre-CP-start IP reapply for ip-pinned; post-start reactive wholesale regen for cert-regen/legacy)
-- [ ] 52-04-PLAN.md — `ha-resume-strategy` doctor check + count test bump to 26
+- [x] 52-03-PLAN.md — Cert-regen fallback module + Resume() dispatch (pre-CP-start IP reapply for ip-pinned; post-start reactive wholesale regen for cert-regen/legacy)
+- [x] 52-04-PLAN.md — `ha-resume-strategy` doctor check + count test bump to 26
 
 **RISK NOTE**: This phase has the highest blast radius of any v2.4 item. Discuss with `/gsd:discuss-phase 52` before planning. Task 1 of the first plan MUST be the Docker IPAM feasibility probe — no code is written until the probe result is known. See PITFALLS research items 1-4.
 
@@ -275,7 +275,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 38-41. v2.1 phases | v2.1 | 10/10 | Complete | 2026-03-06 |
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
-| 52. HA Etcd Peer-TLS Fix | v2.4 | 2/4 | In Progress|  |
+| 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 0/TBD | Not started | - |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |

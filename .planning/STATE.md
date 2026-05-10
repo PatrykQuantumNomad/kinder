@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: executing
-stopped_at: "Phase 52 COMPLETE — Plan 52-04 done. Commits: 55b75533 (T1: haResumeStrategyCheck), 8eb9dfd1 (T2: register+count26). allChecks=26. Next: Phase 53."
-last_updated: "2026-05-10T12:00:00Z"
-last_activity: 2026-05-10 — Plan 52-04 complete; haResumeStrategyCheck + tests (10 total) + allChecks 25→26
+status: ready_to_plan
+stopped_at: "Phase 52 verified human_needed (must-haves 3+4 verified statically; 1+2 carry forward to Phase 58 live UAT). User approved as-is. Phase 53 next — discuss before planning (Headlamp token flow + EG v1.7.2 CRD audit)."
+last_updated: "2026-05-10T14:10:00Z"
+last_activity: 2026-05-10 — Phase 52 closed: ROADMAP/STATE updated; VERIFICATION.md status human_needed accepted; UAT-1/UAT-2 deferred to Phase 58; doctor test race deferred to Phase 56 (DEBT-04, planned)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 4
   completed_plans: 4
-  percent: 100
+  percent: 14
 ---
 
 # Project State
