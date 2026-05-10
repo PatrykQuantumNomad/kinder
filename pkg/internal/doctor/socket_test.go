@@ -160,11 +160,11 @@ func TestDockerSocketCheck_Run(t *testing.T) {
 func TestAllChecks_Registry(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 25 {
-		t.Fatalf("AllChecks() has %d entries, want 25 (baseline 24 + ipam-probe added in phase 52)", len(checks))
+	if len(checks) != 26 {
+		t.Fatalf("AllChecks() has %d entries, want 26 (baseline 24 + ipam-probe + ha-resume-strategy added in phase 52)", len(checks))
 	}
 
-	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(2), Cluster(3), Offline(1), Mounts(2)
+	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(2), Cluster(4), Offline(1), Mounts(2)
 	expected := []struct {
 		name     string
 		category string
@@ -187,10 +187,11 @@ func TestAllChecks_Registry(t *testing.T) {
 		{"wsl2-cgroup", "Platform"},
 		{"rootfs-device", "Platform"},
 		{"network-subnet", "Network"},
-		{"ipam-probe", "Network"}, // Phase 52: IPAM feasibility probe
+		{"ipam-probe", "Network"},          // Phase 52: IPAM feasibility probe
 		{"cluster-node-skew", "Cluster"},
 		{"local-path-cve", "Cluster"},
 		{"cluster-resume-readiness", "Cluster"},
+		{"ha-resume-strategy", "Cluster"},  // Phase 52: HA resume-strategy label inspection
 		{"offline-readiness", "Offline"},
 		{"host-mount-path", "Mounts"},
 		{"docker-desktop-file-sharing", "Mounts"},

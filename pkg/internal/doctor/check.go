@@ -78,10 +78,11 @@ var allChecks = []Check{
 	// Category: Network (Phase 41 + 52)
 	newSubnetClashCheck(),
 	newIPAMProbeCheck(), // Phase 52: IPAM feasibility probe (ip-pin vs cert-regen verdict)
-	// Category: Cluster (Phase 42 + 47)
+	// Category: Cluster (Phase 42 + 47 + 52)
 	newClusterNodeSkewCheck(),
 	newLocalPathCVECheck(),
 	newClusterResumeReadinessCheck(), // Phase 47: HA quorum probe before resume
+	newHAResumeStrategyCheck(),       // Phase 52: HA resume-strategy label inspection
 	// Category: Offline (Phase 43)
 	newOfflineReadinessCheck(),
 	// Category: Mounts (Phase 45)

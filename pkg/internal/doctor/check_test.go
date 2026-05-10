@@ -235,15 +235,37 @@ func TestAllChecks_IncludesIPAMProbe(t *testing.T) {
 	}
 }
 
-// TestAllChecks_CountIs25 pins the allChecks registry size to 25.
-// Live baseline before plan 52-01 is 24 registered checks; adding
-// newIPAMProbeCheck() brings the total to 25. Plan 52-04 will update
-// this to TestAllChecks_CountIs26 when it adds the resume-strategy check.
-func TestAllChecks_CountIs25(t *testing.T) {
+// TestAllChecks_CountIs26 pins the allChecks registry size to 26.
+// Live baseline: 24 (pre-phase-52) + 1 (ipam-probe, plan 52-01)
+// + 1 (ha-resume-strategy, plan 52-04) = 26.
+// Update this test when intentionally adding/removing a check.
+func TestAllChecks_CountIs26(t *testing.T) {
 	t.Parallel()
 	got := len(AllChecks())
-	if got != 25 {
-		t.Errorf("AllChecks() count = %d, want 25 (baseline 24 + ipam-probe); "+
+	if got != 26 {
+		t.Errorf("AllChecks() count = %d, want 26 (baseline 24 + ipam-probe + ha-resume-strategy); "+
 			"update this test when intentionally adding/removing a check", got)
+	}
+}
+
+// TestAllChecks_IncludesHAResumeStrategy verifies that AllChecks() contains
+// exactly one check named "ha-resume-strategy" in the "Cluster" category.
+func TestAllChecks_IncludesHAResumeStrategy(t *testing.T) {
+	t.Parallel()
+	checks := AllChecks()
+	var found int
+	for _, c := range checks {
+		if c.Name() == "ha-resume-strategy" {
+			found++
+			if c.Category() != "Cluster" {
+				t.Errorf("ha-resume-strategy check has wrong category %q, want %q", c.Category(), "Cluster")
+			}
+		}
+	}
+	if found == 0 {
+		t.Error("AllChecks() does not include any check named 'ha-resume-strategy'")
+	}
+	if found > 1 {
+		t.Errorf("AllChecks() includes %d checks named 'ha-resume-strategy', want exactly 1", found)
 	}
 }
