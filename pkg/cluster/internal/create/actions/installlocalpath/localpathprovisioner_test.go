@@ -138,14 +138,16 @@ func TestImagesPinsV0036(t *testing.T) {
 }
 
 // TestManifestPinsBusybox guards Pitfall LPP-01: upstream v0.0.36 manifest uses
-// unpinned busybox; kinder's vendored manifest MUST re-pin busybox:1.37.0 in
-// BOTH occurrences (helperPod template image + helper-image flag).
+// unpinned docker.io/library/busybox; kinder's vendored manifest MUST re-pin
+// busybox:1.37.0 in the helperPod template image so PVC operations work in
+// air-gapped clusters. (Note: v0.0.36 dropped the --helper-image deployment flag
+// that existed in v0.0.35, so only the ConfigMap helperPod template requires pinning.)
 func TestManifestPinsBusybox(t *testing.T) {
 	t.Parallel()
 	const tag = "busybox:1.37.0"
 	count := strings.Count(localPathManifest, tag)
-	if count < 2 {
-		t.Errorf("localPathManifest contains %q %d time(s); want >= 2 (helperPod image + helper-image flag)", tag, count)
+	if count < 1 {
+		t.Errorf("localPathManifest contains %q %d time(s); want >= 1 (helperPod image in ConfigMap helperPod.yaml)", tag, count)
 	}
 }
 

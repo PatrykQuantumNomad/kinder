@@ -5,7 +5,11 @@ description: Automatic dynamic PersistentVolume provisioning for kinder clusters
 
 Local Path Provisioner gives kinder clusters automatic dynamic PVC provisioning out of the box. Create a `PersistentVolumeClaim` and a matching `PersistentVolume` is provisioned on the node's local disk immediately — no manual operator action required.
 
-kinder installs **local-path-provisioner v0.0.35** as a default addon. `local-path` is set as the only default StorageClass, replacing the legacy `standard` StorageClass that shipped with upstream kind.
+kinder installs **local-path-provisioner v0.0.36** as a default addon. `local-path` is set as the only default StorageClass, replacing the legacy `standard` StorageClass that shipped with upstream kind.
+
+:::note[Security fix in v0.0.36]
+v0.0.36 closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4), a HelperPod Template Injection vulnerability. Upgrade from v0.0.35 is strongly recommended.
+:::
 
 ## What gets installed
 
@@ -179,7 +183,7 @@ Two images are required:
 
 | Image | Purpose |
 |---|---|
-| `docker.io/rancher/local-path-provisioner:v0.0.35` | The provisioner Deployment |
+| `docker.io/rancher/local-path-provisioner:v0.0.36` | The provisioner Deployment |
 | `docker.io/library/busybox:1.37.0` | The `helperPod` that creates/deletes PV directories |
 
 See the [Working Offline](/guides/working-offline/) guide for the full pre-load workflow.

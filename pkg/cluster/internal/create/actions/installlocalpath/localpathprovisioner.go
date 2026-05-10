@@ -32,7 +32,7 @@ var localPathManifest string
 
 // Images contains the container images used by local-path-provisioner.
 var Images = []string{
-	"docker.io/rancher/local-path-provisioner:v0.0.35",
+	"docker.io/rancher/local-path-provisioner:v0.0.36",
 	"docker.io/library/busybox:1.37.0",
 }
 

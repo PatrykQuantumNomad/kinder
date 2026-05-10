@@ -2,12 +2,14 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: local-path-storage
+
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -18,21 +20,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
-  - apiGroups: [""]
-    resources: ["persistentvolumes"]
-    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "update"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get", "list"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -51,6 +39,7 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -65,6 +54,7 @@ subjects:
   - kind: ServiceAccount
     name: local-path-provisioner-service-account
     namespace: local-path-storage
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -78,6 +68,7 @@ subjects:
   - kind: ServiceAccount
     name: local-path-provisioner-service-account
     namespace: local-path-storage
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -97,14 +88,12 @@ spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
         - name: local-path-provisioner
-          image: rancher/local-path-provisioner:v0.0.35
+          image: docker.io/rancher/local-path-provisioner:v0.0.36
           imagePullPolicy: IfNotPresent
           command:
             - local-path-provisioner
             - --debug
             - start
-            - --helper-image
-            - busybox:1.37.0
             - --config
             - /etc/config/config.json
           volumeMounts:
@@ -115,10 +104,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: CONFIG_MOUNT_PATH
+              value: /etc/config/
       volumes:
         - name: config-volume
           configMap:
             name: local-path-config
+
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -129,21 +121,22 @@ metadata:
 provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
+
 ---
-apiVersion: v1
 kind: ConfigMap
+apiVersion: v1
 metadata:
   name: local-path-config
   namespace: local-path-storage
 data:
   config.json: |-
     {
-      "nodePathMap": [
-        {
-          "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["/opt/local-path-provisioner"]
-        }
-      ]
+            "nodePathMap":[
+            {
+                    "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                    "paths":["/opt/local-path-provisioner"]
+            }
+            ]
     }
   setup: |-
     #!/bin/sh
@@ -165,6 +158,6 @@ data:
           operator: Exists
           effect: NoSchedule
       containers:
-        - name: helper-pod
-          image: busybox:1.37.0
-          imagePullPolicy: IfNotPresent
+      - name: helper-pod
+        image: busybox:1.37.0
+        imagePullPolicy: IfNotPresent
