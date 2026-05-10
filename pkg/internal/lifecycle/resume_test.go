@@ -861,6 +861,21 @@ func (h *haTestCmder) cmder() Cmder {
 		h.calls = append(h.calls, haTestCall{name: name, args: argsCopy})
 		h.mu.Unlock()
 
+		// Dispatch on the binary/command name first.
+		// node.Command("kubeadm", ...) → name="kubeadm"
+		// node.Command("mv", ...)      → name="mv"
+		// defaultCmder("docker", "start", ...) → name="docker"/"podman"/"nerdctl"
+		switch name {
+		case "kubeadm":
+			// node.Command("kubeadm", "certs", "renew", "etcd-peer") routes through
+			// defaultCmder as: defaultCmder("kubeadm", "certs", "renew", "etcd-peer").
+			return &fakeCmd{}
+
+		case "mv":
+			return &fakeCmd{}
+		}
+
+		// For container runtime commands (docker/podman/nerdctl), dispatch on args[0].
 		if len(args) == 0 {
 			return &fakeCmd{err: fmt.Errorf("no args")}
 		}
@@ -917,24 +932,6 @@ func (h *haTestCmder) cmder() Cmder {
 				return &fakeCmd{err: err}
 			}
 			return &fakeCmd{}
-
-		case "kubeadm":
-			// kubeadm certs renew etcd-peer — called via node.Command, so args
-			// start with "certs" (the binary is the node name, not "kubeadm").
-			// Actually node.Command("kubeadm", ...) routes through defaultCmder
-			// as: defaultCmder("kubeadm", "certs", "renew", "etcd-peer")
-			// But wait — fakeNode.Command calls defaultCmder(c, a...) where c="kubeadm".
-			// So name="kubeadm" and args=["certs", "renew", "etcd-peer"].
-			// The container name for error lookup must be known from context.
-			// Since fakeNode.Command doesn't pass node name to defaultCmder, we
-			// need to track which node is being processed via call ordering.
-			// Simpler approach: record the call and return a canned error based
-			// on the call index (or use a global error map keyed by call index).
-			// For now, use a call-count approach embedded in the test.
-			return &fakeCmd{}
-
-		case "mv":
-			return &fakeCmd{}
 		}
 
 		return &fakeCmd{err: fmt.Errorf("haTestCmder: unhandled subcommand %q (args=%v)", args[0], args)}
@@ -973,27 +970,29 @@ func (h *haTestCmder) allCalls() []haTestCall {
 	return out
 }
 
-// writeIPAMStateForHA writes per-CP ipam-state.json files to tmpDir, and
-// configures ippinCmder to succeed on docker cp (file is already in tmpDir).
-// Returns a configured ippinCmderFake.
-func writeIPAMStateForHA(t *testing.T, tmpDir string, cpNetworks, cpIPs map[string]string) *ippinCmderFake {
+// writeIPAMStateToOSTempDir writes per-CP ipam-state.json files to os.TempDir()
+// (the directory used by applyPinnedIPsBeforeCPStart and IPDriftDetected at
+// runtime), and returns an ippinCmderFake that succeeds on docker cp calls.
+// Files are removed at test cleanup.
+func writeIPAMStateToOSTempDir(t *testing.T, cpNetworks, cpIPs map[string]string) *ippinCmderFake {
 	t.Helper()
-	// Build responses in cp-sorted order. The exact order depends on ClassifyNodes.
-	// We pre-write all files and return a cmder that always succeeds on cp.
+	tmpDir := os.TempDir()
 	for container, ip := range cpIPs {
 		network := cpNetworks[container]
 		state := kindippin.IPAMState{Network: network, IPv4: ip}
 		data, err := json.Marshal(state)
 		if err != nil {
-			t.Fatalf("writeIPAMStateForHA: %v", err)
+			t.Fatalf("writeIPAMStateToOSTempDir: %v", err)
 		}
 		hostPath := filepath.Join(tmpDir, container+"-ipam.json")
 		if err := os.WriteFile(hostPath, data, 0o600); err != nil {
-			t.Fatalf("writeIPAMStateForHA: %v", err)
+			t.Fatalf("writeIPAMStateToOSTempDir: %v", err)
 		}
+		// Ensure cleanup even if test panics.
+		containerCopy := container
+		t.Cleanup(func() { _ = os.Remove(filepath.Join(os.TempDir(), containerCopy+"-ipam.json")) })
 	}
 	// Return a cmder that always succeeds on docker cp (file already written).
-	// Number of responses = number of cp nodes (one cp per ReadIPAMState call).
 	responses := make([]ippinCmdResp, len(cpIPs))
 	return &ippinCmderFake{responses: responses}
 }
@@ -1010,10 +1009,9 @@ func TestResume_HAWithIPPinned_ReconnectsBeforeCPStart(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
 	cpNetworks := map[string]string{"cp1": "kind-net-1", "cp2": "kind-net-2", "cp3": "kind-net-3"}
 	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
-	ippinFk := writeIPAMStateForHA(t, tmpDir, cpNetworks, cpIPs)
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNetworks, cpIPs)
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
@@ -1126,16 +1124,17 @@ func TestResume_HAIPPin_ReadIPAMStateFailureHalts(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
-	// cp1 has valid ipam-state.json; cp2 docker cp fails.
+	// cp1 has valid ipam-state.json in os.TempDir(); cp2 docker cp fails.
 	state := kindippin.IPAMState{Network: "kind", IPv4: "172.18.0.5"}
 	data, _ := json.Marshal(state)
-	_ = os.WriteFile(filepath.Join(tmpDir, "cp1-ipam.json"), data, 0o600)
+	cp1Path := filepath.Join(os.TempDir(), "cp1-ipam.json")
+	_ = os.WriteFile(cp1Path, data, 0o600)
+	t.Cleanup(func() { _ = os.Remove(cp1Path) })
 
 	// IppinCmder: call 0 = cp1 docker cp succeeds, call 1 = cp2 docker cp fails.
 	ippinFk := &ippinCmderFake{
 		responses: []ippinCmdResp{
-			{},                                             // cp1 docker cp: success
+			{},                                              // cp1 docker cp: success
 			{err: fmt.Errorf("No such file or directory")}, // cp2 docker cp: failure
 		},
 	}
@@ -1203,18 +1202,10 @@ func TestResume_HAWithCertRegen_NoIPDrift_SkipsRegen(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
 	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
-	// Write ipam-state.json files with same IPs.
-	for cpName, ip := range cpIPs {
-		state := kindippin.IPAMState{Network: "kind", IPv4: ip}
-		data, _ := json.Marshal(state)
-		_ = os.WriteFile(filepath.Join(tmpDir, cpName+"-ipam.json"), data, 0o600)
-	}
-	// IppinCmder: 3 docker cp calls succeed (one per CP for IPDriftDetected).
-	ippinFk := &ippinCmderFake{
-		responses: []ippinCmdResp{{}, {}, {}},
-	}
+	cpNets := map[string]string{"cp1": "kind", "cp2": "kind", "cp3": "kind"}
+	// Write ipam-state.json files to os.TempDir() (used by IPDriftDetected).
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNets, cpIPs)
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
@@ -1260,18 +1251,10 @@ func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
 	recordedIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
-	// Write ipam-state.json files with recorded IPs.
-	for cpName, ip := range recordedIPs {
-		state := kindippin.IPAMState{Network: "kind", IPv4: ip}
-		data, _ := json.Marshal(state)
-		_ = os.WriteFile(filepath.Join(tmpDir, cpName+"-ipam.json"), data, 0o600)
-	}
-	// IppinCmder: 3 docker cp calls succeed.
-	ippinFk := &ippinCmderFake{
-		responses: []ippinCmdResp{{}, {}, {}},
-	}
+	cpNets := map[string]string{"cp1": "kind", "cp2": "kind", "cp3": "kind"}
+	// Write ipam-state.json files with recorded IPs to os.TempDir().
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNets, recordedIPs)
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
@@ -1323,7 +1306,6 @@ func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
 	// IppinCmder: 3 docker cp calls fail with "No such file" (legacy = no ipam-state.json).
 	ippinFk := &ippinCmderFake{
 		responses: []ippinCmdResp{
@@ -1333,7 +1315,6 @@ func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 		},
 	}
 	withIPPinCmderFn(t, ippinFk.cmder)
-	_ = tmpDir
 
 	tc := &haTestCmder{
 		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
@@ -1439,15 +1420,9 @@ func TestResume_HAIPPin_DisconnectFailsHaltsResume(t *testing.T) {
 		return nil
 	})
 
-	tmpDir := t.TempDir()
-	for _, cp := range []string{"cp1", "cp2", "cp3"} {
-		state := kindippin.IPAMState{Network: "kind", IPv4: "172.18.0.5"}
-		data, _ := json.Marshal(state)
-		_ = os.WriteFile(filepath.Join(tmpDir, cp+"-ipam.json"), data, 0o600)
-	}
-	ippinFk := &ippinCmderFake{
-		responses: []ippinCmdResp{{}, {}, {}},
-	}
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	cpNets := map[string]string{"cp1": "kind", "cp2": "kind", "cp3": "kind"}
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNets, cpIPs)
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
@@ -1504,7 +1479,6 @@ func TestResume_HACertRegen_RegenFailsHaltsResume(t *testing.T) {
 		return nil
 	})
 
-	tmpDir := t.TempDir()
 	// Legacy: no ipam-state.json → always drift → runs regen.
 	ippinFk := &ippinCmderFake{
 		responses: []ippinCmdResp{
@@ -1514,7 +1488,6 @@ func TestResume_HACertRegen_RegenFailsHaltsResume(t *testing.T) {
 		},
 	}
 	withIPPinCmderFn(t, ippinFk.cmder)
-	_ = tmpDir
 
 	// The kubeadm renew on cp2 will fail. Since fakeNode.Command routes through
 	// defaultCmder (which is tc.cmder()), we need tc.cmder() to fail on the
@@ -1572,7 +1545,6 @@ func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
-	tmpDir := t.TempDir()
 	// Legacy (no ipam-state.json) → drift = true → regen runs.
 	ippinFk := &ippinCmderFake{
 		responses: []ippinCmdResp{
@@ -1582,7 +1554,6 @@ func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
 		},
 	}
 	withIPPinCmderFn(t, ippinFk.cmder)
-	_ = tmpDir
 
 	tc := &haTestCmder{
 		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),

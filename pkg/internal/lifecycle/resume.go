@@ -18,6 +18,8 @@ package lifecycle
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -105,6 +107,79 @@ func defaultResumeReadinessHook(_ string, _ string, logger log.Logger) {
 	}
 }
 
+// readResumeStrategy inspects the bootstrap CP's labels to read the
+// resume-strategy label value (ResumeStrategyLabel).
+// Returns the label value, or "" (empty string) for legacy clusters where the
+// label is absent (no-label = legacy = cert-regen-forever per CONTEXT.md).
+func readResumeStrategy(binaryName string, cpNodes []nodes.Node) string {
+	if len(cpNodes) == 0 {
+		return ""
+	}
+	bootstrap := cpNodes[0].String()
+	lines, err := exec.OutputLines(defaultCmder(binaryName,
+		"inspect",
+		"--format", `{{index .Config.Labels "`+ResumeStrategyLabel+`"}}`,
+		bootstrap,
+	))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(lines, ""))
+}
+
+// applyPinnedIPsBeforeCPStart reconnects each stopped CP container to its
+// kind network with the pinned IP recorded in /kind/ipam-state.json.
+//
+// The networkName for each CP is sourced from IPAMState.Network — the value
+// Plan 52-02 persisted at create time. This avoids the multi-network
+// ambiguity (W4): a CP container attached to multiple networks would make a
+// separate docker inspect call ambiguous, while the JSON file unambiguously
+// names the kind network the CP must be reconnected to.
+//
+// W2 Option A: if ReadIPAMState fails for ANY CP (file missing, unreadable,
+// or unparseable), Resume HALTS with a structured diagnostic error. There is
+// NO soft-skip and NO per-CP fallback to cert-regen mid-resume. The
+// cluster-level ip-pinned label is a contract that every CP carries a valid
+// /kind/ipam-state.json; its absence or corruption indicates cluster damage.
+func applyPinnedIPsBeforeCPStart(binaryName string, cpNodes []nodes.Node, logger log.Logger) error {
+	tmpDir := os.TempDir()
+	for _, cpNode := range cpNodes {
+		container := cpNode.String()
+
+		// W2 Option A: ReadIPAMState failure on ANY CP halts Resume.
+		state, err := ReadIPAMState(binaryName, container, tmpDir)
+		if err != nil {
+			return errors.Errorf(
+				"ip-pin resume halted: failed to read /kind/ipam-state.json on %s: %v. Cluster state is undefined — delete and recreate the cluster.",
+				container, err,
+			)
+		}
+
+		networkName := state.Network
+
+		// Disconnect from network (container must be in exited state at this point).
+		if discErr := defaultCmder(binaryName, "network", "disconnect", networkName, container).Run(); discErr != nil {
+			return errors.Wrapf(discErr,
+				"ip-pin resume halted: failed to disconnect %s from network %s. Cluster state is undefined — delete and recreate the cluster.",
+				container, networkName,
+			)
+		}
+
+		// Reconnect with the pinned IP (T-52-03-04: container is stopped → safe).
+		if connErr := defaultCmder(binaryName, "network", "connect",
+			"--ip", state.IPv4, networkName, container,
+		).Run(); connErr != nil {
+			return errors.Wrapf(connErr,
+				"ip-pin resume halted: failed to reconnect %s with --ip %s on network %s. Cluster state is undefined — delete and recreate the cluster.",
+				container, state.IPv4, networkName,
+			)
+		}
+
+		logger.V(1).Infof(" ✓ pinned IP %s for %s on network %s", state.IPv4, container, networkName)
+	}
+	return nil
+}
+
 // Resume starts every container in a paused kinder cluster in quorum-safe
 // order (external-load-balancer → control-plane → workers) and waits for all
 // nodes to report Ready via the Kubernetes API. Best-effort: if a single
@@ -169,11 +244,33 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 		return nil, errors.Errorf("cluster %q has no control-plane nodes", opts.ClusterName)
 	}
 
-	// Three-phase start order (reverse of pause):
+	// Phase 0: HA resume strategy detection. Single-CP/non-HA: skip entirely
+	// (zero overhead per D-locked decision D-zero-overhead-single-CP).
+	//
+	// strategy is one of:
+	//   StrategyIPPinned  ("ip-pinned")  — reconnect with --ip before CP start
+	//   StrategyCertRegen ("cert-regen") — reactive wholesale regen after start
+	//   ""                               — legacy (absent label); treat as cert-regen
+	//
+	// readResumeStrategy reads the bootstrap CP's label via docker inspect.
+	var strategy string
+	if len(cp) >= 2 {
+		strategy = readResumeStrategy(binaryName, cp)
+		// Defensive: nerdctl cannot pin IPs (RESEARCH PIT-4). If label says
+		// ip-pinned but runtime is nerdctl, downgrade to cert-regen.
+		if strategy == StrategyIPPinned && filepath.Base(binaryName) == "nerdctl" {
+			opts.Logger.Warnf("nerdctl detected; downgrading resume-strategy from ip-pinned to cert-regen")
+			strategy = StrategyCertRegen
+		}
+	}
+
+	// Five-phase start order (reverse of pause, with HA hooks inserted):
 	//   Phase 1: LB (if present)
+	//   Phase 1.5 (HA + ip-pinned): reconnect each CP with --ip before start
 	//   Phase 2: control-plane nodes
 	//   Phase 3 (HA only, post-CP / pre-workers): inline cluster-resume-readiness
 	//   Phase 4: workers
+	//   Phase 4.5 (HA + cert-regen/legacy): reactive wholesale cert-regen
 	//
 	// Each phase appends to results/startErrs via startNodes(). The inline
 	// readiness hook is called only when both:
@@ -221,6 +318,25 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 	if lb != nil {
 		startNodes([]nodes.Node{lb})
 	}
+
+	// Phase 1.5: ip-pinned pre-start reconnect.
+	// CPs are in `exited` state here — network mutation is legal (T-52-03-04).
+	// networkName is sourced per-CP from IPAMState.Network (W4: avoids
+	// multi-network ambiguity). ReadIPAMState failure on ANY CP halts Resume
+	// (W2 Option A: no soft-skip, no per-CP cert-regen fallback).
+	if strategy == StrategyIPPinned {
+		if err := applyPinnedIPsBeforeCPStart(binaryName, cp, opts.Logger); err != nil {
+			res := &ResumeResult{
+				Cluster:  opts.ClusterName,
+				State:    "resumed",
+				Nodes:    results,
+				Duration: time.Since(t0).Seconds(),
+			}
+			startErrs = append(startErrs, err)
+			return res, aggregateErrors(startErrs)
+		}
+	}
+
 	// Phase 2: control-plane
 	startNodes(cp)
 	// Phase 3: inline readiness hook (HA only, no prior failures, hook installed)
@@ -229,6 +345,40 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 	}
 	// Phase 4: workers
 	startNodes(workers)
+
+	// Phase 4.5: cert-regen / legacy path (REACTIVE — only on drift).
+	// Runs AFTER all containers are started (kubeadm needs API server reachable,
+	// per RESEARCH PIT-5). Wholesale across all CPs (RESEARCH PIT-6).
+	if (strategy == StrategyCertRegen || strategy == "") && len(cp) >= 2 && len(startErrs) == 0 {
+		// Reactive: check drift on each CP. If ANY CP drifted, regen all (wholesale).
+		anyDrift := false
+		for _, c := range cp {
+			drifted, _, _, driftErr := IPDriftDetected(binaryName, c.String(), os.TempDir())
+			if driftErr != nil {
+				// Log warning and treat as drift — better to regen unnecessarily
+				// than to leave stale certs in place.
+				opts.Logger.Warnf("IPDriftDetected error on %s (treating as drift): %v", c.String(), driftErr)
+				drifted = true
+			}
+			if drifted {
+				anyDrift = true
+				break
+			}
+		}
+		if anyDrift {
+			if regenErr := RegenerateEtcdPeerCertsWholesale(cp, opts.Logger); regenErr != nil {
+				res := &ResumeResult{
+					Cluster:  opts.ClusterName,
+					State:    "resumed",
+					Nodes:    results,
+					Duration: time.Since(t0).Seconds(),
+				}
+				return res, errors.Wrap(regenErr, "HA resume cert-regen failed: delete and recreate the cluster")
+			}
+		} else {
+			opts.Logger.V(1).Infof("etcd peer IPs unchanged; cert-regen skipped")
+		}
+	}
 
 	res := &ResumeResult{
 		Cluster: opts.ClusterName,
