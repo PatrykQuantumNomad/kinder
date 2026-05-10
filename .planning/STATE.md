@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: in_progress
-stopped_at: "Phase 53 Plan 53-00 COMPLETE (INCONCLUSIVE — Outcome B). SYNC-05 deferred. Sub-plans 53-01 through 53-07 proceed."
-last_updated: "2026-05-10T00:05:00Z"
-last_activity: 2026-05-10 — Plan 53-00 complete; SYNC-05 probe Outcome B (count=0); kindest/node:v1.36.x not yet on Docker Hub; DEFERRED
+status: executing
+stopped_at: "Phase 53 Plan 53-01 COMPLETE — local-path-provisioner bumped to v0.0.36 (CVE GHSA-7fxv-8wr2-mfc4). Commits: 810cc726 (RED), 3629c246 (GREEN). Plan 53-02 (headlamp bump) next."
+last_updated: "2026-05-10T13:48:57Z"
+last_activity: "2026-05-10 — Plan 53-01 complete; local-path-provisioner v0.0.35 → v0.0.36; GHSA-7fxv-8wr2-mfc4 closed"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 5
-  percent: 18
+  total_plans: 12
+  completed_plans: 7
+  percent: 54
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plan 53-00 done (SYNC-05 deferred); Plan 53-01 (local-path-provisioner bump) next.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00 and 53-01 done; Plan 53-02 (headlamp bump) next.
 
 ## Current Position
 
 Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-00 COMPLETE (INCONCLUSIVE — Outcome B; SYNC-05 deferred)
-Status: Phase 53 in progress — Plan 53-00 done; Plan 53-01 (local-path-provisioner) next
-Last activity: 2026-05-10 — Plan 53-00 complete; SYNC-05 probe Outcome B; kindest/node:v1.36.x not on Docker Hub
+Plan: 53-01 COMPLETE (local-path-provisioner v0.0.36 — GHSA-7fxv-8wr2-mfc4 closed)
+Status: Phase 53 in progress — Plans 53-00, 53-01 done; Plan 53-02 (headlamp bump) next
+Last activity: 2026-05-10 — Plan 53-01 complete; local-path-provisioner v0.0.35 → v0.0.36; GHSA-7fxv-8wr2-mfc4 closed
 
-Progress: [██░░░░░░░░] v2.4 ~18% (5/~28 plans done)
+Progress: [███░░░░░░░] v2.4 ~21% (6/~28 plans done)
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [██░░░░░░░░] v2.4 ~18% (5/~28 plans done)
 | 52-03 | 2 tasks | ~11 min |
 | 52-04 | 2 tasks | ~12 min |
 | 53-00 | 1 task (Outcome B) | ~3 min |
+| 53-01 | 2 tasks (RED+GREEN) | ~3 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -80,6 +81,7 @@ Progress: [██░░░░░░░░] v2.4 ~18% (5/~28 plans done)
 - 2026-05-09 (roadmap): Phase 56 (DEBT-04) must precede Phase 57 (doctor cosmetics) — same package, race-clean baseline required.
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
 - 2026-05-10 (53-00): SYNC-05 DEFERRED — Docker Hub probe count=0 for kindest/node:v1.36.x (same as SYNC-02 on 2026-05-07). SC6 remains DEFERRED. Sub-plans 53-01 through 53-07 proceed normally. Re-run once kind publishes v1.36 image.
+- 2026-05-10 (53-01): local-path-provisioner v0.0.36 dropped --helper-image deployment flag; busybox:1.37.0 pin now only required in helperPod.yaml ConfigMap template (one occurrence, not two). TestManifestPinsBusybox threshold updated to >= 1. Upstream RBAC simplification and CONFIG_MOUNT_PATH env var accepted.
 
 ### Pending Todos
 
@@ -99,6 +101,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T00:05:00Z
-Stopped at: Phase 53 Plan 53-00 COMPLETE — SYNC-05 Outcome B (INCONCLUSIVE). Commit: 69058a31. Plan 53-01 (local-path-provisioner bump) next.
+Last session: 2026-05-10T13:48:57Z
+Stopped at: Phase 53 Plan 53-01 COMPLETE — local-path-provisioner bumped to v0.0.36 (CVE GHSA-7fxv-8wr2-mfc4). Commits: 810cc726 (RED), 3629c246 (GREEN). Plan 53-02 (headlamp bump) next.
 Resume file: None

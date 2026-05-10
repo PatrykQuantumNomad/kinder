@@ -276,7 +276,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
 | 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
-| 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 0/TBD | Not started | - |
+| 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 2/8 | In Progress|  |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
