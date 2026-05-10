@@ -34,8 +34,10 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 )
 
-// planCreation creates a slice of funcs that will create the containers
-func planCreation(cfg *config.Cluster, networkName string) (createContainerFuncs []func() error, err error) {
+// planCreation creates a slice of funcs that will create the containers.
+// strategy is the resume-strategy label value to attach to control-plane
+// containers. An empty string means no strategy label is injected (single-CP).
+func planCreation(cfg *config.Cluster, networkName string, strategy string) (createContainerFuncs []func() error, err error) {
 	// these apply to all container creation
 	nodeNamer := common.MakeNodeNamer(cfg.Name)
 	names := make([]string, len(cfg.Nodes))
@@ -107,6 +109,17 @@ func planCreation(cfg *config.Cluster, networkName string) (createContainerFuncs
 				args, err := runArgsForNode(node, cfg.Networking.IPFamily, name, genericArgs)
 				if err != nil {
 					return err
+				}
+				// Inject resume-strategy label on CP containers at run time.
+				// Labels MUST be set at `podman run`; there is no container-update
+				// equivalent. Strategy is decided once by Provision probe and
+				// captured in the closure. Workers and LBs do NOT get this label.
+				if strategy != "" {
+					// Insert --label before the image (the last element in args).
+					// runArgsForNode always appends the sanitized image as the final arg.
+					labelArgs := []string{"--label",
+						fmt.Sprintf("%s=%s", constants.ResumeStrategyLabel, strategy)}
+					args = append(args[:len(args)-1], append(labelArgs, args[len(args)-1])...)
 				}
 				return createContainerWithWaitUntilSystemdReachesMultiUserSystem(name, args)
 			})

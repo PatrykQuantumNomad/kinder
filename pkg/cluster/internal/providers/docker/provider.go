@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sigs.k8s.io/kind/pkg/cluster/constants"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/errors"
 	"sigs.k8s.io/kind/pkg/exec"
@@ -36,8 +37,35 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 	"sigs.k8s.io/kind/pkg/internal/cli"
+	"sigs.k8s.io/kind/pkg/internal/doctor"
+	kindippin "sigs.k8s.io/kind/pkg/internal/ippin"
 	"sigs.k8s.io/kind/pkg/internal/sets"
 )
+
+// provisionProbeIPAMFn is the package-level probe injection point.
+// Tests swap this var to control the probe verdict without running real containers.
+// MUST NOT be used with t.Parallel() in tests (shared package-level state).
+var provisionProbeIPAMFn = doctor.ProbeIPAM
+
+// provisionRecordAndPinFn is the package-level RecordAndPin injection point.
+// Tests swap this var to assert the post-Provision hook is called correctly.
+// MUST NOT be used with t.Parallel() in tests.
+var provisionRecordAndPinFn = kindippin.RecordAndPinHAControlPlane
+
+// cpContainerNamesForConfig returns the container names for all control-plane
+// nodes in the config, in the same order they would be created by planCreation.
+// Used by Provision to build the cpContainers slice for RecordAndPinHAControlPlane.
+func cpContainerNamesForConfig(cfg *config.Cluster) []string {
+	nodeNamer := common.MakeNodeNamer(cfg.Name)
+	var names []string
+	for _, node := range cfg.Nodes {
+		name := nodeNamer(string(node.Role))
+		if node.Role == config.ControlPlaneRole {
+			names = append(names, name)
+		}
+	}
+	return names
+}
 
 // NewProvider returns a new provider based on executing `docker ...`
 func NewProvider(logger log.Logger) providers.Provider {
@@ -79,19 +107,51 @@ func (p *provider) Provision(status *cli.Status, cfg *config.Cluster) (err error
 		return errors.Wrap(err, "failed to ensure docker network")
 	}
 
+	// Probe once for HA clusters before planCreation so the strategy label
+	// is available for injection into each CP container's --label args.
+	// Single-CP clusters skip the probe entirely (D-locked: zero overhead).
+	cpNames := cpContainerNamesForConfig(cfg)
+	var strategy string
+	if len(cpNames) >= 2 {
+		verdict, reason, _ := provisionProbeIPAMFn("docker")
+		if verdict == doctor.VerdictIPPinned {
+			strategy = constants.StrategyIPPinned
+		} else {
+			strategy = constants.StrategyCertRegen
+			if reason != "" {
+				p.logger.Warnf("HA cluster will use cert-regen resume strategy: %s", reason)
+			}
+		}
+	}
+
 	// actually provision the cluster
 	icons := strings.Repeat("📦 ", len(cfg.Nodes))
 	status.Start(fmt.Sprintf("Preparing nodes %s", icons))
 	defer func() { status.End(err == nil) }()
 
-	// plan creating the containers
-	createContainerFuncs, err := planCreation(cfg, networkName)
+	// plan creating the containers (strategy is injected as a label on CP nodes)
+	createContainerFuncs, err := planCreation(cfg, networkName, strategy)
 	if err != nil {
 		return err
 	}
 
 	// actually create nodes
-	return errors.UntilErrorConcurrent(createContainerFuncs)
+	if err := errors.UntilErrorConcurrent(createContainerFuncs); err != nil {
+		return err
+	}
+
+	// Post-provision: pin IPs for HA clusters where the probe returned VerdictIPPinned.
+	// nerdctl is intentionally NOT wired here — its probe returns VerdictUnsupported
+	// (Plan 52-01) and nerdctl network connect does not exist (RESEARCH PIT-4).
+	// nerdctl containers are left without a resume-strategy label, which Plan 52-03
+	// treats as legacy → cert-regen.
+	if len(cpNames) >= 2 && strategy == constants.StrategyIPPinned {
+		if err := provisionRecordAndPinFn("docker", networkName, cpNames, p.logger); err != nil {
+			return errors.Wrap(err, "failed to pin HA control-plane IPs")
+		}
+	}
+
+	return nil
 }
 
 // ListClusters is part of the providers.Provider interface

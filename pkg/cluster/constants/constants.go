@@ -20,6 +20,24 @@ package constants
 // DefaultClusterName is the default cluster Context name
 const DefaultClusterName = "kind"
 
+/* resume-strategy label constants (Plan 52-02) */
+
+// ResumeStrategyLabel is the Docker/Podman label key written at container
+// creation time to record the HA resume strategy for each CP container.
+// Absence of the label on the bootstrap CP signals the legacy (pre-52-02) path
+// which uses cert-regen at resume time (CONTEXT.md "legacy detection mechanism").
+const ResumeStrategyLabel = "io.x-k8s.kinder.resume-strategy"
+
+// StrategyIPPinned is the resume-strategy label value indicating that each
+// CP container's IP has been pinned (IP survives stop/start).
+// /kind/ipam-state.json records the assigned IPv4 address for resume use.
+const StrategyIPPinned = "ip-pinned"
+
+// StrategyCertRegen is the resume-strategy label value indicating that the
+// cert-regen fallback will be used at resume time (IP pinning unavailable or
+// probe returned a non-pinned verdict for this runtime).
+const StrategyCertRegen = "cert-regen"
+
 /* node role value constants */
 const (
 	// ControlPlaneNodeRoleValue identifies a node that hosts a Kubernetes

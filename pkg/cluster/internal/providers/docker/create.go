@@ -33,8 +33,11 @@ import (
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 )
 
-// planCreation creates a slice of funcs that will create the containers
-func planCreation(cfg *config.Cluster, networkName string) (createContainerFuncs []func() error, err error) {
+// planCreation creates a slice of funcs that will create the containers.
+// strategy is the resume-strategy label value to attach to control-plane
+// containers (e.g. constants.StrategyIPPinned or constants.StrategyCertRegen).
+// An empty string means no strategy label is injected (single-CP path).
+func planCreation(cfg *config.Cluster, networkName string, strategy string) (createContainerFuncs []func() error, err error) {
 	// we need to know all the names for NO_PROXY
 	// compute the names first before any actual node details
 	nodeNamer := common.MakeNodeNamer(cfg.Name)
@@ -110,6 +113,18 @@ func planCreation(cfg *config.Cluster, networkName string) (createContainerFuncs
 				args, err := runArgsForNode(node, cfg.Networking.IPFamily, name, genericArgs)
 				if err != nil {
 					return err
+				}
+				// Inject resume-strategy label on CP containers at run time.
+				// Labels MUST be set at `docker run`; there is no container-update
+				// equivalent (Docker API limitation). Strategy is decided once by
+				// the Provision probe and captured in the closure.
+				// Workers and LBs do NOT receive this label (no resume cost).
+				if strategy != "" {
+					// Insert --label before the image (the last element in args).
+					// runArgsForNode always appends the image as the final arg.
+					labelArgs := []string{"--label",
+						fmt.Sprintf("%s=%s", constants.ResumeStrategyLabel, strategy)}
+					args = append(args[:len(args)-1], append(labelArgs, args[len(args)-1])...)
 				}
 				return createContainerWithWaitUntilSystemdReachesMultiUserSystem(name, args)
 			})
