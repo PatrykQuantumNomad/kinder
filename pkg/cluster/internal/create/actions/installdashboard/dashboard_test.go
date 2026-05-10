@@ -124,3 +124,15 @@ func TestExecute(t *testing.T) {
 		})
 	}
 }
+
+// TestImagesPinsHeadlampV042 pins the dashboard Images slice to v0.42.0 (ADDON-02).
+func TestImagesPinsHeadlampV042(t *testing.T) {
+	t.Parallel()
+	const want = "ghcr.io/headlamp-k8s/headlamp:v0.42.0"
+	for _, img := range Images {
+		if img == want {
+			return
+		}
+	}
+	t.Errorf("Images = %v; want to contain %q", Images, want)
+}
