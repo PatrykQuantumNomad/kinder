@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: "Hardening"
-status: ready_to_plan
-stopped_at: "Roadmap created. Phase 52 is next — discuss with /gsd:discuss-phase 52 before planning (Docker IPAM feasibility probe must be Plan 52-01 Task 1)."
-last_updated: "2026-05-09T00:00:00.000Z"
-last_activity: 2026-05-09
+status: in_progress
+stopped_at: "Plan 52-01 complete. IPAM probe + ipam-probe doctor check landed. allChecks count = 25. Proceed to plan 52-02 (ip-pin lifecycle path) or 52-03 (cert-regen fallback)."
+last_updated: "2026-05-10T00:00:00.000Z"
+last_activity: 2026-05-10
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 1
+  completed_plans: 1
+  percent: 5
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 52 of 58 (HA Etcd Peer-TLS Fix — not started)
-Plan: — (no active plan)
-Status: Ready to plan Phase 52
-Last activity: 2026-05-09 — v2.4 roadmap created; 14/14 requirements mapped; phases 52-58 defined
+Phase: 52 of 58 (HA Etcd Peer-TLS Fix — Plan 01 complete)
+Plan: 52-02 (next: ip-pin lifecycle path) or 52-03 (cert-regen fallback)
+Status: In progress — Phase 52, Plan 01 landed
+Last activity: 2026-05-10 — Plan 52-01 complete; ProbeIPAM + ipam-probe doctor check; allChecks 24→25
 
-Progress: [░░░░░░░░░░] v2.4 0% (7 phases, plan counts TBD)
+Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 
 ## Performance Metrics
 
@@ -45,7 +45,13 @@ Progress: [░░░░░░░░░░] v2.4 0% (7 phases, plan counts TBD)
 - v2.3: 25 plans, 5 phases, 5 days
 - v2.4 estimate: ~20 plans, 7 phases, 3-4 days
 
-**By Phase:** (v2.4 plans TBD — populated after first plan completes)
+**By Phase:**
+
+| Phase | Plans | Duration |
+|-------|-------|----------|
+| 52-01 | 2 tasks | ~8 min |
+
+*(v2.4 plan counts evolving — updated after each plan)*
 
 *Updated after each plan completion*
 
@@ -57,6 +63,8 @@ Progress: [░░░░░░░░░░] v2.4 0% (7 phases, plan counts TBD)
 - 2026-05-07 (51-04): SYNC-02 DEFERRED — Docker Hub probe count=0 for kindest/node:v1.36.x. Now tracked as SYNC-05 in v2.4. Re-run once kind publishes v1.36 image.
 - 2026-05-09 (roadmap): REQUIREMENTS.md locks cert-manager to v1.20.2 and Envoy Gateway to v1.7.2 — superseding research SUMMARY.md recommendations (v1.16.5 and hold-at-v1.3.1). EG v1.7.2 bump requires companion Gateway API CRD audit and dedicated HTTPRoute UAT in Phase 53-04.
 - 2026-05-09 (roadmap): Phase 52 approach — IP pinning preferred (k3d precedent); cert regen is fallback. Docker IPAM feasibility probe is Plan 52-01 Task 1; no code until probe result known.
+- 2026-05-10 (52-01): ProbeIPAM API locked — (Verdict, string, error) signature; Verdict constants VerdictIPPinned/VerdictCertRegen/VerdictUnsupported. Tests that use package-level ipamProbeCmder global must NOT be parallel (documented in ipamprobe_test.go).
+- 2026-05-10 (52-01): allChecks count: 24 (before 52-01) → 25 (after 52-01) → 26 expected after 52-04. TestAllChecks_CountIs25 must be renamed to CountIs26 in plan 52-04.
 - 2026-05-09 (roadmap): Phase 53 sub-plans are strictly sequential (not parallel wave) — ambiguous failures across simultaneous addon bumps are undiagnosable.
 - 2026-05-09 (roadmap): Phase 56 (DEBT-04) must precede Phase 57 (doctor cosmetics) — same package, race-clean baseline required.
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
@@ -78,6 +86,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-09T00:00:00.000Z
-Stopped at: v2.4 roadmap created. ROADMAP.md (phases 52-58), STATE.md, REQUIREMENTS.md traceability all written.
+Last session: 2026-05-10T00:00:00.000Z
+Stopped at: Plan 52-01 complete — IPAM probe + doctor check. Commits: bb31049e (Task 1), 143c4588 (Task 2). Next: plan 52-02 (ip-pin) or 52-03 (cert-regen).
 Resume file: None
