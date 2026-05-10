@@ -160,11 +160,11 @@ func TestDockerSocketCheck_Run(t *testing.T) {
 func TestAllChecks_Registry(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 24 {
-		t.Fatalf("AllChecks() has %d entries, want 24", len(checks))
+	if len(checks) != 25 {
+		t.Fatalf("AllChecks() has %d entries, want 25 (baseline 24 + ipam-probe added in phase 52)", len(checks))
 	}
 
-	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(1), Cluster(3), Offline(1), Mounts(2)
+	// Expected order: Runtime(1), Docker(4), Tools(2), GPU(3), Kernel(2), Security(2), Platform(3), Network(2), Cluster(3), Offline(1), Mounts(2)
 	expected := []struct {
 		name     string
 		category string
@@ -187,6 +187,7 @@ func TestAllChecks_Registry(t *testing.T) {
 		{"wsl2-cgroup", "Platform"},
 		{"rootfs-device", "Platform"},
 		{"network-subnet", "Network"},
+		{"ipam-probe", "Network"}, // Phase 52: IPAM feasibility probe
 		{"cluster-node-skew", "Cluster"},
 		{"local-path-cve", "Cluster"},
 		{"cluster-resume-readiness", "Cluster"},

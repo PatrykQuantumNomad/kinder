@@ -75,8 +75,9 @@ var allChecks = []Check{
 	newFirewalldCheck(),
 	newWSL2Check(),
 	newRootfsDeviceCheck(),
-	// Category: Network (Phase 41)
+	// Category: Network (Phase 41 + 52)
 	newSubnetClashCheck(),
+	newIPAMProbeCheck(), // Phase 52: IPAM feasibility probe (ip-pin vs cert-regen verdict)
 	// Category: Cluster (Phase 42 + 47)
 	newClusterNodeSkewCheck(),
 	newLocalPathCVECheck(),

@@ -287,8 +287,8 @@ func TestNvidiaDockerRuntimeCheck_Run(t *testing.T) {
 func TestAllChecks_RegisteredOrder(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
-	if len(checks) != 24 {
-		t.Fatalf("AllChecks() returned %d checks, want 24", len(checks))
+	if len(checks) != 25 {
+		t.Fatalf("AllChecks() returned %d checks, want 25 (baseline 24 + ipam-probe added in phase 52)", len(checks))
 	}
 	expected := []struct {
 		name     string
@@ -312,6 +312,7 @@ func TestAllChecks_RegisteredOrder(t *testing.T) {
 		{"wsl2-cgroup", "Platform"},
 		{"rootfs-device", "Platform"},
 		{"network-subnet", "Network"},
+		{"ipam-probe", "Network"}, // Phase 52: IPAM feasibility probe
 		{"cluster-node-skew", "Cluster"},
 		{"local-path-cve", "Cluster"},
 		{"cluster-resume-readiness", "Cluster"},

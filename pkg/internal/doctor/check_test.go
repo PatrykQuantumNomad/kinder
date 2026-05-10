@@ -212,3 +212,38 @@ func TestPlatformSkipMessage_MultiplePlatforms(t *testing.T) {
 		t.Errorf("platformSkipMessage([linux,darwin]) = %q, want %q", got, expected)
 	}
 }
+
+// TestAllChecks_IncludesIPAMProbe verifies that AllChecks() contains exactly one
+// check named "ipam-probe" in the "Network" category.
+func TestAllChecks_IncludesIPAMProbe(t *testing.T) {
+	t.Parallel()
+	checks := AllChecks()
+	var found int
+	for _, c := range checks {
+		if c.Name() == "ipam-probe" {
+			found++
+			if c.Category() != "Network" {
+				t.Errorf("ipam-probe check has wrong category %q, want %q", c.Category(), "Network")
+			}
+		}
+	}
+	if found == 0 {
+		t.Error("AllChecks() does not include any check named 'ipam-probe'")
+	}
+	if found > 1 {
+		t.Errorf("AllChecks() includes %d checks named 'ipam-probe', want exactly 1", found)
+	}
+}
+
+// TestAllChecks_CountIs25 pins the allChecks registry size to 25.
+// Live baseline before plan 52-01 is 24 registered checks; adding
+// newIPAMProbeCheck() brings the total to 25. Plan 52-04 will update
+// this to TestAllChecks_CountIs26 when it adds the resume-strategy check.
+func TestAllChecks_CountIs25(t *testing.T) {
+	t.Parallel()
+	got := len(AllChecks())
+	if got != 25 {
+		t.Errorf("AllChecks() count = %d, want 25 (baseline 24 + ipam-probe); "+
+			"update this test when intentionally adding/removing a check", got)
+	}
+}
