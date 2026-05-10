@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Plan 52-03 complete — certregen module + HA resume strategy wiring. Commits: e1f2cce8 (T1-RED), cab777cc (T1-GREEN), 6b881d7b (T2-RED), c38bbdf1 (T2-GREEN). Next: plan 52-04 (doctor check)."
-last_updated: "2026-05-10T11:45:00Z"
-last_activity: 2026-05-10 — Plan 52-03 complete; IPDriftDetected + RegenerateEtcdPeerCertsWholesale + resume.go Phase 1.5/4.5 hooks
+stopped_at: "Phase 52 COMPLETE — Plan 52-04 done. Commits: 55b75533 (T1: haResumeStrategyCheck), 8eb9dfd1 (T2: register+count26). allChecks=26. Next: Phase 53."
+last_updated: "2026-05-10T12:00:00Z"
+last_activity: 2026-05-10 — Plan 52-04 complete; haResumeStrategyCheck + tests (10 total) + allChecks 25→26
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 52 of 58 (HA Etcd Peer-TLS Fix — Plans 01-03 complete)
-Plan: 52-04 (next: doctor check for resume-strategy)
-Status: In progress — Phase 52, Plans 01-03 landed
-Last activity: 2026-05-10 — Plan 52-03 complete; IPDriftDetected + RegenerateEtcdPeerCertsWholesale + resume.go Phase 1.5/4.5 hooks
+Phase: 52 of 58 (HA Etcd Peer-TLS Fix — ALL 4 plans complete)
+Plan: 52-04 COMPLETE (Phase 52 fully closed)
+Status: Phase 52 complete — next is Phase 53 (Addon Upgrades)
+Last activity: 2026-05-10 — Plan 52-04 complete; ha-resume-strategy doctor check; allChecks 25→26
 
-Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
+Progress: [█░░░░░░░░░] v2.4 ~14% (4/~28 plans done)
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 | 52-01 | 2 tasks | ~8 min |
 | 52-02 | 2 tasks | ~35 min |
 | 52-03 | 2 tasks | ~11 min |
+| 52-04 | 2 tasks | ~12 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -71,6 +72,9 @@ Progress: [█░░░░░░░░░] v2.4 ~5% (1/~20 plans done)
 - 2026-05-10 (52-03): applyPinnedIPsBeforeCPStart uses os.TempDir() as tmpDir; tests pre-write ipam-state.json there with t.Cleanup removal.
 - 2026-05-10 (52-03): Strategy constants re-exported as typed const in lifecycle/ippin.go so resume.go calls StrategyIPPinned (not constants.StrategyIPPinned) — W2 naming requirement satisfied.
 - 2026-05-10 (52-03): haTestCmder dispatch: switch on name first (kubeadm, mv) then args[0] (start, inspect, network) — covers node.Command() routing through defaultCmder.
+- 2026-05-10 (52-04): listKinderCPContainersByCluster is a NEW helper returning map[clusterName][]containerName; realListCPNodes was NOT reused because it flattens all CPs across clusters into []string, making multi-cluster detection (Verdict 8) impossible.
+- 2026-05-10 (52-04): pkg/cluster/constants imported directly from pkg/internal/doctor — zero-import package, no cycle. No local constant mirrors needed.
+- 2026-05-10 (52-04): Mixed-label verdict is fail (genuine corruption); legacy absent-label and explicit cert-regen are both warn — per CONTEXT.md D-locks.
 - 2026-05-09 (roadmap): Phase 53 sub-plans are strictly sequential (not parallel wave) — ambiguous failures across simultaneous addon bumps are undiagnosable.
 - 2026-05-09 (roadmap): Phase 56 (DEBT-04) must precede Phase 57 (doctor cosmetics) — same package, race-clean baseline required.
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
@@ -93,6 +97,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T11:45:00Z
-Stopped at: Plan 52-03 complete — certregen module + HA resume strategy wiring. Commits: e1f2cce8, cab777cc, 6b881d7b, c38bbdf1. Next: plan 52-04.
+Last session: 2026-05-10T12:00:00Z
+Stopped at: Phase 52 COMPLETE — all 4 plans done. Commits 52-04: 55b75533 (T1), 8eb9dfd1 (T2). allChecks=26. Phase 53 next.
 Resume file: None
