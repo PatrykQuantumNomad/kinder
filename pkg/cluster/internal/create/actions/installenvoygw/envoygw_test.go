@@ -137,3 +137,47 @@ func TestExecute(t *testing.T) {
 		})
 	}
 }
+
+// TestImagesPinsEGV172 pins both EG images to the v1.7.2 set (ADDON-04).
+func TestImagesPinsEGV172(t *testing.T) {
+	t.Parallel()
+	wants := []string{
+		"envoyproxy/gateway:v1.7.2",
+		"docker.io/envoyproxy/ratelimit:05c08d03",
+	}
+	for _, want := range wants {
+		found := false
+		for _, img := range Images {
+			if img == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Images = %v; want to contain %q", Images, want)
+		}
+	}
+}
+
+// TestManifestContainsCertgenJobName guards Pitfall EG-02: the kinder action
+// waits on Job/eg-gateway-helm-certgen by name. If upstream renames it, the
+// wait times out. Researcher confirmed v1.7.2 still ships this job name
+// (line 52747 of upstream install.yaml); this test is the forward regression net.
+func TestManifestContainsCertgenJobName(t *testing.T) {
+	t.Parallel()
+	const want = "name: eg-gateway-helm-certgen"
+	if !strings.Contains(envoyGWManifest, want) {
+		t.Errorf("envoyGWManifest missing %q (kinder action waits on this Job by hardcoded name)", want)
+	}
+}
+
+// TestManifestPinsGatewayAPIBundleV141 pins the bundled Gateway API CRD
+// version to v1.4.1 (was v1.2.1 in EG v1.3.1). The bundle-version annotation
+// is set on the Gateway API CRDs themselves, distributed inside EG's install.yaml.
+func TestManifestPinsGatewayAPIBundleV141(t *testing.T) {
+	t.Parallel()
+	const want = "gateway.networking.k8s.io/bundle-version: v1.4.1"
+	if !strings.Contains(envoyGWManifest, want) {
+		t.Errorf("envoyGWManifest missing %q (Gateway API CRDs must bundle v1.4.1 in EG v1.7.2)", want)
+	}
+}
