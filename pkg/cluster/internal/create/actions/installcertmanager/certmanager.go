@@ -31,9 +31,9 @@ var certManagerManifest string
 
 // Images contains the container images used by cert-manager.
 var Images = []string{
-	"quay.io/jetstack/cert-manager-cainjector:v1.16.3",
-	"quay.io/jetstack/cert-manager-controller:v1.16.3",
-	"quay.io/jetstack/cert-manager-webhook:v1.16.3",
+	"quay.io/jetstack/cert-manager-cainjector:v1.20.2",
+	"quay.io/jetstack/cert-manager-controller:v1.20.2",
+	"quay.io/jetstack/cert-manager-webhook:v1.20.2",
 }
 
 const selfSignedClusterIssuerYAML = `apiVersion: cert-manager.io/v1
