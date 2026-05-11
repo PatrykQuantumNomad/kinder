@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Phase 53 Plan 53-01 COMPLETE — local-path-provisioner bumped to v0.0.36 (CVE GHSA-7fxv-8wr2-mfc4). Commits: 810cc726 (RED), 3629c246 (GREEN). Plan 53-02 (headlamp bump) next."
-last_updated: "2026-05-10T13:48:57Z"
-last_activity: "2026-05-10 — Plan 53-01 complete; local-path-provisioner v0.0.35 → v0.0.36; GHSA-7fxv-8wr2-mfc4 closed"
+stopped_at: "Phase 53 Plan 53-02 COMPLETE — Headlamp bumped to v0.42.0 (Path A: UAT-2 passed). Commits: f0e6b6d8 (RED), b71f269b (GREEN). Plan 53-03 (cert-manager bump) next."
+last_updated: "2026-05-10T14:03:00Z"
+last_activity: "2026-05-10 — Plan 53-02 complete; Headlamp v0.40.1 → v0.42.0; ADDON-02 delivered; token UAT-2 verified (Path A)"
 progress:
   total_phases: 7
   completed_phases: 1
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00 and 53-01 done; Plan 53-02 (headlamp bump) next.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00, 53-01, 53-02 done; Plan 53-03 (cert-manager bump) next.
 
 ## Current Position
 
 Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-01 COMPLETE (local-path-provisioner v0.0.36 — GHSA-7fxv-8wr2-mfc4 closed)
-Status: Phase 53 in progress — Plans 53-00, 53-01 done; Plan 53-02 (headlamp bump) next
-Last activity: 2026-05-10 — Plan 53-01 complete; local-path-provisioner v0.0.35 → v0.0.36; GHSA-7fxv-8wr2-mfc4 closed
+Plan: 53-02 COMPLETE (Headlamp v0.42.0 — UAT-2 Path A; ADDON-02 delivered)
+Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02 done; Plan 53-03 (cert-manager v1.20.2) next
+Last activity: 2026-05-10 — Plan 53-02 complete; Headlamp v0.40.1 → v0.42.0; ADDON-02 delivered; token UAT-2 verified (Path A)
 
-Progress: [███░░░░░░░] v2.4 ~21% (6/~28 plans done)
+Progress: [███░░░░░░░] v2.4 ~25% (7/~28 plans done)
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [███░░░░░░░] v2.4 ~21% (6/~28 plans done)
 | 52-04 | 2 tasks | ~12 min |
 | 53-00 | 1 task (Outcome B) | ~3 min |
 | 53-01 | 2 tasks (RED+GREEN) | ~3 min |
+| 53-02 | 3 tasks (RED+UAT+GREEN) | ~15 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -82,6 +83,7 @@ Progress: [███░░░░░░░] v2.4 ~21% (6/~28 plans done)
 - 2026-05-09 (roadmap): Phase 58 runs LAST — UAT must verify the final v2.4 binary; Pitfall 23 (stale binary) is the definitive gate.
 - 2026-05-10 (53-00): SYNC-05 DEFERRED — Docker Hub probe count=0 for kindest/node:v1.36.x (same as SYNC-02 on 2026-05-07). SC6 remains DEFERRED. Sub-plans 53-01 through 53-07 proceed normally. Re-run once kind publishes v1.36 image.
 - 2026-05-10 (53-01): local-path-provisioner v0.0.36 dropped --helper-image deployment flag; busybox:1.37.0 pin now only required in helperPod.yaml ConfigMap template (one occurrence, not two). TestManifestPinsBusybox threshold updated to >= 1. Upstream RBAC simplification and CONFIG_MOUNT_PATH env var accepted.
+- 2026-05-10 (53-02): Headlamp v0.42.0 Path A — live UAT-2 confirmed RBAC=yes, UI=200, SA+Secret resolve. Upstream OTEL telemetry env vars merged; kinder-dashboard SA, kinder-dashboard-token Secret, -in-cluster arg, targetPort:4466 all preserved. ADDON-02 delivered.
 
 ### Pending Todos
 
@@ -95,12 +97,12 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 ### Blockers/Concerns
 
 - **Phase 52 (LIFE-09)**: Docker IPAM static IP feasibility is MEDIUM confidence. Must be verified empirically as first task. Failure triggers cert-regen fallback (not IP pinning). Recommend `/gsd:discuss-phase 52` before planning.
-- **Phase 53-02 (ADDON-02)**: Headlamp v0.42.0 token flow verification must precede writing the bump plan. Released 2026-05-07 (2 days before research). Hold at v0.40.1 if token auth regressed.
+- **Phase 53-02 (ADDON-02)**: RESOLVED — Headlamp v0.42.0 bumped; UAT-2 Path A confirmed. ADDON-02 delivered.
 - **Phase 53-04 (ADDON-04)**: Envoy Gateway v1.7.2 is a two-major-version jump. Companion Gateway API CRD version must be audited. `eg-gateway-helm-certgen` job name must be re-verified in v1.7.2 install.yaml.
 - **SYNC-05**: Probe ran in Plan 53-00 (2026-05-10) — Outcome B (count=0). DEFERRED. Re-run when kind publishes v1.36 image. Sub-plans 53-01 through 53-07 unblocked.
 
 ## Session Continuity
 
-Last session: 2026-05-10T13:48:57Z
-Stopped at: Phase 53 Plan 53-01 COMPLETE — local-path-provisioner bumped to v0.0.36 (CVE GHSA-7fxv-8wr2-mfc4). Commits: 810cc726 (RED), 3629c246 (GREEN). Plan 53-02 (headlamp bump) next.
+Last session: 2026-05-10T14:03:00Z
+Stopped at: Phase 53 Plan 53-02 COMPLETE — Headlamp bumped to v0.42.0 (Path A: UAT-2 passed). Commits: f0e6b6d8 (RED), b71f269b (GREEN). Plan 53-03 (cert-manager v1.20.2) next.
 Resume file: None

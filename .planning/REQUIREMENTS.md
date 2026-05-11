@@ -14,7 +14,7 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 ### Addons
 
 - [x] **ADDON-01**: `local-path-provisioner` bumped to v0.0.36 (CVE GHSA-7fxv-8wr2-mfc4 HelperPod Template Injection security fix); embedded busybox pin retained
-- [ ] **ADDON-02**: `Headlamp` bumped to v0.42.0 with mandatory plan-time token-print flow verification against a real cluster (hold at v0.40.1 if broken)
+- [x] **ADDON-02**: `Headlamp` bumped to v0.42.0 with mandatory plan-time token-print flow verification against a real cluster (hold at v0.40.1 if broken)
 - [ ] **ADDON-03**: `cert-manager` bumped to v1.20.2 with self-signed ClusterIssuer smoke covering UID change (1000→65532); `--server-side` apply pattern preserved (988 KB still > 256 KB annotation limit)
 - [ ] **ADDON-04**: `Envoy Gateway` bumped to v1.7.2 (jumps two major lines) with dedicated HTTPRoute UAT covering readiness port, access log format, xDS snapshot behavior, and Gateway API CRD version lock
 - [ ] **ADDON-05**: All bumped image references propagated to `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` list; `TestAllAddonImages_CountMatchesExpected` updated; `RequiredAddonImages` returns the new image set
@@ -96,7 +96,7 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 |-------------|-------|--------|
 | LIFE-09 | Phase 52 | Complete |
 | ADDON-01 | Phase 53 | Complete |
-| ADDON-02 | Phase 53 | Pending |
+| ADDON-02 | Phase 53 | Complete |
 | ADDON-03 | Phase 53 | Pending |
 | ADDON-04 | Phase 53 | Pending |
 | ADDON-05 | Phase 53 | Pending |

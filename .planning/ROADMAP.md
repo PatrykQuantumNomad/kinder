@@ -148,7 +148,7 @@ Plans:
 **Sub-plan order (sequential — NOT parallel, see cross-phase concerns):**
 - 53-00: SYNC-05 probe — Docker Hub two-step probe (existence + manifest digest); conditional gate before any source change
 - 53-01: local-path-provisioner v0.0.35 → v0.0.36 (security fix; CVE threshold update in doctor)
-- 53-02: Headlamp v0.40.1 → v0.42.0 (token flow pre-check mandatory before writing bump)
+- 53-02: Headlamp v0.40.1 → v0.42.0 (token flow pre-check mandatory before writing bump) [COMPLETE — Path A, UAT-2 passed, ADDON-02 delivered]
 - 53-03: cert-manager v1.16.3 → v1.20.2 (--server-side flag verified; ClusterIssuer smoke with UID 65532)
 - 53-04: Envoy Gateway v1.3.1 → v1.7.2 (HTTPRoute UAT; job name verification; Gateway API CRD companion bump)
 - 53-05: MetalLB hold verification (confirm v0.15.3 still latest; no file changes if confirmed)
