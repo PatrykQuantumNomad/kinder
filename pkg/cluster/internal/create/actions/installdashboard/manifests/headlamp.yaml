@@ -1,4 +1,4 @@
-# Headlamp v0.40.1 - Kubernetes dashboard for kinder
+# Headlamp v0.42.0 - Kubernetes dashboard for kinder
 # Resources in dependency order: SA -> ClusterRoleBinding -> Secret -> Service -> Deployment
 ---
 apiVersion: v1
@@ -59,10 +59,21 @@ spec:
       serviceAccountName: kinder-dashboard
       containers:
         - name: headlamp
-          image: ghcr.io/headlamp-k8s/headlamp:v0.40.1
+          image: ghcr.io/headlamp-k8s/headlamp:v0.42.0
           args:
             - "-in-cluster"
             - "-plugins-dir=/headlamp/plugins"
+          env:
+            - name: HEADLAMP_CONFIG_TRACING_ENABLED
+              value: "true"
+            - name: HEADLAMP_CONFIG_METRICS_ENABLED
+              value: "true"
+            - name: HEADLAMP_CONFIG_OTLP_ENDPOINT
+              value: "otel-collector:4317"
+            - name: HEADLAMP_CONFIG_SERVICE_NAME
+              value: "headlamp"
+            - name: HEADLAMP_CONFIG_SERVICE_VERSION
+              value: "v0.42.0"
           ports:
             - containerPort: 4466
               name: http

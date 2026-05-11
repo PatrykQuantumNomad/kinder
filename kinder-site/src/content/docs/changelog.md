@@ -14,6 +14,7 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 ## v2.4 — Hardening (in progress)
 
 - **`local-path-provisioner` bumped to v0.0.36** — closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4) HelperPod Template Injection security advisory. Embedded `busybox:1.37.0` pin and `is-default-class` StorageClass annotation preserved. (ADDON-01)
+- **`Headlamp` bumped to v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
 
 ---
 

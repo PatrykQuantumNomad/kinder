@@ -5,7 +5,7 @@ description: Headlamp web dashboard addon for visual Kubernetes cluster manageme
 
 Headlamp is a lightweight, extensible Kubernetes web UI. kinder installs it automatically so you can browse resources, view logs, and inspect events without leaving the browser.
 
-kinder installs Headlamp **v0.40.1**.
+kinder installs Headlamp **v0.42.0**.
 
 ## What gets installed
 
