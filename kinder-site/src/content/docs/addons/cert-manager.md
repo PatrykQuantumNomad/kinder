@@ -5,7 +5,14 @@ description: cert-manager addon for automatic TLS certificate management in kind
 
 cert-manager gives kinder clusters automatic TLS certificate management. A self-signed `ClusterIssuer` is created during cluster setup so you can issue `Certificate` resources immediately — no manual cert-manager installation or issuer configuration required.
 
-kinder installs cert-manager **v1.16.3**.
+kinder installs cert-manager **v1.20.2**.
+
+:::caution[Breaking changes in v1.20]
+Two upstream-default changes affect users upgrading from earlier kinder versions:
+
+- **Container UID changed from 1000 to 65532.** cert-manager pods now run as the unprivileged UID `65532`. PVCs or mounted Secrets pre-populated with files owned by UID 1000 will be unreadable to the new pods. cert-manager itself does not use PVCs, but custom integrations that share volumes with cert-manager may break.
+- **`Certificate.spec.privateKey.rotationPolicy: Always` is now GA-mandatory.** v1.18.0 changed the default from `Never` to `Always`; v1.20 makes it required (cannot disable). Long-running Certificates without an explicit `rotationPolicy: Never` will see a NEW private key on next renewal. Set `rotationPolicy: Never` explicitly if you want the old behavior — kinder does not patch this for you.
+:::
 
 ## What gets installed
 

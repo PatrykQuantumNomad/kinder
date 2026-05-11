@@ -15,6 +15,7 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 - **`local-path-provisioner` bumped to v0.0.36** — closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4) HelperPod Template Injection security advisory. Embedded `busybox:1.37.0` pin and `is-default-class` StorageClass annotation preserved. (ADDON-01)
 - **`Headlamp` bumped to v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
+- **`cert-manager` bumped to v1.20.2** — `--server-side` apply preserved (manifest is 989 KB, exceeds 256 KB annotation limit). Live UAT verified self-signed ClusterIssuer issues a Certificate and pods run as UID `65532` (via distroless image `USER nonroot` directive; kubelet enforces `runAsNonRoot: true`). **Breaking changes:** container UID changed from `1000` to `65532` (Secret/PVC ownership impact); `Certificate.spec.privateKey.rotationPolicy: Always` is GA-mandatory (set `Never` explicitly to keep old behavior). See addon doc for details. (ADDON-03)
 
 ---
 
