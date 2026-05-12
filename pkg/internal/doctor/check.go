@@ -112,11 +112,27 @@ func AllChecks() []Check {
 	return allChecks
 }
 
-// RunAllChecks executes all checks with centralized platform filtering.
-// Returns ordered results preserving insertion order from the registry.
+// RunAllChecks executes all registered checks with centralized platform filtering.
+// Returns ordered results preserving insertion order from the package-level
+// allChecks registry.
+//
+// This is a thin delegate over runChecks(allChecks) so tests can exercise the
+// same execution logic against a locally-constructed []Check slice without
+// mutating package state (see DEBT-04 / Phase 56).
 func RunAllChecks() []Result {
+	return runChecks(allChecks)
+}
+
+// runChecks executes the provided checks with centralized platform filtering.
+// Returns ordered results preserving the input slice order.
+//
+// runChecks is a pure function over its argument — it reads only the passed
+// slice, calls only Check methods, and never touches package state. Tests pass
+// a local []Check{...} to substitute mocks without mutating the allChecks
+// global, eliminating the race that t.Parallel() callers would otherwise hit.
+func runChecks(checks []Check) []Result {
 	var results []Result
-	for _, check := range AllChecks() {
+	for _, check := range checks {
 		platforms := check.Platforms()
 		if len(platforms) > 0 && !containsString(platforms, runtime.GOOS) {
 			results = append(results, Result{
