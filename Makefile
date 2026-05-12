@@ -87,6 +87,9 @@ test:
 # race detector tests (requires CGO)
 test-race:
 	CGO_ENABLED=1 go test -race ./pkg/cluster/internal/create/... -count=1
+# race detector for doctor package — 100-run threshold per Phase 56 SC1 (DEBT-04)
+test-race-doctor:
+	CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100
 ################################################################################
 # ================================= Cleanup ====================================
 # standard cleanup target
@@ -124,4 +127,4 @@ goreleaser-check:
 goreleaser-snapshot:
 	goreleaser build --snapshot --clean
 #################################################################################
-.PHONY: all kind build install unit integration test test-race clean update generate gofmt verify lint shellcheck goreleaser-check goreleaser-snapshot
+.PHONY: all kind build install unit integration test test-race test-race-doctor clean update generate gofmt verify lint shellcheck goreleaser-check goreleaser-snapshot

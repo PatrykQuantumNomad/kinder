@@ -1,0 +1,45 @@
+# Source: .planning/phases/56-debt-04-doctor-test-race-fix/56-RESEARCH.md (Example 4)
+# Purpose: DEBT-04 / Phase 56 SC1 regression guard. Runs the 100-iteration race
+# verification on every PR that touches the doctor package, ensuring no future
+# change re-introduces the allChecks t.Parallel() race that this phase fixed.
+#
+# Runner pin: ubuntu-24.04 (matches build-check.yml from Phase 55; ubuntu-latest
+# is avoided per repo convention — see build-check.yml header comment for full
+# rationale).
+#
+# CGO_ENABLED=1 is REQUIRED: Go's race detector backend (TSAN) needs the C
+# runtime. CGO_ENABLED=0 silently disables -race detection. See 56-RESEARCH.md
+# Pitfall C.
+#
+# Path filter: only runs when files under pkg/internal/doctor/ change (or the
+# workflow itself) — keeps CI cost bounded.
+name: Race Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'pkg/internal/doctor/**'
+      - '.github/workflows/race-check.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  doctor-race:
+    name: doctor-race
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: .go-version
+
+      - name: Run doctor race tests (100 iterations — Phase 56 SC1)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./pkg/internal/doctor/... -count=100
