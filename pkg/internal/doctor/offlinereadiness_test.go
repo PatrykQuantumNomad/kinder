@@ -143,3 +143,77 @@ func TestOfflineReadinessIncludesEnvoyImage(t *testing.T) {
 		t.Errorf("allAddonImages does not contain Envoy LB image %q", envoyImage)
 	}
 }
+
+// TestAllAddonImages_TagsMatchActions verifies that allAddonImages mirrors the
+// delivered image tags from each addon's install action (the authoritative source of
+// truth).  This test is the phase-53 consolidation gate: it will fail (RED) until
+// offlinereadiness.go is updated to reflect all Phase 53 bumps, and will pass (GREEN)
+// once the bumped tags are in place.
+//
+// Expected delivered state after Phase 53:
+//   - local-path-provisioner: v0.0.36 (53-01)
+//   - Headlamp: v0.42.0 (53-02 Path A)
+//   - cert-manager: v1.20.2 (53-03 Path A)
+//   - Envoy Gateway: v1.7.2 + ratelimit:05c08d03 (53-04 Path A)
+//   - MetalLB: v0.15.3 (53-05 held)
+//   - Metrics Server: v0.8.1 (53-06 held)
+func TestAllAddonImages_TagsMatchActions(t *testing.T) {
+	t.Parallel()
+
+	// requiredImages is the canonical set of tags that allAddonImages MUST contain
+	// after Phase 53.  Each entry maps to the deliverable from the corresponding plan.
+	requiredImages := []struct {
+		image string
+		plan  string
+	}{
+		// 53-01: local-path-provisioner bumped v0.0.35 → v0.0.36
+		{"docker.io/rancher/local-path-provisioner:v0.0.36", "53-01"},
+		// 53-02: Headlamp bumped v0.40.1 → v0.42.0
+		{"ghcr.io/headlamp-k8s/headlamp:v0.42.0", "53-02"},
+		// 53-03: cert-manager bumped v1.16.3 → v1.20.2 (all three components)
+		{"quay.io/jetstack/cert-manager-cainjector:v1.20.2", "53-03"},
+		{"quay.io/jetstack/cert-manager-controller:v1.20.2", "53-03"},
+		{"quay.io/jetstack/cert-manager-webhook:v1.20.2", "53-03"},
+		// 53-04: Envoy Gateway bumped v1.3.1 → v1.7.2; ratelimit ae4cee11 → 05c08d03
+		{"envoyproxy/gateway:v1.7.2", "53-04"},
+		{"docker.io/envoyproxy/ratelimit:05c08d03", "53-04"},
+		// 53-05: MetalLB held at v0.15.3
+		{"quay.io/metallb/controller:v0.15.3", "53-05"},
+		{"quay.io/metallb/speaker:v0.15.3", "53-05"},
+		// 53-06: Metrics Server held at v0.8.1
+		{"registry.k8s.io/metrics-server/metrics-server:v0.8.1", "53-06"},
+	}
+
+	// Build a set of all images in allAddonImages for O(1) lookup.
+	present := make(map[string]bool, len(allAddonImages))
+	for _, entry := range allAddonImages {
+		present[entry.Image] = true
+	}
+
+	for _, want := range requiredImages {
+		if !present[want.image] {
+			t.Errorf("allAddonImages is missing %q (required by plan %s)", want.image, want.plan)
+		}
+	}
+
+	// Also verify that old tags for bumped addons are NOT present (stale entries would
+	// cause kinder doctor offline-readiness to check against outdated image refs).
+	staleImages := []struct {
+		image string
+		plan  string
+	}{
+		{"docker.io/rancher/local-path-provisioner:v0.0.35", "53-01 old tag"},
+		{"ghcr.io/headlamp-k8s/headlamp:v0.40.1", "53-02 old tag"},
+		{"quay.io/jetstack/cert-manager-cainjector:v1.16.3", "53-03 old tag"},
+		{"quay.io/jetstack/cert-manager-controller:v1.16.3", "53-03 old tag"},
+		{"quay.io/jetstack/cert-manager-webhook:v1.16.3", "53-03 old tag"},
+		{"envoyproxy/gateway:v1.3.1", "53-04 old tag"},
+		{"docker.io/envoyproxy/ratelimit:ae4cee11", "53-04 old tag"},
+	}
+
+	for _, stale := range staleImages {
+		if present[stale.image] {
+			t.Errorf("allAddonImages still contains stale tag %q (%s — should have been bumped in Phase 53)", stale.image, stale.plan)
+		}
+	}
+}
