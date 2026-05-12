@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Phase 53 Plan 53-03 COMPLETE — cert-manager bumped to v1.20.2 (Path A: UAT-3 passed). Commits: 0deabdaa (RED), d21179ff (GREEN), abe50338 (docs). Plan 53-04 (Envoy Gateway bump) next."
-last_updated: "2026-05-10T15:00:00Z"
-last_activity: "2026-05-10 — Plan 53-03 complete; cert-manager v1.16.3 → v1.20.2; ADDON-03 delivered; ClusterIssuer + Certificate UAT-3 verified (Path A)"
+stopped_at: "Phase 53 Plan 53-04 COMPLETE — Envoy Gateway bumped to v1.7.2 (Path A: UAT-4 passed, HTTP 200 in-cluster curl). Commits: c901ab89 (RED), 4c185804 (GREEN+docs). Plan 53-05 (MetalLB hold/verify) next."
+last_updated: "2026-05-10T16:30:00Z"
+last_activity: "2026-05-10 — Plan 53-04 complete; EG v1.3.1 → v1.7.2; Gateway API CRDs v1.2.1 → v1.4.1; ADDON-04 delivered; HTTPRoute UAT-4 verified (Path A)"
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
-  percent: 58
+  completed_plans: 9
+  percent: 64
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00, 53-01, 53-02, 53-03 done; Plan 53-04 (Envoy Gateway bump) next.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00, 53-01, 53-02, 53-03, 53-04 done; Plan 53-05 (MetalLB hold/verify) next.
 
 ## Current Position
 
 Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-03 COMPLETE (cert-manager v1.20.2 — UAT-3 Path A; ADDON-03 delivered)
-Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02, 53-03 done; Plan 53-04 (Envoy Gateway v1.7.2) next
-Last activity: 2026-05-10 — Plan 53-03 complete; cert-manager v1.16.3 → v1.20.2; ADDON-03 delivered; ClusterIssuer + Certificate UAT-3 verified (Path A)
+Plan: 53-04 COMPLETE (Envoy Gateway v1.7.2 — UAT-4 Path A; ADDON-04 delivered)
+Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02, 53-03, 53-04 done; Plan 53-05 (MetalLB hold/verify) next
+Last activity: 2026-05-10 — Plan 53-04 complete; EG v1.3.1 → v1.7.2; Gateway API CRDs v1.2.1 → v1.4.1; ADDON-04 delivered; HTTPRoute UAT-4 verified (Path A)
 
-Progress: [███░░░░░░░] v2.4 ~25% (7/~28 plans done)
+Progress: [████░░░░░░] v2.4 ~32% (9/~28 plans done)
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [███░░░░░░░] v2.4 ~25% (7/~28 plans done)
 | 53-01 | 2 tasks (RED+GREEN) | ~3 min |
 | 53-02 | 3 tasks (RED+UAT+GREEN) | ~15 min |
 | 53-03 | 3 tasks (RED+UAT+GREEN) | ~20 min |
+| 53-04 | 3 tasks (RED+UAT+GREEN) | ~45 min (two sessions; includes live UAT-4) |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -86,6 +87,7 @@ Progress: [███░░░░░░░] v2.4 ~25% (7/~28 plans done)
 - 2026-05-10 (53-01): local-path-provisioner v0.0.36 dropped --helper-image deployment flag; busybox:1.37.0 pin now only required in helperPod.yaml ConfigMap template (one occurrence, not two). TestManifestPinsBusybox threshold updated to >= 1. Upstream RBAC simplification and CONFIG_MOUNT_PATH env var accepted.
 - 2026-05-10 (53-02): Headlamp v0.42.0 Path A — live UAT-2 confirmed RBAC=yes, UI=200, SA+Secret resolve. Upstream OTEL telemetry env vars merged; kinder-dashboard SA, kinder-dashboard-token Secret, -in-cluster arg, targetPort:4466 all preserved. ADDON-02 delivered.
 - 2026-05-10 (53-03): cert-manager v1.20.2 Path A — live UAT-3 confirmed ClusterIssuer + Certificate smoke; pods Running. ADDON-03 delivered. DEVIATION: plan's runAsUser=65532 jsonpath assertion was overspecified — upstream v1.20.2 uses distroless image USER directive (UID 65532) rather than manifest securityContext.runAsUser; kubelet enforces runAsNonRoot: true; security intent (Pitfall CERT-03) is satisfied. Future addon-bump plans: do NOT assert specific UID via manifest jsonpath for distroless images; check runAsNonRoot: true instead. CONTEXT.md had typo "65632"; authoritative value is 65532 per REQUIREMENTS.md and upstream release notes.
+- 2026-05-10 (53-04): Envoy Gateway v1.7.2 Path A — live UAT-4 confirmed GatewayClass Accepted, Gateway Programmed, HTTPRoute Accepted, HTTP 200 in-cluster curl. ADDON-04 delivered. Gateway API CRDs upgraded from v1.2.1 to v1.4.1 in-band. eg-gateway-helm-certgen Job name unchanged (Pitfall EG-02 cleared). UAT-SCRIPT NOTE 1: hashicorp/http-echo image has CLI-arg shape issues causing CrashLoopBackOff — future EG UAT scripts should use nginx as backend. UAT-SCRIPT NOTE 2: macOS hosts cannot curl docker-bridge IPs (curl HTTP 000); EG UAT scripts should use kubectl run uat-curl (in-cluster curl) or kubectl port-forward on macOS (matching Headlamp UAT-2 pattern).
 
 ### Pending Todos
 
@@ -101,11 +103,11 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 - **Phase 52 (LIFE-09)**: Docker IPAM static IP feasibility is MEDIUM confidence. Must be verified empirically as first task. Failure triggers cert-regen fallback (not IP pinning). Recommend `/gsd:discuss-phase 52` before planning.
 - **Phase 53-02 (ADDON-02)**: RESOLVED — Headlamp v0.42.0 bumped; UAT-2 Path A confirmed. ADDON-02 delivered.
 - **Phase 53-03 (ADDON-03)**: RESOLVED — cert-manager v1.20.2 bumped; UAT-3 Path A confirmed. ADDON-03 delivered.
-- **Phase 53-04 (ADDON-04)**: Envoy Gateway v1.7.2 is a two-major-version jump. Companion Gateway API CRD version must be audited. `eg-gateway-helm-certgen` job name must be re-verified in v1.7.2 install.yaml.
+- **Phase 53-04 (ADDON-04)**: RESOLVED — Envoy Gateway v1.7.2 bumped; UAT-4 Path A confirmed. ADDON-04 delivered. Gateway API CRDs at v1.4.1; eg-gateway-helm-certgen Job name verified unchanged.
 - **SYNC-05**: Probe ran in Plan 53-00 (2026-05-10) — Outcome B (count=0). DEFERRED. Re-run when kind publishes v1.36 image. Sub-plans 53-01 through 53-07 unblocked.
 
 ## Session Continuity
 
-Last session: 2026-05-10T15:00:00Z
-Stopped at: Phase 53 Plan 53-03 COMPLETE — cert-manager bumped to v1.20.2 (Path A: UAT-3 passed). Commits: 0deabdaa (RED), d21179ff (GREEN), abe50338 (docs). Plan 53-04 (Envoy Gateway v1.7.2) next.
+Last session: 2026-05-10T16:30:00Z
+Stopped at: Phase 53 Plan 53-04 COMPLETE — Envoy Gateway bumped to v1.7.2 (Path A: UAT-4 passed, HTTP 200 in-cluster curl). Commits: c901ab89 (RED), 4c185804 (GREEN+docs). Plan 53-05 (MetalLB hold/verify) next.
 Resume file: None
