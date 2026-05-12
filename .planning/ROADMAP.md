@@ -105,7 +105,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 **Milestone Goal:** Close v2.3 tech debt, bring all addons to current stable, fix the HA pause/resume etcd-TLS architectural gap, and unblock distribution UX via macOS ad-hoc signing and a Windows PR-CI build step.
 
 - [x] **Phase 52: HA Etcd Peer-TLS Fix** - IP-pin HA control-plane containers so Docker IPAM reassignment cannot break peer connectivity on resume (completed 2026-05-10; live UAT carries forward to Phase 58)
-- [ ] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump
+- [x] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump (completed 2026-05-12; 4 bumps + 2 holds + 1 INCONCLUSIVE SYNC-05 probe + offlinereadiness consolidation + SC wording gap closure)
 - [ ] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner
 - [ ] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI
 - [ ] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper
@@ -277,7 +277,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 42-46. v2.2 phases | v2.2 | 14/14 | Complete | 2026-04-10 |
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
 | 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
-| 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 2/8 | In Progress|  |
+| 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 9/9 | Complete | 2026-05-12 |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
