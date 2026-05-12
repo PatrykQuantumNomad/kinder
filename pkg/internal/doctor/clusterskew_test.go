@@ -18,6 +18,7 @@ package doctor
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -284,5 +285,74 @@ func TestImageTagVersion(t *testing.T) {
 				t.Errorf("imageTagVersion(%q) = %q, want %q", tt.image, got, tt.wantVer)
 			}
 		})
+	}
+}
+
+// TestClusterNodeSkew_ExternalLoadBalancer_NotWarned is the SC1 runtime gate
+// for Phase 57 DIAG-05. It asserts that an external-load-balancer entry with
+// no live version (because realListNodes skipped the cat /kind/version exec
+// for the LB role) does NOT trigger the version-readable warning at Run()
+// lines 171-178, and is correctly skipped by all subsequent checks (CP
+// consistency, worker skew, config drift).
+func TestClusterNodeSkew_ExternalLoadBalancer_NotWarned(t *testing.T) {
+	t.Parallel()
+	// 3-CP HA cluster + 1 worker + 1 external-load-balancer container.
+	// Post-fix invariant: realListNodes returns an LB entry with VersionErr == nil
+	// (the cat /kind/version exec is skipped for LB role), so Run() must NOT
+	// emit a version-readable warning for the LB container name. SC1 of Phase 57.
+	entries := makeNodeEntries([]nodeEntry{
+		{Name: "kind-control-plane", Role: "control-plane", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+		{Name: "kind-control-plane2", Role: "control-plane", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+		{Name: "kind-control-plane3", Role: "control-plane", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+		{Name: "kind-worker", Role: "worker", Version: "v1.31.2", Image: "kindest/node:v1.31.2"},
+		{Name: "kind-external-load-balancer", Role: "external-load-balancer", Version: "", Image: "kindest/haproxy:v20230510-486859a6"},
+	})
+	check := newTestClusterNodeSkewCheck(entries, nil)
+	results := check.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(results), results)
+	}
+	r := results[0]
+	if r.Status != "ok" {
+		t.Errorf("Status = %q, want %q (Message=%q Reason=%q)", r.Status, "ok", r.Message, r.Reason)
+	}
+	if strings.Contains(r.Message, "kind-external-load-balancer") {
+		t.Errorf("Message must not contain the LB container name; got %q", r.Message)
+	}
+	if r.Reason != "" {
+		t.Errorf("Reason should be empty for an all-healthy HA cluster + LB; got %q", r.Reason)
+	}
+}
+
+// TestClusterNodeSkew_realListNodes_LBRoleGuard_PresentInSource is a
+// source-level invariant proving the DIAG-05 inline guard landed in
+// clusterskew.go. It guards against future regressions where the inline guard
+// is removed without also removing this test, and provides a deterministic
+// RED gate for Task 1 (pre-implementation) that the runtime test alone cannot.
+func TestClusterNodeSkew_realListNodes_LBRoleGuard_PresentInSource(t *testing.T) {
+	t.Parallel()
+	// Source-level invariant: realListNodes MUST reference
+	// constants.ExternalLoadBalancerNodeRoleValue. This guards against future
+	// regressions where the inline guard is removed without removing this test.
+	// The token check uses an "uncommented" filter so prose in header comments
+	// (e.g. doc comments mentioning the constant) cannot satisfy the gate.
+	data, err := os.ReadFile("clusterskew.go")
+	if err != nil {
+		t.Fatalf("read clusterskew.go: %v", err)
+	}
+	// Strip // line comments cheaply by line-prefix; the inline guard is code,
+	// not a comment, so an uncommented occurrence must exist.
+	nonComment := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "//") {
+			continue
+		}
+		if strings.Contains(trim, "constants.ExternalLoadBalancerNodeRoleValue") {
+			nonComment++
+		}
+	}
+	if nonComment == 0 {
+		t.Errorf("clusterskew.go does not reference constants.ExternalLoadBalancerNodeRoleValue in non-comment source; DIAG-05 inline guard missing")
 	}
 }

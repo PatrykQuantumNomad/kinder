@@ -502,6 +502,134 @@ func TestClusterResumeReadiness_RealListCPNodesIncludesA(t *testing.T) {
 	}
 }
 
+// etcd 3.4.x JSON shape: lowercase tags, no "error" field on healthy entries.
+// The existing healthyEtcdJSON(n) helper produces this shape — kept as a
+// named constant for SC3 fixture-matrix readability.
+const etcdHealth34_AllHealthy_3of3 = `[` +
+	`{"endpoint":"https://127.0.0.1:2379","health":true,"took":"1.2ms"},` +
+	`{"endpoint":"https://10.0.0.2:2379","health":true,"took":"1.5ms"},` +
+	`{"endpoint":"https://10.0.0.3:2379","health":true,"took":"1.1ms"}` +
+	`]`
+
+// etcd 3.5.x JSON shape: lowercase tags, "error" field present on unhealthy
+// entries (omitempty when healthy). This is the canonical SC2 scenario:
+// etcd 3.5+ exits non-zero from `endpoint health --cluster` when any member
+// is unhealthy, while still writing the JSON array to stdout for ALL members.
+const etcdHealth35_OneOfThree = `[` +
+	`{"endpoint":"https://127.0.0.1:2379","health":true,"took":"1.2ms"},` +
+	`{"endpoint":"https://10.0.0.2:2379","health":false,"took":"5s","error":"context deadline exceeded"},` +
+	`{"endpoint":"https://10.0.0.3:2379","health":false,"took":"5s","error":"connection refused"}` +
+	`]`
+
+// etcd 3.5.x JSON shape: all three members unhealthy with "error" field.
+const etcdHealth35_AllUnhealthy = `[` +
+	`{"endpoint":"https://127.0.0.1:2379","health":false,"took":"5s","error":"context deadline exceeded"},` +
+	`{"endpoint":"https://10.0.0.2:2379","health":false,"took":"5s","error":"context deadline exceeded"},` +
+	`{"endpoint":"https://10.0.0.3:2379","health":false,"took":"5s","error":"context deadline exceeded"}` +
+	`]`
+
+func TestClusterResumeReadiness_Etcd34_AllHealthy_Parsed(t *testing.T) {
+	t.Parallel()
+	const leader = "12345"
+	const etcdContainerID = "etcd-container-id-abc"
+	const healthKey = "cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json"
+	const statusKey = "cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json"
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		execResults: map[string]fakeExecLines{
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			healthKey:                      {lines: []string{etcdHealth34_AllHealthy_3of3}, err: nil},
+			statusKey:                      {lines: []string{statusEtcdJSON(leader, 3)}, err: nil},
+		},
+		snapshotOK: false,
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(results), results)
+	}
+	r := results[0]
+	if r.Status != "ok" {
+		t.Errorf("Status = %q, want %q (Message=%q Reason=%q)", r.Status, "ok", r.Message, r.Reason)
+	}
+	if !strings.Contains(r.Message, "3/3") {
+		t.Errorf("Message = %q, want to contain %q (etcd 3.4 shape must parse cleanly — Pitfall 22 / SC3)", r.Message, "3/3")
+	}
+}
+
+func TestClusterResumeReadiness_Etcd35_OneOfThree_NonZeroExit(t *testing.T) {
+	t.Parallel()
+	// SC2 canonical scenario: etcd 3.5+ etcdctl --cluster exits non-zero when
+	// any member is unhealthy, but still writes the JSON array to stdout for
+	// ALL members. Pre-fix bug: the error branch dumps "etcdctl endpoint
+	// health returned error: %v" — losing the JSON and any actionable text.
+	// Post-fix: parse healthLines first; emit "1/3 etcd members healthy" +
+	// "quorum at risk" via the existing healthy/unhealthy branch.
+	const etcdContainerID = "etcd-container-id-abc"
+	const healthKey = "cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json"
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		execResults: map[string]fakeExecLines{
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			healthKey:                      {lines: []string{etcdHealth35_OneOfThree}, err: errors.New("exit status 1")},
+		},
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(results), results)
+	}
+	r := results[0]
+	if r.Status != "warn" {
+		t.Errorf("Status = %q, want %q (Message=%q Reason=%q)", r.Status, "warn", r.Message, r.Reason)
+	}
+	if r.Status == "fail" {
+		t.Error("Status must never be fail per CONTEXT.md warn-and-continue invariant")
+	}
+	if !strings.Contains(r.Message, "1/3") {
+		t.Errorf("Message = %q, want to contain %q (SC2 wording)", r.Message, "1/3")
+	}
+	if !strings.Contains(r.Reason, "quorum at risk") {
+		t.Errorf("Reason = %q, want to contain %q (SC2 wording)", r.Reason, "quorum at risk")
+	}
+	// Anti-assertion: the pre-fix raw error dump MUST be gone.
+	if strings.Contains(r.Reason, "etcdctl endpoint health returned error") {
+		t.Errorf("Reason = %q must not contain the raw etcdctl error dump (DIAG-06 / SC2)", r.Reason)
+	}
+}
+
+func TestClusterResumeReadiness_Etcd35_AllUnhealthy_NonZeroExit(t *testing.T) {
+	t.Parallel()
+	// SC3 Pitfall 22 coverage: etcd 3.5 all-unhealthy JSON shape with exec
+	// err != nil. The result must be a warn (never fail) and surface the
+	// actionable "no healthy etcd members" / "quorum lost" wording from the
+	// existing healthy==0 branch (resumereadiness.go:196-205).
+	const etcdContainerID = "etcd-container-id-abc"
+	const healthKey = "cp1|crictl exec " + etcdContainerID + " etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --cluster --write-out=json"
+	c := newFakeResumeReadinessCheck(fakeReadinessOpts{
+		cpNodeNames: []string{"cp1", "cp2", "cp3"},
+		execResults: map[string]fakeExecLines{
+			"cp1|crictl ps --name etcd -q": {lines: []string{etcdContainerID}},
+			healthKey:                      {lines: []string{etcdHealth35_AllUnhealthy}, err: errors.New("exit status 1")},
+		},
+	})
+	results := c.Run()
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(results), results)
+	}
+	r := results[0]
+	if r.Status != "warn" {
+		t.Errorf("Status = %q, want %q", r.Status, "warn")
+	}
+	if !strings.Contains(r.Message, "0/3") {
+		t.Errorf("Message = %q, want to contain %q", r.Message, "0/3")
+	}
+	if !strings.Contains(r.Reason, "no healthy etcd members") && !strings.Contains(r.Reason, "quorum lost") {
+		t.Errorf("Reason = %q, want to contain %q or %q", r.Reason, "no healthy etcd members", "quorum lost")
+	}
+	if strings.Contains(r.Reason, "etcdctl endpoint health returned error") {
+		t.Errorf("Reason = %q must not contain the raw etcdctl error dump (DIAG-06)", r.Reason)
+	}
+}
+
 func TestRegistry_ContainsResumeReadiness(t *testing.T) {
 	t.Parallel()
 	checks := AllChecks()
