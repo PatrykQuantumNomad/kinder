@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Phase 53 Plan 53-06 COMPLETE — Metrics Server hold at v0.8.1 reaffirmed (upstream probe 2026-05-10 confirms v0.8.1 still latest; no v0.9.x). Commit: 160d44d7. Plan 53-07 (offlinereadiness consolidation) next."
-last_updated: "2026-05-10T17:00:00Z"
-last_activity: "2026-05-10 — Plan 53-06 complete; Metrics Server hold reaffirmed at v0.8.1; ADDON-05 hold-verify delivered"
+stopped_at: "Phase 53 ALL 8 PLANS COMPLETE — Plan 53-07 (offlinereadiness consolidation) closed with pass-with-deviation. SC1 first clause satisfied; SC1 second clause wording unsatisfiable as written (see 53-07-SUMMARY.md DEVIATION). Phase 53 ready for /gsd-verify-work."
+last_updated: "2026-05-10T18:00:00Z"
+last_activity: "2026-05-10 — Plan 53-07 complete; allAddonImages updated (14 entries, ADDON-05 closed); v2.4 changelog + release-notes-v2.4-draft.md shipped; Phase 53 all 8 plans done"
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 12
-  completed_plans: 11
-  percent: 72
+  completed_plans: 12
+  percent: 79
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00 through 53-06 done; Plan 53-07 (offlinereadiness consolidation) next.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — ALL 8 PLANS COMPLETE. Phase ready for /gsd-verify-work.
 
 ## Current Position
 
 Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-06 COMPLETE (Metrics Server hold reaffirmed at v0.8.1 — upstream probe 2026-05-10; ADDON-05 delivered)
-Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02, 53-03, 53-04, 53-05, 53-06 done; Plan 53-07 (offlinereadiness consolidation) next
-Last activity: 2026-05-10 — Plan 53-06 complete; Metrics Server hold reaffirmed at v0.8.1; ADDON-05 hold-verify delivered
+Plan: 53-07 COMPLETE (offlinereadiness consolidation; ADDON-05 closed; all 14 allAddonImages tags mirrored; v2.4 changelog + release-notes-v2.4-draft.md shipped)
+Status: Phase 53 COMPLETE — Plans 53-00 through 53-07 all done (8/8). Ready for /gsd-verify-work.
+Last activity: 2026-05-10 — Plan 53-07 complete; allAddonImages updated; Phase 53 all 8 plans done
 
 Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 
@@ -60,6 +60,7 @@ Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 | 53-04 | 3 tasks (RED+UAT+GREEN) | ~45 min (two sessions; includes live UAT-4) |
 | 53-05 | 1 task (hold-verify probe) | ~2 min |
 | 53-06 | 1 task (hold-verify probe) | ~2 min |
+| 53-07 | 2 tasks (RED+GREEN) + UAT-5 | ~30 min (two sessions) |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -92,6 +93,7 @@ Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 - 2026-05-10 (53-04): Envoy Gateway v1.7.2 Path A — live UAT-4 confirmed GatewayClass Accepted, Gateway Programmed, HTTPRoute Accepted, HTTP 200 in-cluster curl. ADDON-04 delivered. Gateway API CRDs upgraded from v1.2.1 to v1.4.1 in-band. eg-gateway-helm-certgen Job name unchanged (Pitfall EG-02 cleared). UAT-SCRIPT NOTE 1: hashicorp/http-echo image has CLI-arg shape issues causing CrashLoopBackOff — future EG UAT scripts should use nginx as backend. UAT-SCRIPT NOTE 2: macOS hosts cannot curl docker-bridge IPs (curl HTTP 000); EG UAT scripts should use kubectl run uat-curl (in-cluster curl) or kubectl port-forward on macOS (matching Headlamp UAT-2 pattern).
 - 2026-05-10 (53-05): MetalLB hold reaffirmed at v0.15.3 — GitHub releases API probe on 2026-05-10 confirms v0.15.3 is still the latest release (published 2025-12-04); no v0.16.x present in top-5 listing. ADDON-05 hold-verify delivered. No Go source change; offlinereadiness consolidation in 53-07.
 - 2026-05-10 (53-06): Metrics Server hold reaffirmed at v0.8.1 — GitHub releases API probe on 2026-05-10 confirms v0.8.1 is still the latest release (published 2026-01-29); no v0.9.x present in top-5 listing. ADDON-05 hold-verify delivered. No Go source change; offlinereadiness consolidation in 53-07.
+- 2026-05-10 (53-07): offlinereadiness.go realInspectImage calls 'docker inspect --type=image' against the HOST docker store (not the cluster node's containerd store). This is the correct semantic: the check measures air-gapped readiness (images must be pre-pulled on host before 'kinder create cluster --air-gapped'). On a fresh default cluster the check correctly warns for any addon image absent from host docker — this is NOT a regression. All 14 allAddonImages tags verified present on uat-53-07 cluster node via 'crictl images' (SC1 first clause satisfied). SC1 second clause as written ('no warn|missing on a fresh default cluster') conflates default-cluster boot with air-gapped readiness — the two semantics are different. Plan 53-07 closes with pass-with-deviation; Phase 53 verifier should re-word SC1 second clause to reference crictl verification on the node rather than host docker. ADDON-05 closed; three-tier disclosure complete; Phase 53 all 8 plans done.
 
 ### Pending Todos
 
@@ -112,6 +114,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T17:00:00Z
-Stopped at: Phase 53 Plan 53-06 COMPLETE — Metrics Server hold at v0.8.1 reaffirmed (upstream probe 2026-05-10 confirms v0.8.1 still latest; no v0.9.x). Commit: 160d44d7. Plan 53-07 (offlinereadiness consolidation) next.
+Last session: 2026-05-10T18:00:00Z
+Stopped at: Phase 53 ALL 8 PLANS COMPLETE — Plan 53-07 (offlinereadiness consolidation) closed with pass-with-deviation. Commits: 5c61b7f2 (RED), d87f1fa7 (GREEN). ADDON-05 closed. SC1 first clause satisfied; SC1 second-clause wording deviation documented in 53-07-SUMMARY.md. Phase 53 ready for /gsd-verify-work.
 Resume file: None
