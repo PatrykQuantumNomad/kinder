@@ -138,9 +138,9 @@ Plans:
 **Depends on**: Phase 52
 **Requirements**: ADDON-01, ADDON-02, ADDON-03, ADDON-04, ADDON-05, SYNC-05
 **Success Criteria** (what must be TRUE):
-  1. `kinder create cluster` installs local-path-provisioner v0.0.36 (GHSA-7fxv-8wr2-mfc4 security fix closed); `kinder doctor offline-readiness` does not warn on a fresh default cluster
+  1. `kinder create cluster` installs local-path-provisioner v0.0.36 (GHSA-7fxv-8wr2-mfc4 security fix closed); all 14 bumped/held addon tags are present on the cluster node's containerd image store (verified via `crictl images` on the control-plane node after `kinder create cluster`). NOTE: `kinder doctor offline-readiness` measures HOST docker pre-pull readiness for `--air-gapped` mode (not cluster-node store), so warns on a fresh default cluster by design; the air-gapped semantics are documented in 53-07-SUMMARY.md.
   2. `kinder create cluster` installs Headlamp v0.42.0; the printed ServiceAccount token authenticates successfully against the Headlamp UI (or a documented hold at v0.40.1 is in place with explanation)
-  3. `kinder create cluster` installs cert-manager v1.20.2 with `--server-side` apply; `kubectl get crd certificates.cert-manager.io -o jsonpath='{.spec.versions[0].name}'` returns the v1.20.2 API version; self-signed ClusterIssuer issues a certificate with the new UID (65532)
+  3. `kinder create cluster` installs cert-manager v1.20.2 with `--server-side` apply; `kubectl get crd certificates.cert-manager.io -o jsonpath='{.spec.versions[0].name}'` returns the v1.20.2 API version; self-signed ClusterIssuer issues a certificate from pods enforced non-root via pod-level `runAsNonRoot: true` + distroless image USER nonroot directive (functional UID 65532; upstream v1.20.2 does not pin `runAsUser: 65532` in the manifest — kubelet `runAsNonRoot: true` enforcement is the actual security guarantee per 53-03-SUMMARY.md UID Deviation section).
   4. `kinder create cluster` installs Envoy Gateway v1.7.2; an HTTPRoute routes traffic end-to-end; the `eg-gateway-helm-certgen` job name is verified in the v1.7.2 install.yaml before commit
   5. `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` and `TestAllAddonImages_CountMatchesExpected` reflect all bumped image references; `go test ./pkg/internal/doctor/... -run TestAllAddonImages` passes
   6. If Docker Hub two-step probe (existence + manifest digest) confirms `kindest/node:v1.36.x` is published, the default image constant in `pkg/apis/config/defaults/image.go` is updated and `kinder create cluster` with no `--image` flag uses K8s 1.36; otherwise SYNC-05 halts INCONCLUSIVE with re-runnable status
@@ -154,7 +154,8 @@ Plans:
 - 53-05: MetalLB hold verification (confirm v0.15.3 still latest; no file changes if confirmed)
 - 53-06: Metrics Server hold verification (confirm v0.8.1 still latest; no file changes if confirmed)
 - 53-07: offlinereadiness.go consolidation (single commit updating allAddonImages after all bumps; count test updated)
-**Plans**: TBD (7-8 sub-plans as listed above)
+- 53-08: SC wording revision (gap closure for SC1 second clause + SC3 third clause — pure ROADMAP.md doc fix per developer decision 2026-05-12; no code changes)
+**Plans**: 9 sub-plans (53-00 through 53-08; 53-08 is gap closure for SC wording — pure docs)
 
 **NOTES ON REQUIREMENTS vs RESEARCH DIVERGENCE**: REQUIREMENTS.md (the locked scope) specifies cert-manager v1.20.2 and Envoy Gateway v1.7.2. The research SUMMARY.md recommended holding EG at v1.3.1 and bumping cert-manager only to v1.16.5, but these recommendations were superseded when REQUIREMENTS.md was finalized. The v1.7.2 EG bump requires dedicated HTTPRoute UAT (Plan 53-04) and companion Gateway API CRD version audit. The v1.20.2 cert-manager bump requires disclosure of the `rotationPolicy: Always` default change and UID change (1000→65532) in CHANGELOG. See PITFALLS items 6-12 for per-addon hazards.
 
