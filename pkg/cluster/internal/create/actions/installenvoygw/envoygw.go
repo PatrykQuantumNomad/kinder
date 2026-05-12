@@ -32,8 +32,8 @@ var envoyGWManifest string
 
 // Images contains the container images used by Envoy Gateway.
 var Images = []string{
-	"docker.io/envoyproxy/ratelimit:ae4cee11",
-	"envoyproxy/gateway:v1.3.1",
+	"docker.io/envoyproxy/ratelimit:05c08d03",
+	"envoyproxy/gateway:v1.7.2",
 }
 
 const gatewayClassYAML = `apiVersion: gateway.networking.k8s.io/v1

@@ -5,7 +5,15 @@ description: Envoy Gateway addon for Kubernetes Gateway API routing in kinder cl
 
 Envoy Gateway brings the Kubernetes [Gateway API](https://gateway-api.sigs.k8s.io/) to kinder clusters. It replaces Ingress with a more expressive routing model and supports HTTP, TLS, and TCP routes with a single controller.
 
-kinder installs Envoy Gateway **v1.3.1**.
+kinder installs Envoy Gateway **v1.7.2**.
+
+:::caution[Major upgrade in v2.4 — Envoy Gateway v1.3 → v1.7]
+This is a two-major-version jump. Bundled Gateway API CRDs jump from `v1.2.1` to `v1.4.1`.
+
+- **Existing kinder clusters:** unaffected — addon versions are pinned at cluster-create time. Recreate the cluster to pick up v1.7.2.
+- **HTTPRoute compatibility:** the v1.4.1 Gateway API CRD bundle is backwards compatible with v1.4.x and most v1.2.x HTTPRoute manifests. Custom resources using deprecated v1alpha2 fields may need updates — see [upstream Gateway API release notes](https://gateway-api.sigs.k8s.io/release-notes/).
+- **No Helm migration needed:** kinder uses upstream's `install.yaml` directly via `kubectl apply`; the change is fully manifest-driven.
+:::
 
 ## What gets installed
 
