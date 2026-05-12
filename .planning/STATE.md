@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 55 Plan 55-01 CLOSED — Task 1 commit c8d4bfbd (.github/workflows/build-check.yml) pushed to origin/main; Task 2 green-via-dispatch run 25750801764 (conclusion=success, 32s); Task 3 defer (layer-a blocking delivered, merge-level deferred to future CI-policy phase); DIST-02 marked Complete in REQUIREMENTS.md. Phase 55 has only 1 plan — phase ready for /gsd:execute-phase verifier step."
-last_updated: "2026-05-12T17:00:00Z"
-last_activity: 2026-05-12 — Phase 55 Plan 55-01 closed; build-check.yml CI green (run 25750801764, 32s); DIST-02 Complete; Task 3 defer
+stopped_at: "Phase 56 Plan 56-01 CLOSED — Task 1 commit 9d57b54b (check.go runChecks extraction); Task 2 commit b797b729 (race-free parallel tests); Task 3 commit ee9b0af0 (Makefile target + race-check.yml); SC1/SC2/SC3 all green; zero DATA RACE over 100 iterations; DEBT-04 marked Complete."
+last_updated: "2026-05-12T18:36:52Z"
+last_activity: 2026-05-12 — Phase 56 Plan 56-01 closed; SC1 zero DATA RACE over -count=100; SC2 no sync primitives; SC3 no sync additions; DEBT-04 Complete
 progress:
   total_phases: 7
   completed_phases: 4
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 55 (Windows PR-CI Build Step) CLOSED. DIST-02 Complete. Phase 56 (DEBT-04 data race elimination) is next.
+**Current focus:** v2.4 Hardening — Phase 56 (DEBT-04 data race elimination) CLOSED. DEBT-04 Complete. Phase 57 (doctor cosmetic fixes) is next.
 
 ## Current Position
 
-Phase: 55 of 58 (Windows PR-CI Build Step) — CLOSED
-Plan: 55-01 COMPLETE (build-check.yml on ubuntu-24.04; SC1+SC2+SC3 workflow-level satisfied; green workflow_dispatch run 25750801764; Task 3 defer; DIST-02 Complete)
-Status: Phase 55 CLOSED — 1 of 1 plans done. CI run 25750801764 (success, 32s) proves cross-compile for windows/amd64 (CGO_ENABLED=0) exits 0 end-to-end. Check name: `Windows Build Check / windows-build`. Branch protection deferred. Phase 55 ready for /gsd:execute-phase verifier step. Phase 56 (DEBT-04) up next.
-Last activity: 2026-05-12T17:00Z — Phase 55 Plan 55-01 closed; build-check.yml CI green (run 25750801764, 32s); DIST-02 Complete; Task 3 defer
+Phase: 56 of 58 (DEBT-04 Doctor Test Race Fix) — CLOSED
+Plan: 56-01 COMPLETE (check.go runChecks helper extracted; 3 racing parallel tests rewritten; Makefile test-race-doctor target + race-check.yml CI workflow added; SC1/SC2/SC3 all green; DEBT-04 Complete)
+Status: Phase 56 CLOSED — 1 of 1 plans done. SC1: zero DATA RACE over CGO_ENABLED=1 go test -race -count=100 (2.57s). SC2: no sync primitives in check.go. SC3: zero sync. additions in diff. Phase 57 (DIAG-05 + DIAG-06 doctor cosmetics) up next.
+Last activity: 2026-05-12T18:36:52Z — Phase 56 Plan 56-01 closed; SC1/SC2/SC3 green; DEBT-04 Complete
 
 Progress: [██████████] 100%
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | 54-01 | 3 tasks (release plumbing) | ~1m 20s |
 | 54-02 | 3 tasks (snapshot-verify CI + 3-file SC3 docs + PROJECT.md row) | ~2m 49s |
 | 55-01 | 3 tasks (SC2 probe + build-check.yml + dispatch verify + Task 3 defer) | ~1 session |
+| 56-01 | 3 tasks (runChecks extraction + race-free tests + Makefile+CI) | ~2.5 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -102,6 +103,7 @@ Progress: [██████████] 100%
 - 2026-05-12 (54-02): Phase 54 COMPLETE — snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml (SC1+SC2 await first triggering push or workflow_dispatch run; paths filter on .goreleaser.yaml + workflow file caps 10x macOS billing cost; find dist/ -path glob for snapshot binary discovery; grep -q "satisfies its Designated Requirement" as explicit SC1/SC2 gate per CI-FAILING quality_gate). SC3 wording mirrored verbatim across installation.md (`:::caution[macOS direct download]` Starlight admonition) + changelog.md (### subsection inside `## v2.4 — Hardening` above the closing `---`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification) — exactly-once per file; binding "Release notes AND install guide" conjunction satisfied. PROJECT.md Key Decisions row records the ad-hoc-not-notarization decision with AMFI + DIST-03 deferral pointer. SC4 carried from 54-01 (.goreleaser.yaml + release.yml untouched in this plan; verified via git diff --stat HEAD~3 HEAD).
 - 2026-05-12 (54-CI-verify): Phase 54 SC1+SC2 closed via live CI run `25746519788` (push of f1df8c88..d00cafd0 to origin/main paths-filter-triggered the workflow). Result: success, 2m37s, two verify steps green: `dist/kinder_darwin_amd64_v1/kinder: satisfies its Designated Requirement` and `dist/kinder_darwin_arm64_v8.0/kinder: satisfies its Designated Requirement`. Surprise (non-blocking): arm64 dist directory is `kinder_darwin_arm64_v8.0` not the literal SC2 `kinder_darwin_arm64` — Go 1.23+ default GOARM64=v8.0 suffix; workflow's `*darwin_arm64*` path glob (deliberately chosen in plan over hardcoded path) handles both legacy and v8.0 layouts; SC2 intent (arm64 signature verified) satisfied. Future ROADMAP authors: do NOT hardcode `dist/kinder_darwin_arm64/` in SC text — use the path-glob form. 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed, score=2/4 → 4/4.
 - 2026-05-12 (55-01): DIST-02 layer (a) vs layer (b) split — workflow-level blocking (job exit code → PR check red) delivered by build-check.yml alone; merge-level blocking (branch protection required status check) deferred to a future CI-policy phase per RESEARCH recommendation. User Task 3 selection: `defer`. Green CI run 25750801764 (`workflow_dispatch` on main, conclusion=success, 32s, all 5 steps green). Check name: `Windows Build Check / windows-build` (stable and unambiguous for future branch-protection config). ubuntu-24.04 pin used over DIST-02 literal ubuntu-latest — repo-wide convention; deviation documented in workflow header comment. DIST-02 Complete.
+- 2026-05-12 (56-01): DEBT-04 fix is parameter-injection (not synchronization) — runChecks(checks []Check) helper replaces the allChecks= global-mutation pattern in 3 parallel tests; production read path stays fully lock-free (SC2); 100-iteration race gate (SC1) took 2.57s locally. REQUIREMENTS.md mention of socket_test.go as a race site is doc drift — actual mutation sites are in check_test.go only; socket_test.go is a read-only race victim. No REQUIREMENTS.md edit beyond DEBT-04 mark-complete was performed. TestSetMountPaths in hostmount_test.go untouched (out-of-scope guard held). DEBT-04 Complete.
 
 ### Pending Todos
 
@@ -122,6 +124,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-12T17:00:00Z
-Stopped at: Phase 55 Plan 55-01 CLOSED. Task 1 commit c8d4bfbd (.github/workflows/build-check.yml) pushed to origin/main. Task 2 green-via-dispatch run 25750801764 (conclusion=success, 32s, all 5 steps green including cross-compile step). Task 3 user decision = defer (workflow-level blocking delivered; merge-level protection deferred to future CI-policy phase). DIST-02 marked Complete in REQUIREMENTS.md. Phase 55 has only 1 plan — phase ready for /gsd:execute-phase verifier step (or orchestrator can proceed directly to Phase 56 DEBT-04 if auto-verify is configured).
+Last session: 2026-05-12T18:36:52Z
+Stopped at: Phase 56 Plan 56-01 CLOSED. Task 1 commit 9d57b54b (check.go: runChecks helper extracted, RunAllChecks one-line delegate). Task 2 commit b797b729 (check_test.go: 3 racing tests rewritten to call runChecks with local slices; SC1 gate: zero DATA RACE over -count=100). Task 3 commit ee9b0af0 (Makefile test-race-doctor target + .github/workflows/race-check.yml). SC1/SC2/SC3 all green. DEBT-04 marked Complete in REQUIREMENTS.md. Phase 56 has 1 plan — phase complete. Phase 57 (DIAG-05 + DIAG-06 doctor cosmetics) is next.
 Resume file: None

@@ -30,7 +30,7 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 
 ### Tech Debt
 
-- [ ] **DEBT-04**: Pre-existing data race in `pkg/internal/doctor/check_test.go` and `pkg/internal/doctor/socket_test.go` (`allChecks` global mutated under `t.Parallel()`) eliminated; production read path remains lock-free; tests use scoped helper `runChecks(checks []Check)` rather than mutating package state
+- [x] **DEBT-04**: Pre-existing data race in `pkg/internal/doctor/check_test.go` and `pkg/internal/doctor/socket_test.go` (`allChecks` global mutated under `t.Parallel()`) eliminated; production read path remains lock-free; tests use scoped helper `runChecks(checks []Check)` rather than mutating package state
 
 ### Diagnostics
 
@@ -103,7 +103,7 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 | SYNC-05 | Phase 53 | Pending |
 | DIST-01 | Phase 54 | Complete |
 | DIST-02 | Phase 55 | Complete |
-| DEBT-04 | Phase 56 | Pending |
+| DEBT-04 | Phase 56 | Complete |
 | DIAG-05 | Phase 57 | Pending |
 | DIAG-06 | Phase 57 | Pending |
 | UAT-01 | Phase 58 | Pending |
@@ -116,4 +116,4 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-09*
-*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans; DIST-02 marked complete after Phase 55 Plan 55-01 landed .github/workflows/build-check.yml — green workflow_dispatch run 25750801764*
+*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans; DIST-02 marked complete after Phase 55 Plan 55-01 landed .github/workflows/build-check.yml — green workflow_dispatch run 25750801764; DEBT-04 marked complete after Phase 56 Plan 56-01 eliminated allChecks t.Parallel() race via runChecks helper — zero DATA RACE over 100 iterations*
