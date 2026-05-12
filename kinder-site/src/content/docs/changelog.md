@@ -11,14 +11,43 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 ---
 
-## v2.4 — Hardening (in progress)
+## v2.4 — Hardening
 
-- **`local-path-provisioner` bumped to v0.0.36** — closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4) HelperPod Template Injection security advisory. Embedded `busybox:1.37.0` pin and `is-default-class` StorageClass annotation preserved. (ADDON-01)
-- **`Headlamp` bumped to v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
-- **`cert-manager` bumped to v1.20.2** — `--server-side` apply preserved (manifest is 989 KB, exceeds 256 KB annotation limit). Live UAT verified self-signed ClusterIssuer issues a Certificate and pods run as UID `65532` (via distroless image `USER nonroot` directive; kubelet enforces `runAsNonRoot: true`). **Breaking changes:** container UID changed from `1000` to `65532` (Secret/PVC ownership impact); `Certificate.spec.privateKey.rotationPolicy: Always` is GA-mandatory (set `Never` explicitly to keep old behavior). See addon doc for details. (ADDON-03)
-- **`Envoy Gateway` bumped to v1.7.2** (single-jump from v1.3.1). Bundled Gateway API CRDs upgrade from `v1.2.1` to `v1.4.1` in-band. Live HTTPRoute end-to-end UAT verified traffic returns 200 through the gateway (in-cluster curl via `kubectl run uat-curl`). `eg-gateway-helm-certgen` Job name unchanged (verified in upstream install.yaml — Pitfall EG-02 cleared). Ratelimit image bumped from `ae4cee11` to `05c08d03`. (ADDON-04)
-- **`MetalLB` held at v0.15.3** — verified upstream `metallb/metallb` latest release is still v0.15.3 (published 2025-12-04). No newer release exists; the documented hold is unchanged. (ADDON-05)
-- **`Metrics Server` held at v0.8.1** — verified upstream `kubernetes-sigs/metrics-server` latest release is still v0.8.1 (published 2026-01-29). No newer release exists; the documented hold is unchanged. (ADDON-05)
+**Released:** TBD (finalize when phase 58 ships v2.4)
+
+Phase 53 brought all kinder addons to current-stable releases (where available), closed a security advisory in local-path-provisioner, and re-verified the SYNC-05 default node image gate.
+
+### Addon Bumps
+
+- **`local-path-provisioner` v0.0.35 → v0.0.36** — closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4) HelperPod Template Injection security advisory. Embedded `busybox:1.37.0` pin and `is-default-class` StorageClass annotation preserved. (ADDON-01)
+- **`Headlamp` v0.40.1 → v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
+- **`cert-manager` v1.16.3 → v1.20.2** — `--server-side` apply preserved (manifest is 989 KB, exceeds 256 KB annotation limit). Live UAT verified self-signed ClusterIssuer issues a Certificate and pods run as UID `65532` (via distroless image `USER nonroot` directive; kubelet enforces `runAsNonRoot: true`). (ADDON-03)
+- **`Envoy Gateway` v1.3.1 → v1.7.2** (single-jump). Bundled Gateway API CRDs upgrade from `v1.2.1` to `v1.4.1` in-band. Live HTTPRoute end-to-end UAT verified traffic returns 200 through the gateway. `eg-gateway-helm-certgen` Job name unchanged (verified in upstream install.yaml). Ratelimit image bumped from `ae4cee11` to `05c08d03`. (ADDON-04)
+
+### Documented Holds
+
+- **`MetalLB` held at v0.15.3** — verified upstream `metallb/metallb` latest release is still v0.15.3 (published 2025-12-04). No newer release exists.
+- **`Metrics Server` held at v0.8.1** — verified upstream `kubernetes-sigs/metrics-server` latest release is still v0.8.1 (published 2026-01-29). No newer release exists.
+
+### Breaking Changes for Upgraders
+
+#### cert-manager v1.20
+
+- **Container UID changed from `1000` to `65532`.** PVCs or mounted Secrets pre-populated with files owned by UID 1000 will be unreadable to the new pods. cert-manager itself does not use PersistentVolumes, but custom integrations sharing volumes may be affected.
+- **`Certificate.spec.privateKey.rotationPolicy: Always` is GA-mandatory.** The default changed from `Never` to `Always` in v1.18; v1.20 makes an explicit value required. Long-running Certificates relying on stable private keys across renewals must set `rotationPolicy: Never` explicitly. See the [cert-manager addon doc](/addons/cert-manager/) for details.
+
+#### Envoy Gateway v1.7
+
+- **Gateway API CRD bundle upgrades from `v1.2.1` to `v1.4.1`.** `v1alpha2`-deprecated fields may need updates in custom HTTPRoute manifests.
+- Existing kinder clusters are unaffected — addon versions are pinned at cluster-create time. Recreate the cluster to pick up v1.7.2.
+
+### SYNC-05 (Default Node Image)
+
+- **SYNC-05 deferred** — `kindest/node:v1.36.x` was not yet published on Docker Hub at execute time (Docker Hub probe returned `count: 0` for `?name=v1.36`). The default node image remains `kindest/node:v1.35.1`. Re-evaluable in v2.5 once kind publishes a v1.36 image.
+
+### Internal
+
+- `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` updated to reflect all delivered addon tags. Count remains 14 (no addon added or removed an image; only tags shifted). `TestAllAddonImages_CountMatchesExpected` passes unchanged. (ADDON-05)
 
 ---
 

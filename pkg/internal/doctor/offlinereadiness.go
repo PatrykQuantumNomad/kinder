@@ -47,28 +47,28 @@ type addonImage struct {
 //
 // Total: 14
 var allAddonImages = []addonImage{
-	// Load Balancer (HA clusters only)
+	// Load Balancer (HA clusters only) — unchanged
 	{"docker.io/envoyproxy/envoy:v1.36.2", "Load Balancer (HA)"},
-	// Local Registry
+	// Local Registry — unchanged
 	{"registry:2", "Local Registry"},
-	// MetalLB
+	// MetalLB — held at v0.15.3 (53-05: upstream latest verified 2026-05-10)
 	{"quay.io/metallb/controller:v0.15.3", "MetalLB"},
 	{"quay.io/metallb/speaker:v0.15.3", "MetalLB"},
-	// Metrics Server
+	// Metrics Server — held at v0.8.1 (53-06: upstream latest verified 2026-05-10)
 	{"registry.k8s.io/metrics-server/metrics-server:v0.8.1", "Metrics Server"},
-	// Cert Manager
-	{"quay.io/jetstack/cert-manager-cainjector:v1.16.3", "Cert Manager"},
-	{"quay.io/jetstack/cert-manager-controller:v1.16.3", "Cert Manager"},
-	{"quay.io/jetstack/cert-manager-webhook:v1.16.3", "Cert Manager"},
-	// Envoy Gateway
-	{"docker.io/envoyproxy/ratelimit:ae4cee11", "Envoy Gateway"},
-	{"envoyproxy/gateway:v1.3.1", "Envoy Gateway"},
-	// Dashboard
-	{"ghcr.io/headlamp-k8s/headlamp:v0.40.1", "Dashboard"},
-	// NVIDIA GPU
+	// Cert Manager — bumped v1.16.3 → v1.20.2 (53-03)
+	{"quay.io/jetstack/cert-manager-cainjector:v1.20.2", "Cert Manager"},
+	{"quay.io/jetstack/cert-manager-controller:v1.20.2", "Cert Manager"},
+	{"quay.io/jetstack/cert-manager-webhook:v1.20.2", "Cert Manager"},
+	// Envoy Gateway — bumped v1.3.1 → v1.7.2; ratelimit ae4cee11 → 05c08d03 (53-04)
+	{"docker.io/envoyproxy/ratelimit:05c08d03", "Envoy Gateway"},
+	{"envoyproxy/gateway:v1.7.2", "Envoy Gateway"},
+	// Dashboard — bumped v0.40.1 → v0.42.0 (53-02)
+	{"ghcr.io/headlamp-k8s/headlamp:v0.42.0", "Dashboard"},
+	// NVIDIA GPU — unchanged
 	{"nvcr.io/nvidia/k8s-device-plugin:v0.17.1", "NVIDIA GPU"},
-	// Local Path Provisioner
-	{"docker.io/rancher/local-path-provisioner:v0.0.35", "Local Path Provisioner"},
+	// Local Path Provisioner — bumped v0.0.35 → v0.0.36 (53-01); busybox:1.37.0 unchanged
+	{"docker.io/rancher/local-path-provisioner:v0.0.36", "Local Path Provisioner"},
 	{"docker.io/library/busybox:1.37.0", "Local Path Provisioner"},
 }
 
