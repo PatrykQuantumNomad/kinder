@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: executing
-stopped_at: "Phase 53 Plan 53-04 COMPLETE — Envoy Gateway bumped to v1.7.2 (Path A: UAT-4 passed, HTTP 200 in-cluster curl). Commits: c901ab89 (RED), 4c185804 (GREEN+docs). Plan 53-05 (MetalLB hold/verify) next."
-last_updated: "2026-05-10T16:30:00Z"
-last_activity: "2026-05-10 — Plan 53-04 complete; EG v1.3.1 → v1.7.2; Gateway API CRDs v1.2.1 → v1.4.1; ADDON-04 delivered; HTTPRoute UAT-4 verified (Path A)"
+stopped_at: "Phase 53 Plan 53-05 COMPLETE — MetalLB hold at v0.15.3 reaffirmed (upstream probe 2026-05-10 confirms no v0.16.x). Commit: dcde8297. Plan 53-06 (Metrics Server hold/verify) next."
+last_updated: "2026-05-10T16:42:00Z"
+last_activity: "2026-05-10 — Plan 53-05 complete; MetalLB hold reaffirmed at v0.15.3; ADDON-05 hold-verify delivered"
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
-  percent: 64
+  completed_plans: 10
+  percent: 68
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00, 53-01, 53-02, 53-03, 53-04 done; Plan 53-05 (MetalLB hold/verify) next.
+**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — Plans 53-00 through 53-05 done; Plan 53-06 (Metrics Server hold/verify) next.
 
 ## Current Position
 
 Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-04 COMPLETE (Envoy Gateway v1.7.2 — UAT-4 Path A; ADDON-04 delivered)
-Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02, 53-03, 53-04 done; Plan 53-05 (MetalLB hold/verify) next
-Last activity: 2026-05-10 — Plan 53-04 complete; EG v1.3.1 → v1.7.2; Gateway API CRDs v1.2.1 → v1.4.1; ADDON-04 delivered; HTTPRoute UAT-4 verified (Path A)
+Plan: 53-05 COMPLETE (MetalLB hold reaffirmed at v0.15.3 — upstream probe 2026-05-10; ADDON-05 delivered)
+Status: Phase 53 in progress — Plans 53-00, 53-01, 53-02, 53-03, 53-04, 53-05 done; Plan 53-06 (Metrics Server hold/verify) next
+Last activity: 2026-05-10 — Plan 53-05 complete; MetalLB hold reaffirmed at v0.15.3; ADDON-05 hold-verify delivered
 
-Progress: [████░░░░░░] v2.4 ~32% (9/~28 plans done)
+Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [████░░░░░░] v2.4 ~32% (9/~28 plans done)
 | 53-02 | 3 tasks (RED+UAT+GREEN) | ~15 min |
 | 53-03 | 3 tasks (RED+UAT+GREEN) | ~20 min |
 | 53-04 | 3 tasks (RED+UAT+GREEN) | ~45 min (two sessions; includes live UAT-4) |
+| 53-05 | 1 task (hold-verify probe) | ~2 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -88,6 +89,7 @@ Progress: [████░░░░░░] v2.4 ~32% (9/~28 plans done)
 - 2026-05-10 (53-02): Headlamp v0.42.0 Path A — live UAT-2 confirmed RBAC=yes, UI=200, SA+Secret resolve. Upstream OTEL telemetry env vars merged; kinder-dashboard SA, kinder-dashboard-token Secret, -in-cluster arg, targetPort:4466 all preserved. ADDON-02 delivered.
 - 2026-05-10 (53-03): cert-manager v1.20.2 Path A — live UAT-3 confirmed ClusterIssuer + Certificate smoke; pods Running. ADDON-03 delivered. DEVIATION: plan's runAsUser=65532 jsonpath assertion was overspecified — upstream v1.20.2 uses distroless image USER directive (UID 65532) rather than manifest securityContext.runAsUser; kubelet enforces runAsNonRoot: true; security intent (Pitfall CERT-03) is satisfied. Future addon-bump plans: do NOT assert specific UID via manifest jsonpath for distroless images; check runAsNonRoot: true instead. CONTEXT.md had typo "65632"; authoritative value is 65532 per REQUIREMENTS.md and upstream release notes.
 - 2026-05-10 (53-04): Envoy Gateway v1.7.2 Path A — live UAT-4 confirmed GatewayClass Accepted, Gateway Programmed, HTTPRoute Accepted, HTTP 200 in-cluster curl. ADDON-04 delivered. Gateway API CRDs upgraded from v1.2.1 to v1.4.1 in-band. eg-gateway-helm-certgen Job name unchanged (Pitfall EG-02 cleared). UAT-SCRIPT NOTE 1: hashicorp/http-echo image has CLI-arg shape issues causing CrashLoopBackOff — future EG UAT scripts should use nginx as backend. UAT-SCRIPT NOTE 2: macOS hosts cannot curl docker-bridge IPs (curl HTTP 000); EG UAT scripts should use kubectl run uat-curl (in-cluster curl) or kubectl port-forward on macOS (matching Headlamp UAT-2 pattern).
+- 2026-05-10 (53-05): MetalLB hold reaffirmed at v0.15.3 — GitHub releases API probe on 2026-05-10 confirms v0.15.3 is still the latest release (published 2025-12-04); no v0.16.x present in top-5 listing. ADDON-05 hold-verify delivered. No Go source change; offlinereadiness consolidation in 53-07.
 
 ### Pending Todos
 
@@ -108,6 +110,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-10T16:30:00Z
-Stopped at: Phase 53 Plan 53-04 COMPLETE — Envoy Gateway bumped to v1.7.2 (Path A: UAT-4 passed, HTTP 200 in-cluster curl). Commits: c901ab89 (RED), 4c185804 (GREEN+docs). Plan 53-05 (MetalLB hold/verify) next.
+Last session: 2026-05-10T16:42:00Z
+Stopped at: Phase 53 Plan 53-05 COMPLETE — MetalLB hold at v0.15.3 reaffirmed (upstream probe 2026-05-10 confirms no v0.16.x). Commit: dcde8297. Plan 53-06 (Metrics Server hold/verify) next.
 Resume file: None
