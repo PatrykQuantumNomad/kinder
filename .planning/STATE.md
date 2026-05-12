@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: in_progress
-stopped_at: "Phase 56 Plan 56-01 CLOSED — Task 1 commit 9d57b54b (check.go runChecks extraction); Task 2 commit b797b729 (race-free parallel tests); Task 3 commit ee9b0af0 (Makefile target + race-check.yml); SC1/SC2/SC3 all green; zero DATA RACE over 100 iterations; DEBT-04 marked Complete."
-last_updated: "2026-05-12T18:36:52Z"
-last_activity: 2026-05-12 — Phase 56 Plan 56-01 closed; SC1 zero DATA RACE over -count=100; SC2 no sync primitives; SC3 no sync additions; DEBT-04 Complete
+status: completed
+stopped_at: "Phase 57 Plan 57-02 COMPLETE — DIAG-06 tolerant etcd JSON parse on non-zero etcdctl exit. RED+GREEN landed (attribution drift: my commits got swept into 57-01's commits 866f2c22 + c43bb599 due to branching=none + parallelization=true; my code is on the tree byte-for-byte; documented in 57-02-SUMMARY.md). 3 new tests PASS (Etcd34_AllHealthy_Parsed, Etcd35_OneOfThree_NonZeroExit, Etcd35_AllUnhealthy_NonZeroExit). Full doctor suite green. TestAllChecks_CountIs26 green. make test-race-doctor green (1.88s, -count=100). parseEtcdHealth helper unchanged. DIAG-06 mark-complete deferred to Phase 57 close (after 57-01 verifier passes)."
+last_updated: "2026-05-12T20:56:21Z"
+last_activity: "2026-05-12T20:56:21Z — Phase 57 Plan 57-02 complete; DIAG-06 tolerant JSON parse landed; SC2 + SC3 fixture matrix proven; race gate preserved"
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
+  completed_phases: 6
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 56 of 58 (DEBT-04 Doctor Test Race Fix) — CLOSED
-Plan: 56-01 COMPLETE (check.go runChecks helper extracted; 3 racing parallel tests rewritten; Makefile test-race-doctor target + race-check.yml CI workflow added; SC1/SC2/SC3 all green; DEBT-04 Complete)
-Status: Phase 56 CLOSED — 1 of 1 plans done. SC1: zero DATA RACE over CGO_ENABLED=1 go test -race -count=100 (2.57s). SC2: no sync primitives in check.go. SC3: zero sync. additions in diff. Phase 57 (DIAG-05 + DIAG-06 doctor cosmetics) up next.
-Last activity: 2026-05-12T18:36:52Z — Phase 56 Plan 56-01 closed; SC1/SC2/SC3 green; DEBT-04 Complete
+Phase: 57 of 58 (Doctor Cosmetic Fixes — DIAG-05 + DIAG-06) — IN PROGRESS
+Plan: 57-02 COMPLETE (DIAG-06 tolerant etcd JSON parse on non-zero etcdctl exit; error-branch short-circuit rewritten to parse healthLines BEFORE verdict; raw-error dump removed; SC2 "1/3 etcd members healthy" + "quorum at risk" wording on etcd 3.5+ unhealthy clusters proven; SC3 fixture matrix (3.4 + 3.5 shapes) locked). Plan 57-01 (DIAG-05) running in parallel — touches clusterskew.go + clusterskew_test.go only, no file overlap with 57-02.
+Status: Phase 57 plan 57-02 closed (2 of 2 plans done counting both 57-01 and 57-02 in flight; verifier passes pending for both). DIAG-06 mark-complete deferred to phase close. parseEtcdHealth helper at resumereadiness.go:251 verified UNCHANGED. Phase 56 race gate preserved (make test-race-doctor 1.88s, -count=100, zero DATA RACE).
+Last activity: 2026-05-12T20:56:21Z — 57-02 SUMMARY.md created; STATE.md updated; awaiting Phase 57 verifier for joint close-out of DIAG-05 + DIAG-06
 
 Progress: [██████████] 100%
 
@@ -65,6 +65,8 @@ Progress: [██████████] 100%
 | 54-02 | 3 tasks (snapshot-verify CI + 3-file SC3 docs + PROJECT.md row) | ~2m 49s |
 | 55-01 | 3 tasks (SC2 probe + build-check.yml + dispatch verify + Task 3 defer) | ~1 session |
 | 56-01 | 3 tasks (runChecks extraction + race-free tests + Makefile+CI) | ~2.5 min |
+| 57-01 | 2 tasks (RED+GREEN DIAG-05 LB/external-etcd role guard in realListNodes) | ~3m 16s |
+| 57-02 | 2 tasks (RED+GREEN tolerant etcd JSON parse on non-zero etcdctl exit) | ~3 min |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -104,6 +106,7 @@ Progress: [██████████] 100%
 - 2026-05-12 (54-CI-verify): Phase 54 SC1+SC2 closed via live CI run `25746519788` (push of f1df8c88..d00cafd0 to origin/main paths-filter-triggered the workflow). Result: success, 2m37s, two verify steps green: `dist/kinder_darwin_amd64_v1/kinder: satisfies its Designated Requirement` and `dist/kinder_darwin_arm64_v8.0/kinder: satisfies its Designated Requirement`. Surprise (non-blocking): arm64 dist directory is `kinder_darwin_arm64_v8.0` not the literal SC2 `kinder_darwin_arm64` — Go 1.23+ default GOARM64=v8.0 suffix; workflow's `*darwin_arm64*` path glob (deliberately chosen in plan over hardcoded path) handles both legacy and v8.0 layouts; SC2 intent (arm64 signature verified) satisfied. Future ROADMAP authors: do NOT hardcode `dist/kinder_darwin_arm64/` in SC text — use the path-glob form. 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed, score=2/4 → 4/4.
 - 2026-05-12 (55-01): DIST-02 layer (a) vs layer (b) split — workflow-level blocking (job exit code → PR check red) delivered by build-check.yml alone; merge-level blocking (branch protection required status check) deferred to a future CI-policy phase per RESEARCH recommendation. User Task 3 selection: `defer`. Green CI run 25750801764 (`workflow_dispatch` on main, conclusion=success, 32s, all 5 steps green). Check name: `Windows Build Check / windows-build` (stable and unambiguous for future branch-protection config). ubuntu-24.04 pin used over DIST-02 literal ubuntu-latest — repo-wide convention; deviation documented in workflow header comment. DIST-02 Complete.
 - 2026-05-12 (56-01): DEBT-04 fix is parameter-injection (not synchronization) — runChecks(checks []Check) helper replaces the allChecks= global-mutation pattern in 3 parallel tests; production read path stays fully lock-free (SC2); 100-iteration race gate (SC1) took 2.57s locally. REQUIREMENTS.md mention of socket_test.go as a race site is doc drift — actual mutation sites are in check_test.go only; socket_test.go is a read-only race victim. No REQUIREMENTS.md edit beyond DEBT-04 mark-complete was performed. TestSetMountPaths in hostmount_test.go untouched (out-of-scope guard held). DEBT-04 Complete.
+- 2026-05-12 (57-01): DIAG-05 fixed via INLINE role guard inside realListNodes (NOT a nodeutils.InternalNodes import). The doctor package cannot import cluster/internal/nodeutils because of the documented cycle (cluster/internal/create imports doctor — see clusterskew.go:64-66). Role-string comparison against the leaf `pkg/cluster/constants` package is the established workaround (precedent: 52-04 resumestrategy.go). The guard branch handles BOTH `ExternalLoadBalancerNodeRoleValue` AND `ExternalEtcdNodeRoleValue` defensively per RESEARCH M6 — the external-etcd role is "not yet implemented" upstream per constants.go:62 but the cost is one string comparison and the future-proofing eliminates a class of DIAG-05 regressions. allChecks registry untouched (TestAllChecks_CountIs26 invariant preserved). Phase 56 race gate (make test-race-doctor) preserved at -count=100. DIAG-05 mark-complete in REQUIREMENTS.md deferred to Phase 57 close. CROSS-PLAN STAGING CONTAMINATION: running parallel with 57-02 in shared cwd (branching=none, parallelization=true) produced misleading commit log — 866f2c22 ("test(57-01): add RED tests…") absorbed 57-02's resumereadiness_test.go +128 LOC; c43bb599 ("feat(57-01): inline LB/external-etcd role guard…") actually contains ONLY 57-02's resumereadiness.go +44 LOC; the real clusterskew.go change is in 33544309 ("feat(57-01): apply DIAG-05 LB-role guard to clusterskew.go") committed via `git commit --only` to bypass the racing index. File-level dispositions are correct at HEAD; commit log is contaminated. Pattern lesson: parallel executors in shared cwd MUST use `git commit --only <path>` not `git add` + `git commit`. Recovery via rebase/cherry-pick deliberately NOT attempted (destructive-git-prohibition).
 
 ### Pending Todos
 
