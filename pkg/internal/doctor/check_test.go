@@ -51,10 +51,7 @@ func TestRunAllChecks_PlatformSkip(t *testing.T) {
 		nonCurrentPlatform = "windows"
 	}
 
-	original := allChecks
-	defer func() { allChecks = original }()
-
-	allChecks = []Check{
+	checks := []Check{
 		&mockCheck{
 			name:      "platform-specific",
 			category:  "Test",
@@ -68,7 +65,7 @@ func TestRunAllChecks_PlatformSkip(t *testing.T) {
 		},
 	}
 
-	results := RunAllChecks()
+	results := runChecks(checks)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -83,10 +80,7 @@ func TestRunAllChecks_PlatformSkip(t *testing.T) {
 func TestRunAllChecks_NilPlatformsRunsOnAll(t *testing.T) {
 	t.Parallel()
 
-	original := allChecks
-	defer func() { allChecks = original }()
-
-	allChecks = []Check{
+	checks := []Check{
 		&mockCheck{
 			name:      "universal",
 			category:  "Test",
@@ -100,7 +94,7 @@ func TestRunAllChecks_NilPlatformsRunsOnAll(t *testing.T) {
 		},
 	}
 
-	results := RunAllChecks()
+	results := runChecks(checks)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -115,10 +109,7 @@ func TestRunAllChecks_NilPlatformsRunsOnAll(t *testing.T) {
 func TestRunAllChecks_MultipleResultsPreserved(t *testing.T) {
 	t.Parallel()
 
-	original := allChecks
-	defer func() { allChecks = original }()
-
-	allChecks = []Check{
+	checks := []Check{
 		&mockCheck{
 			name:     "multi-check",
 			category: "Test",
@@ -130,7 +121,7 @@ func TestRunAllChecks_MultipleResultsPreserved(t *testing.T) {
 		},
 	}
 
-	results := RunAllChecks()
+	results := runChecks(checks)
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
