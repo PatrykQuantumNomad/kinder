@@ -17,6 +17,7 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 - **`Headlamp` bumped to v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
 - **`cert-manager` bumped to v1.20.2** — `--server-side` apply preserved (manifest is 989 KB, exceeds 256 KB annotation limit). Live UAT verified self-signed ClusterIssuer issues a Certificate and pods run as UID `65532` (via distroless image `USER nonroot` directive; kubelet enforces `runAsNonRoot: true`). **Breaking changes:** container UID changed from `1000` to `65532` (Secret/PVC ownership impact); `Certificate.spec.privateKey.rotationPolicy: Always` is GA-mandatory (set `Never` explicitly to keep old behavior). See addon doc for details. (ADDON-03)
 - **`Envoy Gateway` bumped to v1.7.2** (single-jump from v1.3.1). Bundled Gateway API CRDs upgrade from `v1.2.1` to `v1.4.1` in-band. Live HTTPRoute end-to-end UAT verified traffic returns 200 through the gateway (in-cluster curl via `kubectl run uat-curl`). `eg-gateway-helm-certgen` Job name unchanged (verified in upstream install.yaml — Pitfall EG-02 cleared). Ratelimit image bumped from `ae4cee11` to `05c08d03`. (ADDON-04)
+- **`MetalLB` held at v0.15.3** — verified upstream `metallb/metallb` latest release is still v0.15.3 (published 2025-12-04). No newer release exists; the documented hold is unchanged. (ADDON-05)
 
 ---
 
