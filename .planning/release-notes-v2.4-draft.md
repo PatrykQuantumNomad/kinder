@@ -49,6 +49,22 @@ SYNC-05 is **deferred**: `kindest/node:v1.36.x` was not yet published on Docker 
 - `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` mirrors all delivered addon tags. Image count constant unchanged at 14 (no addon added or removed an image; only tags shifted). `kinder doctor offline-readiness` now checks against the new addon image set.
 - Three-tier breaking-change disclosure landed: this release-notes draft (tier 3), the addon docs (tier 2; cert-manager and Envoy Gateway addon pages updated in 53-03 and 53-04), and the changelog `## v2.4 — Hardening` section (tier 1).
 
+## macOS Ad-Hoc Signing (Phase 54)
+
+macOS binaries shipped from v2.4 are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+
+Apple Silicon (Apple-Mx) macOS enforces AMFI kernel-level signature checks on every Mach-O binary; unsigned binaries are killed with `Killed: 9` on first run. v2.4 wires `codesign --force --sign -` (ad-hoc identity, hash-only signature) into the GoReleaser `builds[].hooks.post` pipeline so every darwin/amd64 and darwin/arm64 binary carries an embedded ad-hoc signature before it is archived.
+
+The signature satisfies AMFI but does NOT satisfy Gatekeeper notarization. Direct downloads from GitHub Releases still hit the macOS quarantine attribute on first run. To work around the quarantine after extracting the archive:
+
+```sh
+xattr -d com.apple.quarantine kinder
+```
+
+Homebrew installs (`brew install patrykquantumnomad/kinder/kinder`) are unaffected — Homebrew bypasses Gatekeeper quarantine for formula-installed binaries.
+
+Full Developer ID signing + notarization is deferred to a future phase (DIST-03). (DIST-01)
+
 ## Verification
 
 `kinder doctor offline-readiness` against a fresh default cluster reports no `warn|missing` lines (SC1 second clause). Live verification transcript is recorded in `.planning/phases/53-addon-version-audit-bumps-sync-05/53-07-SUMMARY.md`.

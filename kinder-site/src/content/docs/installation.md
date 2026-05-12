@@ -36,6 +36,18 @@ chmod +x kinder
 sudo mv kinder /usr/local/bin/
 ```
 
+:::caution[macOS direct download]
+kinder macOS binaries are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+
+Ad-hoc signing satisfies Apple's AMFI kernel check on Apple Silicon (the binary no longer gets `Killed: 9` on first run), but it does **not** satisfy Gatekeeper for files downloaded via a web browser. After downloading from GitHub Releases, remove the quarantine attribute before running:
+
+```sh
+xattr -d com.apple.quarantine kinder
+```
+
+Users installing via `brew install patrykquantumnomad/kinder/kinder` are unaffected — Homebrew bypasses Gatekeeper quarantine for formula-installed binaries.
+:::
+
 ### Windows
 
 Download the `.zip` archive from [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases/latest) and extract `kinder.exe` to a directory in your `PATH`.

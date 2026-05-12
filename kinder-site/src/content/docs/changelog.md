@@ -49,6 +49,14 @@ Phase 53 brought all kinder addons to current-stable releases (where available),
 
 - `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` updated to reflect all delivered addon tags. Count remains 14 (no addon added or removed an image; only tags shifted). `TestAllAddonImages_CountMatchesExpected` passes unchanged. (ADDON-05)
 
+### macOS Ad-Hoc Signing (Phase 54)
+
+macOS binaries shipped from v2.4 are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+
+Apple Silicon (Apple-Mx) macOS enforces AMFI kernel-level signature checks on every Mach-O binary; unsigned binaries are killed with `Killed: 9` on first run. v2.4 wires `codesign --force --sign -` (ad-hoc identity, hash-only signature) into the GoReleaser `builds[].hooks.post` pipeline so every darwin/amd64 and darwin/arm64 binary carries an embedded ad-hoc signature before it is archived. The signature satisfies AMFI but not Gatekeeper notarization — direct downloads from GitHub Releases still hit the macOS quarantine attribute. Use `xattr -d com.apple.quarantine kinder` after extracting the archive, or install via Homebrew (`brew install patrykquantumnomad/kinder/kinder`), which bypasses quarantine for formula-installed binaries.
+
+Full Developer ID signing + notarization is deferred to a future phase (DIST-03). (DIST-01)
+
 ---
 
 ## v1.5 — Inner Loop
