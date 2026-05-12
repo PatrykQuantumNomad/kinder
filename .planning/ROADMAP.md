@@ -109,7 +109,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner (completed 2026-05-12; SC4 sign-as-last-op invariant established in 54-01, snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row landed in 54-02; CI run 25746519788 green — both darwin binaries verified `satisfies its Designated Requirement`)
 - [x] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI (completed 2026-05-12; `.github/workflows/build-check.yml` on `ubuntu-24.04` runs `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` on every PR to `main` + workflow_dispatch; SC3 satisfied at workflow level — merge-level branch protection deferred to future CI-policy phase per RESEARCH; CI run 25750801764 green in 32s; verifier 3/3 passed)
 - [x] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper (completed 2026-05-12; `runChecks(checks []Check) []Result` helper extracted in `pkg/internal/doctor/check.go` with `RunAllChecks()` now a 1-line delegate; three racing parallel tests in `check_test.go` rewritten to use local `[]Check` slices; `Makefile` `test-race-doctor` target + `.github/workflows/race-check.yml` CI gate added; `CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100` exits 0 in 2.662s with zero DATA RACE; verifier 3/3 passed)
-- [ ] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text
+- [x] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text (completed 2026-05-12; inline `external-load-balancer` + `external-etcd` role guard in `realListNodes` at `clusterskew.go:111-126` eliminates the false-positive version-skew warning; tolerant flow in `resumereadiness.go:172-207` calls `parseEtcdHealth` BEFORE the verdict so etcd 3.5+ non-zero exits still surface `"N/M etcd members healthy"` + `"quorum at risk"`; raw `"etcdctl endpoint health returned error: %v"` dump removed; Pitfall 22 fixture matrix covers etcd 3.4 + 3.5 JSON shapes; `make test-race-doctor` over `-count=100` green in 2.661s; verifier 3/3 passed)
 - [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items
 
 ## Phase Details
@@ -287,5 +287,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
-| 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | In progress — awaiting verifier | 2026-05-12 |
+| 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/TBD | Not started | - |

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: completed
-stopped_at: "Phase 57 Plan 57-02 COMPLETE — DIAG-06 tolerant etcd JSON parse on non-zero etcdctl exit. RED+GREEN landed (attribution drift: my commits got swept into 57-01's commits 866f2c22 + c43bb599 due to branching=none + parallelization=true; my code is on the tree byte-for-byte; documented in 57-02-SUMMARY.md). 3 new tests PASS (Etcd34_AllHealthy_Parsed, Etcd35_OneOfThree_NonZeroExit, Etcd35_AllUnhealthy_NonZeroExit). Full doctor suite green. TestAllChecks_CountIs26 green. make test-race-doctor green (1.88s, -count=100). parseEtcdHealth helper unchanged. DIAG-06 mark-complete deferred to Phase 57 close (after 57-01 verifier passes)."
-last_updated: "2026-05-12T20:56:21Z"
-last_activity: "2026-05-12T20:56:21Z — Phase 57 Plan 57-02 complete; DIAG-06 tolerant JSON parse landed; SC2 + SC3 fixture matrix proven; race gate preserved"
+status: in_progress
+stopped_at: "Phase 57 CLOSED — verifier 3/3 passed (status: passed, score: 3/3). DIAG-05 + DIAG-06 marked Complete in REQUIREMENTS.md; Phase 57 row marked Complete in ROADMAP.md. Both 57-01 (LB role guard at clusterskew.go:111-126) and 57-02 (tolerant etcd JSON parse at resumereadiness.go:172-207) landed; raw-error dump removed; etcd 3.4/3.5 fixture matrix locked. make test-race-doctor green over -count=100 (Phase 56 permanent gate preserved). Phase 58 (UAT-01 + UAT-02 live closure for Phase 47 + 51) is next — runs against final v2.4 binary."
+last_updated: "2026-05-12T21:00:00Z"
+last_activity: "2026-05-12T21:00:00Z — Phase 57 closed; verifier 3/3 passed; DIAG-05 + DIAG-06 marked Complete; Phase 58 (live UAT closure) is next"
 progress:
   total_phases: 7
   completed_phases: 6
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 56 (DEBT-04 data race elimination) CLOSED. DEBT-04 Complete. Phase 57 (doctor cosmetic fixes) is next.
+**Current focus:** v2.4 Hardening — Phase 57 (Doctor Cosmetic Fixes — DIAG-05 + DIAG-06) CLOSED. Phase 58 (live UAT closure for Phase 47 + 51) is next.
 
 ## Current Position
 
-Phase: 57 of 58 (Doctor Cosmetic Fixes — DIAG-05 + DIAG-06) — IN PROGRESS
-Plan: 57-02 COMPLETE (DIAG-06 tolerant etcd JSON parse on non-zero etcdctl exit; error-branch short-circuit rewritten to parse healthLines BEFORE verdict; raw-error dump removed; SC2 "1/3 etcd members healthy" + "quorum at risk" wording on etcd 3.5+ unhealthy clusters proven; SC3 fixture matrix (3.4 + 3.5 shapes) locked). Plan 57-01 (DIAG-05) running in parallel — touches clusterskew.go + clusterskew_test.go only, no file overlap with 57-02.
-Status: Phase 57 plan 57-02 closed (2 of 2 plans done counting both 57-01 and 57-02 in flight; verifier passes pending for both). DIAG-06 mark-complete deferred to phase close. parseEtcdHealth helper at resumereadiness.go:251 verified UNCHANGED. Phase 56 race gate preserved (make test-race-doctor 1.88s, -count=100, zero DATA RACE).
-Last activity: 2026-05-12T20:56:21Z — 57-02 SUMMARY.md created; STATE.md updated; awaiting Phase 57 verifier for joint close-out of DIAG-05 + DIAG-06
+Phase: 57 of 58 (Doctor Cosmetic Fixes — DIAG-05 + DIAG-06) — CLOSED
+Plan: 57-01 + 57-02 COMPLETE — DIAG-05 LB/external-etcd role guard at clusterskew.go:111-126 (TestClusterNodeSkew_ExternalLoadBalancer_NotWarned + source-invariant gate green); DIAG-06 tolerant etcd JSON parse at resumereadiness.go:172-207 (parseEtcdHealth called BEFORE verdict regardless of exec err; raw "etcdctl endpoint health returned error: %v" dump removed; etcd 3.4/3.5 fixture trio locked). Verifier 3/3 passed.
+Status: Phase 57 CLOSED — 2 of 2 plans done. SC1/SC2/SC3 all green. Full doctor suite ok 0.210s. make test-race-doctor ok 2.673s over -count=100 (Phase 56 permanent gate preserved). No sync primitive added to either modified file. DIAG-05 + DIAG-06 marked Complete in REQUIREMENTS.md. Phase 58 (UAT-01 + UAT-02 live closure for Phase 47 + 51 against final v2.4 binary) is next.
+Last activity: 2026-05-12T21:00:00Z — Phase 57 closed; verifier 3/3 passed; ready to route to Phase 58
 
 Progress: [██████████] 100%
 

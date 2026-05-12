@@ -34,8 +34,8 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 
 ### Diagnostics
 
-- [ ] **DIAG-05**: `cluster-node-skew` doctor check skips containers with role `external-load-balancer` (no `/kind/version` file present); ListInternalNodes role filter applied
-- [ ] **DIAG-06**: `cluster-resume-readiness` doctor check parses `etcdctl endpoint health --write-out json` output (`[{endpoint,health,took}]` per member) and reports actionable reason text (e.g. "1/3 healthy, quorum at risk") instead of dumping raw etcdctl error
+- [x] **DIAG-05**: `cluster-node-skew` doctor check skips containers with role `external-load-balancer` (no `/kind/version` file present); ListInternalNodes role filter applied
+- [x] **DIAG-06**: `cluster-resume-readiness` doctor check parses `etcdctl endpoint health --write-out json` output (`[{endpoint,health,took}]` per member) and reports actionable reason text (e.g. "1/3 healthy, quorum at risk") instead of dumping raw etcdctl error
 
 ### User Acceptance
 
@@ -104,8 +104,8 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 | DIST-01 | Phase 54 | Complete |
 | DIST-02 | Phase 55 | Complete |
 | DEBT-04 | Phase 56 | Complete |
-| DIAG-05 | Phase 57 | Pending |
-| DIAG-06 | Phase 57 | Pending |
+| DIAG-05 | Phase 57 | Complete |
+| DIAG-06 | Phase 57 | Complete |
 | UAT-01 | Phase 58 | Pending |
 | UAT-02 | Phase 58 | Pending |
 
