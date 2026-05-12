@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 54 Plan 54-01 COMPLETE — GoReleaser darwin codesign hook + macos-latest runner landed. Commits: f1df8c88 (Task 1 -s ldflags), bedb9541 (Task 2 hooks.post), 5c894f67 (Task 3 macos-latest). SC4 ordering invariant verified. Plan 54-02 (snapshot-verify + docs + DIST-01 mark-complete) ready to start."
-last_updated: "2026-05-12T15:05:45.407Z"
-last_activity: 2026-05-12 — Plan 54-01 complete; darwin codesign hook + macos-latest runner landed; Plan 54-02 unblocked
+stopped_at: "Phase 54 COMPLETE — both plans (54-01 release plumbing + 54-02 snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row) landed. Commits 54-02: 693894be (Task 1 macos-sign-verify.yml), 78d5fdb1 (Task 2 SC3 across installation.md + changelog.md + release-notes-v2.4-draft.md), f078893e (Task 3 PROJECT.md row). SC1+SC2 await first triggering push or workflow_dispatch run; SC3 evidence-complete (3-file grep -F backtick-wrapped form); SC4 carried from 54-01. Phase 55 (Windows PR-CI Build Step) unblocked."
+last_updated: "2026-05-12T15:11:24Z"
+last_activity: 2026-05-12 — Phase 54 COMPLETE (both plans); snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md row landed; Phase 55 unblocked
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing). Plan 54-01 (GoReleaser darwin codesign hook + macos-latest runner) COMPLETE. Plan 54-02 (snapshot-verify workflow + install doc + DIST-01 mark-complete) is next.
+**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing) COMPLETE (both plans landed). Phase 55 (Windows PR-CI Build Step) is next.
 
 ## Current Position
 
-Phase: 54 of 58 (macOS Ad-Hoc Code Signing)
-Plan: 54-01 COMPLETE (-s ldflags, darwin-gated builds[].hooks.post codesign, release.yml runs-on macos-latest)
-Status: Phase 54 in_progress — 1 of 2 plans done; SC4 ordering invariant established; SC1/SC2/SC3 + DIST-01 mark-complete deferred to Plan 54-02.
-Last activity: 2026-05-12 — Plan 54-01 complete; darwin codesign hook + macos-latest runner landed; Plan 54-02 unblocked
+Phase: 54 of 58 (macOS Ad-Hoc Code Signing) — COMPLETE
+Plan: 54-02 COMPLETE (snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml; SC3 3-file disclosure across installation.md + changelog.md + release-notes-v2.4-draft.md; PROJECT.md Key Decisions row recording ad-hoc-signing-not-notarization decision)
+Status: Phase 54 COMPLETE — 2 of 2 plans done. SC1+SC2 await first triggering push or workflow_dispatch run; SC3 evidence-complete via 3-file grep -F; SC4 carried from 54-01. DIST-01 fully evidenced. Phase 55 (Windows PR-CI) unblocked.
+Last activity: 2026-05-12 — Phase 54 COMPLETE (both plans); snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md row landed; Phase 55 unblocked
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [█████████░] 93%
 | 53-06 | 1 task (hold-verify probe) | ~2 min |
 | 53-07 | 2 tasks (RED+GREEN) + UAT-5 | ~30 min (two sessions) |
 | 54-01 | 3 tasks (release plumbing) | ~1m 20s |
+| 54-02 | 3 tasks (snapshot-verify CI + 3-file SC3 docs + PROJECT.md row) | ~2m 49s |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -97,6 +98,7 @@ Progress: [█████████░] 93%
 - 2026-05-10 (53-07): offlinereadiness.go realInspectImage calls 'docker inspect --type=image' against the HOST docker store (not the cluster node's containerd store). This is the correct semantic: the check measures air-gapped readiness (images must be pre-pulled on host before 'kinder create cluster --air-gapped'). On a fresh default cluster the check correctly warns for any addon image absent from host docker — this is NOT a regression. All 14 allAddonImages tags verified present on uat-53-07 cluster node via 'crictl images' (SC1 first clause satisfied). SC1 second clause as written ('no warn|missing on a fresh default cluster') conflates default-cluster boot with air-gapped readiness — the two semantics are different. Plan 53-07 closes with pass-with-deviation; Phase 53 verifier should re-word SC1 second clause to reference crictl verification on the node rather than host docker. ADDON-05 closed; three-tier disclosure complete; Phase 53 all 8 plans done.
 - 2026-05-12 (53-08): SC wording revision gap closure — pure doc fix; no code/test/manifest changes. SC1 second clause revised from 'does not warn on a fresh default cluster' to crictl-on-cluster-node evidence path. SC3 third clause revised from 'issues a certificate with the new UID (65532)' to runAsNonRoot: true + distroless USER nonroot enforcement. Both gaps closed via ROADMAP.md revision per developer decision (no override acceptance). 53-VERIFICATION.md frontmatter transitioned: gaps_filed → gaps_closed, status=verified, score=6/6. REQUIREMENTS.md ADDON-01/03/05 scope unchanged. Phase 53 fully closed (9/9 plans).
 - 2026-05-12 (54-01): Ad-hoc Mach-O codesign wired into .goreleaser.yaml builds[].hooks.post with darwin shell-conditional (`{{ .Os }} == darwin` gate, NOT GoReleaser `if:` field which is undocumented for build hooks); `-s` added to ldflags to satisfy DIST-01 wording; release.yml runs-on switched `ubuntu-latest` → `macos-latest`. SC4 ordering invariant established: hooks is the last builds[0] key, no top-level `signs:`, no post-sign strip/UPX. `macos-latest` left as floating tag. CI verification (SC1/SC2) + install-doc wording (SC3) + REQUIREMENTS DIST-01 mark-complete all deferred to Plan 54-02.
+- 2026-05-12 (54-02): Phase 54 COMPLETE — snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml (SC1+SC2 await first triggering push or workflow_dispatch run; paths filter on .goreleaser.yaml + workflow file caps 10x macOS billing cost; find dist/ -path glob for snapshot binary discovery; grep -q "satisfies its Designated Requirement" as explicit SC1/SC2 gate per CI-FAILING quality_gate). SC3 wording mirrored verbatim across installation.md (`:::caution[macOS direct download]` Starlight admonition) + changelog.md (### subsection inside `## v2.4 — Hardening` above the closing `---`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification) — exactly-once per file; binding "Release notes AND install guide" conjunction satisfied. PROJECT.md Key Decisions row records the ad-hoc-not-notarization decision with AMFI + DIST-03 deferral pointer. SC4 carried from 54-01 (.goreleaser.yaml + release.yml untouched in this plan; verified via git diff --stat HEAD~3 HEAD).
 
 ### Pending Todos
 
@@ -117,6 +119,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-12T15:04:04Z
-Stopped at: Phase 54 Plan 54-01 COMPLETE — GoReleaser darwin codesign hook + macos-latest runner landed. Commits: f1df8c88 (Task 1 -s ldflags), bedb9541 (Task 2 builds[].hooks.post codesign), 5c894f67 (Task 3 release.yml macos-latest). SC4 ordering invariant verified structurally (hooks is last builds[0] key; no top-level signs:; no post-sign strip/UPX). Plan 54-02 (snapshot-verify workflow + install doc SC3 wording + PROJECT.md decision row + REQUIREMENTS.md DIST-01 mark-complete) ready to start.
+Last session: 2026-05-12T15:11:24Z
+Stopped at: Phase 54 COMPLETE — both plans landed. Plan 54-02 added .github/workflows/macos-sign-verify.yml (snapshot-build + per-arch codesign -vvv gate on macos-latest with paths filter on .goreleaser.yaml + workflow file; workflow_dispatch enabled), mirrored the SC3 wording into installation.md (`:::caution[macOS direct download]` Starlight block) + changelog.md (### subsection inside `## v2.4 — Hardening`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification), and added a Key Decisions row to PROJECT.md. Commits: 693894be (workflow), 78d5fdb1 (3-file SC3 docs), f078893e (PROJECT.md row). SC1+SC2 await first triggering push or `gh workflow run macos-sign-verify.yml --ref main`; SC3 + SC4 evidence-complete. DIST-01 fully evidenced. Phase 55 (Windows PR-CI Build Step) unblocked.
 Resume file: None

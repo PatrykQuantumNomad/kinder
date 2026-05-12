@@ -106,7 +106,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 
 - [x] **Phase 52: HA Etcd Peer-TLS Fix** - IP-pin HA control-plane containers so Docker IPAM reassignment cannot break peer connectivity on resume (completed 2026-05-10; live UAT carries forward to Phase 58)
 - [x] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump (completed 2026-05-12; 4 bumps + 2 holds + 1 INCONCLUSIVE SYNC-05 probe + offlinereadiness consolidation + SC wording gap closure)
-- [ ] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner
+- [x] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner (completed 2026-05-12; SC4 sign-as-last-op invariant established in 54-01, snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row landed in 54-02; SC1+SC2 await first triggering push or `gh workflow run macos-sign-verify.yml`)
 - [ ] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI
 - [ ] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper
 - [ ] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text
@@ -170,7 +170,7 @@ Plans:
   4. The sign step is the LAST operation on each binary before archiving — no post-sign strip, UPX, or binary copy invalidates the Mach-O signature block
 **Plans**: 2 plans
 - [x] 54-01-goreleaser-darwin-signing-PLAN.md — Add darwin-gated codesign post-hook to .goreleaser.yaml builds[] + -s ldflags + switch release.yml to macos-latest runner (SC4 + prerequisite plumbing for SC1/SC2)
-- [ ] 54-02-snapshot-verify-and-docs-PLAN.md — Add .github/workflows/macos-sign-verify.yml snapshot+verify CI gate + SC3 install-guide wording + PROJECT.md Key Decisions row (SC1+SC2+SC3)
+- [x] 54-02-snapshot-verify-and-docs-PLAN.md — Add .github/workflows/macos-sign-verify.yml snapshot+verify CI gate + SC3 wording across installation.md + changelog.md + release-notes-v2.4-draft.md + PROJECT.md Key Decisions row (SC1+SC2+SC3)
 
 ### Phase 55: Windows PR-CI Build Step
 **Goal**: Every PR is cross-compiled for `windows/amd64` on `ubuntu-latest`, preventing silent Windows compilation regressions
@@ -280,7 +280,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
 | 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 9/9 | Complete | 2026-05-12 |
-| 54. macOS Ad-Hoc Code Signing | v2.4 | 1/2 | In Progress|  |
+| 54. macOS Ad-Hoc Code Signing | v2.4 | 2/2 | Complete (SC1+SC2 CI evidence on first triggering push) | 2026-05-12 |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
 | 57. Doctor Cosmetic Fixes | v2.4 | 0/TBD | Not started | - |
