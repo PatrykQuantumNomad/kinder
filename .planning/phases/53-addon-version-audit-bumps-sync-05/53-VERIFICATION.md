@@ -2,39 +2,30 @@
 phase: 53-addon-version-audit-bumps-sync-05
 verified: 2026-05-10T00:00:00Z
 human_resolved: 2026-05-12T00:00:00Z
-status: gaps_found
-score: 4/6 must-haves fully verified (SC6 deferred; SC1 second clause + SC3 third clause filed as gap closures per developer decision 2026-05-12)
+status: verified
+score: 6/6 must-haves verified (SC6 deferred per Outcome B re-runnable status; SC1 second clause + SC3 third clause closed via 53-08 SC wording revision landed 2026-05-12)
 human_decision: "Developer (golysoft@gmail.com) declined override acceptance for both SC1 second clause and SC3 third clause — filing both as gap closures so the SC wording is revised formally rather than silently overridden."
-gaps_filed:
+gaps_closed:
   - sc: "SC1 second clause"
-    issue: >
-      Wording 'kinder doctor offline-readiness does not warn on a fresh default cluster'
-      is unsatisfiable by design — the check measures HOST docker pre-pull readiness for
-      --air-gapped mode, not cluster node store. Recommend rewording to reference crictl
-      verification on the cluster node, OR adding a pre-pull precondition.
-    closure_path: "Documentation/ROADMAP.md SC revision (no code change)"
+    closed_at: "2026-05-12T00:00:00Z"
+    closure_plan: "53-08-sc-wording-revision-PLAN.md"
+    resolution: >
+      ROADMAP.md SC1 second clause re-worded from 'kinder doctor offline-readiness does
+      not warn on a fresh default cluster' (unsatisfiable by design) to 'all 14 bumped/held
+      addon tags are present on the cluster node containerd image store (verified via
+      crictl images on the control-plane node)' — the actually-verified evidence path.
+      Air-gapped semantics of offline-readiness check explicitly documented inline. See
+      53-07-SUMMARY.md DEVIATION section for full architectural analysis.
   - sc: "SC3 third clause"
-    issue: >
-      Wording 'self-signed ClusterIssuer issues a certificate with the new UID (65532)'
-      assumes an explicit manifest runAsUser field. Upstream cert-manager v1.20.2 uses
-      distroless USER nonroot + kubelet runAsNonRoot: true enforcement (same security
-      outcome, different mechanism). Recommend rewording to reference the non-root
-      enforcement mechanism, OR adding an ephemeral debug container UID assertion step.
-    closure_path: "Documentation/ROADMAP.md SC revision (no code change)"
-overrides_applied: 0
-overrides:
-  - must_have: "SC1 second clause: kinder doctor offline-readiness does not warn on a fresh default cluster"
-    reason: >
-      realInspectImage in offlinereadiness.go inspects the HOST docker store, not the cluster
-      node's containerd store. This is correct behavior — the check measures air-gapped readiness
-      (host must pre-pull images before --air-gapped). A default cluster that boots normally will
-      ALWAYS trigger warn because addon images are only in containerd, not in host docker.
-      Live UAT-5 (uat-53-07) confirmed all 14 bumped addon tags ARE present on the cluster node
-      via crictl. SC1 second clause as written is unsatisfiable by design; the intent (images
-      correctly tracked and delivered) is fully met. 53-07 SUMMARY documents this as an
-      architectural finding, not a regression. See deferred section for wording fix tracking.
-    accepted_by: "verifier (pending human confirmation — see human_verification section)"
-    accepted_at: "2026-05-10T00:00:00Z"
+    closed_at: "2026-05-12T00:00:00Z"
+    closure_plan: "53-08-sc-wording-revision-PLAN.md"
+    resolution: >
+      ROADMAP.md SC3 third clause re-worded from 'issues a certificate with the new UID
+      (65532)' (implied manifest runAsUser pin — absent in upstream v1.20.2 by design) to
+      'pods enforced non-root via pod-level runAsNonRoot: true + distroless image USER
+      nonroot directive (functional UID 65532)'. Same security guarantee, accurate mechanism.
+      Live UAT-3 evidence preserved (pods Running, CN=uat-test Certificate issued). See
+      53-03-SUMMARY.md UID Deviation section for full upstream-design rationale.
 deferred:
   - truth: "SC6: default image constant updated to kindest/node:v1.36.x"
     addressed_in: "Phase 53 sub-plan 53-00 re-run (when kind publishes v0.32.0)"
@@ -43,34 +34,6 @@ deferred:
       v1.36 tags. SC6 defines Outcome B as the valid halting condition with re-runnable status.
       image.go correctly remains at kindest/node:v1.35.1. No code regression; re-run
       instructions documented in 53-00-SUMMARY.md.
-  - truth: "SC1 second clause wording corrected to reflect air-gapped semantics"
-    addressed_in: "Phase 54+ (documentation fix)"
-    evidence: >
-      53-07 SUMMARY explicitly calls out the wording fix as a follow-up item. The functional
-      behavior is correct; only the ROADMAP SC wording needs updating to say 'all bumped addon
-      tags are present on the cluster node's containerd store (verified via crictl after
-      kinder create cluster)' instead of 'no warn on a fresh default cluster'.
-human_verification:
-  - test: "Confirm SC1 second-clause override acceptance"
-    expected: >
-      Developer confirms that 'kinder doctor offline-readiness warns on a default cluster by design'
-      is acceptable — it is an air-gapped pre-pull gate, not a cluster-health check.
-      All 14 addon tags are on the cluster node containerd store (verified via crictl in UAT-5).
-    why_human: >
-      This is a success-criteria semantics decision: the verifier cannot autonomously accept
-      a must-have override for an SC that was defined in ROADMAP.md. Developer confirmation
-      required before marking SC1 second clause as PASSED (override).
-  - test: "Confirm SC3 third clause UID 65532 deviation acceptance"
-    expected: >
-      Developer confirms that cert-manager v1.20.2 achieving UID 65532 via distroless image
-      USER nonroot directive (kubelet runAsNonRoot: true enforcement) — rather than an explicit
-      manifest runAsUser: 65532 field — is acceptable as the security intent is satisfied.
-      Live UAT-3 confirmed pods ran without root; CN=uat-test Certificate issued successfully.
-    why_human: >
-      SC3 says 'self-signed ClusterIssuer issues a certificate with the new UID (65532)'.
-      The manifest does not pin runAsUser: 65532 explicitly. The upstream design (distroless +
-      kubelet enforcement) achieves the same security guarantee. This is a judgment call on
-      whether the SC wording requires an explicit manifest field or accepts upstream enforcement.
 ---
 
 # Phase 53: Addon Version Audit, Bumps & SYNC-05 — Verification Report
