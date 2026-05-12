@@ -1,0 +1,64 @@
+# Source: .planning/phases/54-macos-ad-hoc-code-signing/54-RESEARCH.md (Topics 6-7)
+# Purpose: SC1 + SC2 verification — proves darwin/amd64 and darwin/arm64 GoReleaser
+# snapshot binaries satisfy codesign -vvv on a macOS runner with the same toolchain
+# as the release pipeline. Catches signing regressions before they reach a tag push.
+name: macOS Sign Verify
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .goreleaser.yaml
+      - .github/workflows/macos-sign-verify.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot-sign-verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: .go-version
+
+      - name: Snapshot build (no publish)
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify darwin/amd64 ad-hoc signature (SC1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=$(find dist/ -name kinder -path '*darwin_amd64*' | head -1)
+          if [ -z "$BIN" ]; then
+            echo "FAIL: darwin/amd64 binary not found under dist/"
+            exit 1
+          fi
+          echo "Verifying: $BIN"
+          codesign -vvv "$BIN" 2>&1 | tee /tmp/codesign_amd64.log
+          grep -q "satisfies its Designated Requirement" /tmp/codesign_amd64.log
+
+      - name: Verify darwin/arm64 ad-hoc signature (SC2)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=$(find dist/ -name kinder -path '*darwin_arm64*' | head -1)
+          if [ -z "$BIN" ]; then
+            echo "FAIL: darwin/arm64 binary not found under dist/"
+            exit 1
+          fi
+          echo "Verifying: $BIN"
+          codesign -vvv "$BIN" 2>&1 | tee /tmp/codesign_arm64.log
+          grep -q "satisfies its Designated Requirement" /tmp/codesign_arm64.log
