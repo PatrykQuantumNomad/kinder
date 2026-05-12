@@ -37,6 +37,7 @@ builds:
       - -trimpath
     ldflags:
       - -buildid=
+      - -s
       - -w
       - -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
