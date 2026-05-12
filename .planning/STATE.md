@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 54 COMPLETE — both plans (54-01 release plumbing + 54-02 snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row) landed. Commits 54-02: 693894be (Task 1 macos-sign-verify.yml), 78d5fdb1 (Task 2 SC3 across installation.md + changelog.md + release-notes-v2.4-draft.md), f078893e (Task 3 PROJECT.md row). SC1+SC2 await first triggering push or workflow_dispatch run; SC3 evidence-complete (3-file grep -F backtick-wrapped form); SC4 carried from 54-01. Phase 55 (Windows PR-CI Build Step) unblocked."
-last_updated: "2026-05-12T15:11:24Z"
-last_activity: 2026-05-12 — Phase 54 COMPLETE (both plans); snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md row landed; Phase 55 unblocked
+stopped_at: "Phase 54 VERIFIED + SHIPPED — both plans + CI green. Push of commits f1df8c88..d00cafd0 paths-trigger-fired the macos-sign-verify workflow; run 25746519788 completed success in 2m37s with both verify steps printing `satisfies its Designated Requirement` for kinder_darwin_amd64_v1 and kinder_darwin_arm64_v8.0. SC1+SC2+SC3+SC4 all VERIFIED. 54-VERIFICATION.md promoted human_needed → passed. Phase 55 (Windows PR-CI Build Step) up next."
+last_updated: "2026-05-12T16:10:00Z"
+last_activity: 2026-05-12 — Phase 54 CI green (run 25746519788, 2m37s); both darwin binaries verified `satisfies its Designated Requirement`; 54-VERIFICATION.md promoted to status=passed; Phase 55 up next
 progress:
   total_phases: 7
   completed_phases: 3
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing) COMPLETE (both plans landed). Phase 55 (Windows PR-CI Build Step) is next.
+**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing) VERIFIED via CI green (run 25746519788). Phase 55 (Windows PR-CI Build Step) is next.
 
 ## Current Position
 
-Phase: 54 of 58 (macOS Ad-Hoc Code Signing) — COMPLETE
+Phase: 54 of 58 (macOS Ad-Hoc Code Signing) — VERIFIED + SHIPPED
 Plan: 54-02 COMPLETE (snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml; SC3 3-file disclosure across installation.md + changelog.md + release-notes-v2.4-draft.md; PROJECT.md Key Decisions row recording ad-hoc-signing-not-notarization decision)
-Status: Phase 54 COMPLETE — 2 of 2 plans done. SC1+SC2 await first triggering push or workflow_dispatch run; SC3 evidence-complete via 3-file grep -F; SC4 carried from 54-01. DIST-01 fully evidenced. Phase 55 (Windows PR-CI) unblocked.
-Last activity: 2026-05-12 — Phase 54 COMPLETE (both plans); snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md row landed; Phase 55 unblocked
+Status: Phase 54 VERIFIED — 2 of 2 plans done. CI run 25746519788 (success, 2m37s) closed SC1 + SC2 with both darwin binaries printing `satisfies its Designated Requirement`. SC3 evidence-complete via 3-file grep -F; SC4 carried from 54-01. DIST-01 fully evidenced. 54-VERIFICATION.md status=passed (4/4). Phase 55 (Windows PR-CI) up next.
+Last activity: 2026-05-12T16:08Z — Phase 54 CI green (run 25746519788, 2m37s); 54-VERIFICATION.md promoted human_needed → passed
 
 Progress: [██████████] 100%
 
@@ -99,6 +99,7 @@ Progress: [██████████] 100%
 - 2026-05-12 (53-08): SC wording revision gap closure — pure doc fix; no code/test/manifest changes. SC1 second clause revised from 'does not warn on a fresh default cluster' to crictl-on-cluster-node evidence path. SC3 third clause revised from 'issues a certificate with the new UID (65532)' to runAsNonRoot: true + distroless USER nonroot enforcement. Both gaps closed via ROADMAP.md revision per developer decision (no override acceptance). 53-VERIFICATION.md frontmatter transitioned: gaps_filed → gaps_closed, status=verified, score=6/6. REQUIREMENTS.md ADDON-01/03/05 scope unchanged. Phase 53 fully closed (9/9 plans).
 - 2026-05-12 (54-01): Ad-hoc Mach-O codesign wired into .goreleaser.yaml builds[].hooks.post with darwin shell-conditional (`{{ .Os }} == darwin` gate, NOT GoReleaser `if:` field which is undocumented for build hooks); `-s` added to ldflags to satisfy DIST-01 wording; release.yml runs-on switched `ubuntu-latest` → `macos-latest`. SC4 ordering invariant established: hooks is the last builds[0] key, no top-level `signs:`, no post-sign strip/UPX. `macos-latest` left as floating tag. CI verification (SC1/SC2) + install-doc wording (SC3) + REQUIREMENTS DIST-01 mark-complete all deferred to Plan 54-02.
 - 2026-05-12 (54-02): Phase 54 COMPLETE — snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml (SC1+SC2 await first triggering push or workflow_dispatch run; paths filter on .goreleaser.yaml + workflow file caps 10x macOS billing cost; find dist/ -path glob for snapshot binary discovery; grep -q "satisfies its Designated Requirement" as explicit SC1/SC2 gate per CI-FAILING quality_gate). SC3 wording mirrored verbatim across installation.md (`:::caution[macOS direct download]` Starlight admonition) + changelog.md (### subsection inside `## v2.4 — Hardening` above the closing `---`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification) — exactly-once per file; binding "Release notes AND install guide" conjunction satisfied. PROJECT.md Key Decisions row records the ad-hoc-not-notarization decision with AMFI + DIST-03 deferral pointer. SC4 carried from 54-01 (.goreleaser.yaml + release.yml untouched in this plan; verified via git diff --stat HEAD~3 HEAD).
+- 2026-05-12 (54-CI-verify): Phase 54 SC1+SC2 closed via live CI run `25746519788` (push of f1df8c88..d00cafd0 to origin/main paths-filter-triggered the workflow). Result: success, 2m37s, two verify steps green: `dist/kinder_darwin_amd64_v1/kinder: satisfies its Designated Requirement` and `dist/kinder_darwin_arm64_v8.0/kinder: satisfies its Designated Requirement`. Surprise (non-blocking): arm64 dist directory is `kinder_darwin_arm64_v8.0` not the literal SC2 `kinder_darwin_arm64` — Go 1.23+ default GOARM64=v8.0 suffix; workflow's `*darwin_arm64*` path glob (deliberately chosen in plan over hardcoded path) handles both legacy and v8.0 layouts; SC2 intent (arm64 signature verified) satisfied. Future ROADMAP authors: do NOT hardcode `dist/kinder_darwin_arm64/` in SC text — use the path-glob form. 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed, score=2/4 → 4/4.
 
 ### Pending Todos
 
@@ -119,6 +120,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-12T15:11:24Z
-Stopped at: Phase 54 COMPLETE — both plans landed. Plan 54-02 added .github/workflows/macos-sign-verify.yml (snapshot-build + per-arch codesign -vvv gate on macos-latest with paths filter on .goreleaser.yaml + workflow file; workflow_dispatch enabled), mirrored the SC3 wording into installation.md (`:::caution[macOS direct download]` Starlight block) + changelog.md (### subsection inside `## v2.4 — Hardening`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification), and added a Key Decisions row to PROJECT.md. Commits: 693894be (workflow), 78d5fdb1 (3-file SC3 docs), f078893e (PROJECT.md row). SC1+SC2 await first triggering push or `gh workflow run macos-sign-verify.yml --ref main`; SC3 + SC4 evidence-complete. DIST-01 fully evidenced. Phase 55 (Windows PR-CI Build Step) unblocked.
+Last session: 2026-05-12T16:10:00Z
+Stopped at: Phase 54 VERIFIED + SHIPPED. After 8 atomic commits (f1df8c88 ldflags-s, bedb9541 darwin hook, 5c894f67 macos-latest runner, d8981810 54-01 wrap, 693894be macos-sign-verify.yml, 78d5fdb1 3-file SC3 docs, f078893e PROJECT.md row, d00cafd0 54-02 wrap) were pushed to origin/main, the paths-filtered workflow auto-triggered run 25746519788. Run conclusion: success in 2m37s. Both verify steps printed `satisfies its Designated Requirement` for dist/kinder_darwin_amd64_v1/kinder and dist/kinder_darwin_arm64_v8.0/kinder (arm64 path includes Go 1.23+ default `_v8.0` GOARM64 suffix — workflow path glob handles both layouts). 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed; score=4/4. Phase 55 (Windows PR-CI Build Step) up next.
 Resume file: None
