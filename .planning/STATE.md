@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 54 VERIFIED + SHIPPED — both plans + CI green. Push of commits f1df8c88..d00cafd0 paths-trigger-fired the macos-sign-verify workflow; run 25746519788 completed success in 2m37s with both verify steps printing `satisfies its Designated Requirement` for kinder_darwin_amd64_v1 and kinder_darwin_arm64_v8.0. SC1+SC2+SC3+SC4 all VERIFIED. 54-VERIFICATION.md promoted human_needed → passed. Phase 55 (Windows PR-CI Build Step) up next."
-last_updated: "2026-05-12T16:10:00Z"
-last_activity: 2026-05-12 — Phase 54 CI green (run 25746519788, 2m37s); both darwin binaries verified `satisfies its Designated Requirement`; 54-VERIFICATION.md promoted to status=passed; Phase 55 up next
+stopped_at: "Phase 55 Plan 55-01 CLOSED — Task 1 commit c8d4bfbd (.github/workflows/build-check.yml) pushed to origin/main; Task 2 green-via-dispatch run 25750801764 (conclusion=success, 32s); Task 3 defer (layer-a blocking delivered, merge-level deferred to future CI-policy phase); DIST-02 marked Complete in REQUIREMENTS.md. Phase 55 has only 1 plan — phase ready for /gsd:execute-phase verifier step."
+last_updated: "2026-05-12T17:00:00Z"
+last_activity: 2026-05-12 — Phase 55 Plan 55-01 closed; build-check.yml CI green (run 25750801764, 32s); DIST-02 Complete; Task 3 defer
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
+  completed_phases: 4
+  total_plans: 16
+  completed_plans: 16
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing) VERIFIED via CI green (run 25746519788). Phase 55 (Windows PR-CI Build Step) is next.
+**Current focus:** v2.4 Hardening — Phase 55 (Windows PR-CI Build Step) CLOSED. DIST-02 Complete. Phase 56 (DEBT-04 data race elimination) is next.
 
 ## Current Position
 
-Phase: 54 of 58 (macOS Ad-Hoc Code Signing) — VERIFIED + SHIPPED
-Plan: 54-02 COMPLETE (snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml; SC3 3-file disclosure across installation.md + changelog.md + release-notes-v2.4-draft.md; PROJECT.md Key Decisions row recording ad-hoc-signing-not-notarization decision)
-Status: Phase 54 VERIFIED — 2 of 2 plans done. CI run 25746519788 (success, 2m37s) closed SC1 + SC2 with both darwin binaries printing `satisfies its Designated Requirement`. SC3 evidence-complete via 3-file grep -F; SC4 carried from 54-01. DIST-01 fully evidenced. 54-VERIFICATION.md status=passed (4/4). Phase 55 (Windows PR-CI) up next.
-Last activity: 2026-05-12T16:08Z — Phase 54 CI green (run 25746519788, 2m37s); 54-VERIFICATION.md promoted human_needed → passed
+Phase: 55 of 58 (Windows PR-CI Build Step) — CLOSED
+Plan: 55-01 COMPLETE (build-check.yml on ubuntu-24.04; SC1+SC2+SC3 workflow-level satisfied; green workflow_dispatch run 25750801764; Task 3 defer; DIST-02 Complete)
+Status: Phase 55 CLOSED — 1 of 1 plans done. CI run 25750801764 (success, 32s) proves cross-compile for windows/amd64 (CGO_ENABLED=0) exits 0 end-to-end. Check name: `Windows Build Check / windows-build`. Branch protection deferred. Phase 55 ready for /gsd:execute-phase verifier step. Phase 56 (DEBT-04) up next.
+Last activity: 2026-05-12T17:00Z — Phase 55 Plan 55-01 closed; build-check.yml CI green (run 25750801764, 32s); DIST-02 Complete; Task 3 defer
 
 Progress: [██████████] 100%
 
@@ -63,6 +63,7 @@ Progress: [██████████] 100%
 | 53-07 | 2 tasks (RED+GREEN) + UAT-5 | ~30 min (two sessions) |
 | 54-01 | 3 tasks (release plumbing) | ~1m 20s |
 | 54-02 | 3 tasks (snapshot-verify CI + 3-file SC3 docs + PROJECT.md row) | ~2m 49s |
+| 55-01 | 3 tasks (SC2 probe + build-check.yml + dispatch verify + Task 3 defer) | ~1 session |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -100,6 +101,7 @@ Progress: [██████████] 100%
 - 2026-05-12 (54-01): Ad-hoc Mach-O codesign wired into .goreleaser.yaml builds[].hooks.post with darwin shell-conditional (`{{ .Os }} == darwin` gate, NOT GoReleaser `if:` field which is undocumented for build hooks); `-s` added to ldflags to satisfy DIST-01 wording; release.yml runs-on switched `ubuntu-latest` → `macos-latest`. SC4 ordering invariant established: hooks is the last builds[0] key, no top-level `signs:`, no post-sign strip/UPX. `macos-latest` left as floating tag. CI verification (SC1/SC2) + install-doc wording (SC3) + REQUIREMENTS DIST-01 mark-complete all deferred to Plan 54-02.
 - 2026-05-12 (54-02): Phase 54 COMPLETE — snapshot-verify CI gate at .github/workflows/macos-sign-verify.yml (SC1+SC2 await first triggering push or workflow_dispatch run; paths filter on .goreleaser.yaml + workflow file caps 10x macOS billing cost; find dist/ -path glob for snapshot binary discovery; grep -q "satisfies its Designated Requirement" as explicit SC1/SC2 gate per CI-FAILING quality_gate). SC3 wording mirrored verbatim across installation.md (`:::caution[macOS direct download]` Starlight admonition) + changelog.md (### subsection inside `## v2.4 — Hardening` above the closing `---`) + release-notes-v2.4-draft.md (## section between Internal Changes and Verification) — exactly-once per file; binding "Release notes AND install guide" conjunction satisfied. PROJECT.md Key Decisions row records the ad-hoc-not-notarization decision with AMFI + DIST-03 deferral pointer. SC4 carried from 54-01 (.goreleaser.yaml + release.yml untouched in this plan; verified via git diff --stat HEAD~3 HEAD).
 - 2026-05-12 (54-CI-verify): Phase 54 SC1+SC2 closed via live CI run `25746519788` (push of f1df8c88..d00cafd0 to origin/main paths-filter-triggered the workflow). Result: success, 2m37s, two verify steps green: `dist/kinder_darwin_amd64_v1/kinder: satisfies its Designated Requirement` and `dist/kinder_darwin_arm64_v8.0/kinder: satisfies its Designated Requirement`. Surprise (non-blocking): arm64 dist directory is `kinder_darwin_arm64_v8.0` not the literal SC2 `kinder_darwin_arm64` — Go 1.23+ default GOARM64=v8.0 suffix; workflow's `*darwin_arm64*` path glob (deliberately chosen in plan over hardcoded path) handles both legacy and v8.0 layouts; SC2 intent (arm64 signature verified) satisfied. Future ROADMAP authors: do NOT hardcode `dist/kinder_darwin_arm64/` in SC text — use the path-glob form. 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed, score=2/4 → 4/4.
+- 2026-05-12 (55-01): DIST-02 layer (a) vs layer (b) split — workflow-level blocking (job exit code → PR check red) delivered by build-check.yml alone; merge-level blocking (branch protection required status check) deferred to a future CI-policy phase per RESEARCH recommendation. User Task 3 selection: `defer`. Green CI run 25750801764 (`workflow_dispatch` on main, conclusion=success, 32s, all 5 steps green). Check name: `Windows Build Check / windows-build` (stable and unambiguous for future branch-protection config). ubuntu-24.04 pin used over DIST-02 literal ubuntu-latest — repo-wide convention; deviation documented in workflow header comment. DIST-02 Complete.
 
 ### Pending Todos
 
@@ -120,6 +122,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-12T16:10:00Z
-Stopped at: Phase 54 VERIFIED + SHIPPED. After 8 atomic commits (f1df8c88 ldflags-s, bedb9541 darwin hook, 5c894f67 macos-latest runner, d8981810 54-01 wrap, 693894be macos-sign-verify.yml, 78d5fdb1 3-file SC3 docs, f078893e PROJECT.md row, d00cafd0 54-02 wrap) were pushed to origin/main, the paths-filtered workflow auto-triggered run 25746519788. Run conclusion: success in 2m37s. Both verify steps printed `satisfies its Designated Requirement` for dist/kinder_darwin_amd64_v1/kinder and dist/kinder_darwin_arm64_v8.0/kinder (arm64 path includes Go 1.23+ default `_v8.0` GOARM64 suffix — workflow path glob handles both layouts). 54-VERIFICATION.md frontmatter transitioned status=human_needed → status=passed; score=4/4. Phase 55 (Windows PR-CI Build Step) up next.
+Last session: 2026-05-12T17:00:00Z
+Stopped at: Phase 55 Plan 55-01 CLOSED. Task 1 commit c8d4bfbd (.github/workflows/build-check.yml) pushed to origin/main. Task 2 green-via-dispatch run 25750801764 (conclusion=success, 32s, all 5 steps green including cross-compile step). Task 3 user decision = defer (workflow-level blocking delivered; merge-level protection deferred to future CI-policy phase). DIST-02 marked Complete in REQUIREMENTS.md. Phase 55 has only 1 plan — phase ready for /gsd:execute-phase verifier step (or orchestrator can proceed directly to Phase 56 DEBT-04 if auto-verify is configured).
 Resume file: None

@@ -26,7 +26,7 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 ### Distribution
 
 - [x] **DIST-01**: macOS GoReleaser artifacts ad-hoc signed via `codesign --force --sign -` post-hook running on `macos-latest` CI runner; signing happens AFTER `-ldflags="-s -w"` strip; release notes explicitly state ad-hoc signing does NOT bypass Gatekeeper quarantine
-- [ ] **DIST-02**: PR CI gains a blocking `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` step on `ubuntu-latest`; failure fails the PR check
+- [x] **DIST-02**: PR CI gains a blocking `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` step on `ubuntu-latest`; failure fails the PR check
 
 ### Tech Debt
 
@@ -102,7 +102,7 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 | ADDON-05 | Phase 53 | Pending |
 | SYNC-05 | Phase 53 | Pending |
 | DIST-01 | Phase 54 | Complete |
-| DIST-02 | Phase 55 | Pending |
+| DIST-02 | Phase 55 | Complete |
 | DEBT-04 | Phase 56 | Pending |
 | DIAG-05 | Phase 57 | Pending |
 | DIAG-06 | Phase 57 | Pending |
@@ -116,4 +116,4 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-09*
-*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans*
+*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans; DIST-02 marked complete after Phase 55 Plan 55-01 landed .github/workflows/build-check.yml — green workflow_dispatch run 25750801764*
