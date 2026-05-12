@@ -41,6 +41,10 @@ builds:
       - -w
       - -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: sh -c 'if [ "{{ .Os }}" = "darwin" ]; then codesign --force --sign - "{{ .Path }}"; fi'
+          output: true
 
 archives:
   - id: kinder
