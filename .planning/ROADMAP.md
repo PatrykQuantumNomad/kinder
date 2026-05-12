@@ -108,7 +108,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump (completed 2026-05-12; 4 bumps + 2 holds + 1 INCONCLUSIVE SYNC-05 probe + offlinereadiness consolidation + SC wording gap closure)
 - [x] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner (completed 2026-05-12; SC4 sign-as-last-op invariant established in 54-01, snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row landed in 54-02; CI run 25746519788 green — both darwin binaries verified `satisfies its Designated Requirement`)
 - [x] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI (completed 2026-05-12; `.github/workflows/build-check.yml` on `ubuntu-24.04` runs `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` on every PR to `main` + workflow_dispatch; SC3 satisfied at workflow level — merge-level branch protection deferred to future CI-policy phase per RESEARCH; CI run 25750801764 green in 32s; verifier 3/3 passed)
-- [ ] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper
+- [x] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper (completed 2026-05-12; `runChecks(checks []Check) []Result` helper extracted in `pkg/internal/doctor/check.go` with `RunAllChecks()` now a 1-line delegate; three racing parallel tests in `check_test.go` rewritten to use local `[]Check` slices; `Makefile` `test-race-doctor` target + `.github/workflows/race-check.yml` CI gate added; `CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100` exits 0 in 2.662s with zero DATA RACE; verifier 3/3 passed)
 - [ ] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text
 - [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items
 
@@ -191,7 +191,8 @@ Plans:
   1. `go test -race ./pkg/internal/doctor/... -count=100` reports zero races (100-run threshold to catch timing-dependent races — Pitfall 20)
   2. Production `check.go` does NOT add `sync.RWMutex` to the `allChecks` read path; the fix is confined to test scope via `runChecks(checks []Check)` parameter injection
   3. `kinder doctor` command timing is unchanged — no serialization regression introduced
-**Plans**: TBD (1 plan)
+**Plans**: 1 plan
+- [x] 56-01-PLAN.md — Extract `runChecks(checks []Check) []Result` helper + rewrite 3 racing parallel tests + Makefile `test-race-doctor` target + `.github/workflows/race-check.yml` PR regression guard
 
 **MUST PRECEDE Phase 57**: Both DEBT-04 (Phase 56) and doctor cosmetic fixes (Phase 57) touch `pkg/internal/doctor/`. Phase 56 must land first to give Phase 57 a mutex-free, race-clean baseline.
 
@@ -283,6 +284,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 9/9 | Complete | 2026-05-12 |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
-| 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
+| 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 57. Doctor Cosmetic Fixes | v2.4 | 0/TBD | Not started | - |
 | 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/TBD | Not started | - |
