@@ -222,6 +222,7 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | `stderrors` alias for stdlib errors.As | Avoids conflict with `sigs.k8s.io/kind/pkg/errors` import | ✓ Good |
 | Container-exec kubectl for CVE version probe | Same pattern as realListNodes; avoids pkg/cluster/internal import cycle | ✓ Good |
 | Zero new Go module dependencies in v2.2 | All five features use packages already in go.mod | ✓ Good |
+| Ad-hoc codesign on macos-latest, not notarization | AMFI on Apple Silicon kills unsigned arm64 binaries; ad-hoc = hash-only signature satisfies AMFI with zero certificate/cost overhead; full Developer ID + notarization deferred (DIST-03) | ✓ Good |
 
 ---
-*Last updated: 2026-05-09 — milestone v2.4 Hardening started*
+*Last updated: 2026-05-12 — Phase 54 (macOS ad-hoc code signing) decision recorded*
