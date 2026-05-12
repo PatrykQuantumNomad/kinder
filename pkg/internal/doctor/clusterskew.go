@@ -23,6 +23,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"sigs.k8s.io/kind/pkg/cluster/constants"
 	"sigs.k8s.io/kind/pkg/exec"
 	"sigs.k8s.io/kind/pkg/internal/version"
 )
@@ -105,6 +106,23 @@ func realListNodes() ([]nodeEntry, error) {
 				role = parts[0]
 				image = parts[1]
 			}
+		}
+
+		// External load-balancer (haproxy/envoy) and external-etcd containers are
+		// not Kubernetes nodes and have no /kind/version file. Skip the
+		// `cat /kind/version` exec for these roles; otherwise the missing file
+		// surfaces as a VersionErr and Run() emits a false-positive version-skew
+		// warning for the LB container (DIAG-05). This mirrors the semantics of
+		// nodeutils.InternalNodes, which is not importable here due to a cycle —
+		// see the realListNodes header comment.
+		if role == constants.ExternalLoadBalancerNodeRoleValue ||
+			role == constants.ExternalEtcdNodeRoleValue {
+			entries = append(entries, nodeEntry{
+				Name:  name,
+				Role:  role,
+				Image: image,
+			})
+			continue
 		}
 
 		// Get live Kubernetes version from /kind/version inside the container.
