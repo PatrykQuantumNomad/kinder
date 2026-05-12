@@ -205,8 +205,8 @@ Plans:
   2. `kinder doctor cluster-resume-readiness` on a cluster with 1/3 etcd members healthy outputs "1/3 etcd members healthy, quorum at risk" (or equivalent actionable text) — not the raw `etcdctl endpoint health` JSON dump
   3. Test fixtures cover both etcd 3.4.x and 3.5.x JSON shapes for the health output parser (Pitfall 22)
 **Plans**: 2 plans
-- [ ] 57-01-PLAN.md — DIAG-05 cluster-node-skew inline LB/external-etcd role guard in realListNodes (clusterskew.go) + regression test (SC1)
-- [ ] 57-02-PLAN.md — DIAG-06 cluster-resume-readiness tolerant JSON parsing in Run() error-branch (resumereadiness.go) + Pitfall 22 fixture matrix etcd 3.4/3.5 (SC2 + SC3)
+- [x] 57-01-PLAN.md — DIAG-05 cluster-node-skew inline LB/external-etcd role guard in realListNodes (clusterskew.go) + regression test (SC1) — SUMMARY: 57-01-SUMMARY.md
+- [x] 57-02-PLAN.md — DIAG-06 cluster-resume-readiness tolerant JSON parsing in Run() error-branch (resumereadiness.go) + Pitfall 22 fixture matrix etcd 3.4/3.5 (SC2 + SC3) — SUMMARY: 57-02-SUMMARY.md
 
 ### Phase 58: Live UAT Closure for Phase 47 + 51
 **Goal**: Both carry-forward UAT items from v2.3 are formally closed with live evidence recorded against the final v2.4 binary
@@ -287,5 +287,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
-| 57. Doctor Cosmetic Fixes | v2.4 | 0/2 | Not started | - |
+| 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | In progress — awaiting verifier | 2026-05-12 |
 | 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/TBD | Not started | - |
