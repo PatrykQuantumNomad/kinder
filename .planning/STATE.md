@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 53 FULLY CLOSED — all 9 plans (53-00 through 53-08) complete. Plan 53-08 closed both SC-wording gaps (SC1 second clause and SC3 third clause) via ROADMAP.md doc revision. No code changes. Phase 53 verified with status=verified."
-last_updated: "2026-05-12T00:00:00Z"
-last_activity: "2026-05-12 — Plan 53-08 complete; both SC-wording gaps closed via ROADMAP.md revision; 53-VERIFICATION.md frontmatter transitioned to status=verified; Phase 53 fully closed (9/9 plans done)"
+stopped_at: "Phase 54 Plan 54-01 COMPLETE — GoReleaser darwin codesign hook + macos-latest runner landed. Commits: f1df8c88 (Task 1 -s ldflags), bedb9541 (Task 2 hooks.post), 5c894f67 (Task 3 macos-latest). SC4 ordering invariant verified. Plan 54-02 (snapshot-verify + docs + DIST-01 mark-complete) ready to start."
+last_updated: "2026-05-12T15:05:45.407Z"
+last_activity: 2026-05-12 — Plan 54-01 complete; darwin codesign hook + macos-latest runner landed; Plan 54-02 unblocked
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 86
+  total_plans: 15
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 53 (Addon Version Audit, Bumps & SYNC-05) — ALL 9 PLANS COMPLETE (including 53-08 SC wording gap closure). Phase 53 fully verified.
+**Current focus:** v2.4 Hardening — Phase 54 (macOS Ad-Hoc Code Signing). Plan 54-01 (GoReleaser darwin codesign hook + macos-latest runner) COMPLETE. Plan 54-02 (snapshot-verify workflow + install doc + DIST-01 mark-complete) is next.
 
 ## Current Position
 
-Phase: 53 of 58 (Addon Version Audit, Bumps & SYNC-05)
-Plan: 53-08 COMPLETE (SC wording gap closure; ROADMAP.md SC1+SC3 revised; 53-VERIFICATION.md gaps_filed → gaps_closed; status verified)
-Status: Phase 53 FULLY CLOSED — Plans 53-00 through 53-08 all done (9/9). Phase 53 verified with status=verified.
-Last activity: 2026-05-12 — Plan 53-08 complete; SC-wording gaps closed; Phase 53 all 9 plans done
+Phase: 54 of 58 (macOS Ad-Hoc Code Signing)
+Plan: 54-01 COMPLETE (-s ldflags, darwin-gated builds[].hooks.post codesign, release.yml runs-on macos-latest)
+Status: Phase 54 in_progress — 1 of 2 plans done; SC4 ordering invariant established; SC1/SC2/SC3 + DIST-01 mark-complete deferred to Plan 54-02.
+Last activity: 2026-05-12 — Plan 54-01 complete; darwin codesign hook + macos-latest runner landed; Plan 54-02 unblocked
 
-Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 | 53-05 | 1 task (hold-verify probe) | ~2 min |
 | 53-06 | 1 task (hold-verify probe) | ~2 min |
 | 53-07 | 2 tasks (RED+GREEN) + UAT-5 | ~30 min (two sessions) |
+| 54-01 | 3 tasks (release plumbing) | ~1m 20s |
 
 *(v2.4 plan counts evolving — updated after each plan)*
 
@@ -95,6 +96,7 @@ Progress: [████░░░░░░] v2.4 ~36% (10/~28 plans done)
 - 2026-05-10 (53-06): Metrics Server hold reaffirmed at v0.8.1 — GitHub releases API probe on 2026-05-10 confirms v0.8.1 is still the latest release (published 2026-01-29); no v0.9.x present in top-5 listing. ADDON-05 hold-verify delivered. No Go source change; offlinereadiness consolidation in 53-07.
 - 2026-05-10 (53-07): offlinereadiness.go realInspectImage calls 'docker inspect --type=image' against the HOST docker store (not the cluster node's containerd store). This is the correct semantic: the check measures air-gapped readiness (images must be pre-pulled on host before 'kinder create cluster --air-gapped'). On a fresh default cluster the check correctly warns for any addon image absent from host docker — this is NOT a regression. All 14 allAddonImages tags verified present on uat-53-07 cluster node via 'crictl images' (SC1 first clause satisfied). SC1 second clause as written ('no warn|missing on a fresh default cluster') conflates default-cluster boot with air-gapped readiness — the two semantics are different. Plan 53-07 closes with pass-with-deviation; Phase 53 verifier should re-word SC1 second clause to reference crictl verification on the node rather than host docker. ADDON-05 closed; three-tier disclosure complete; Phase 53 all 8 plans done.
 - 2026-05-12 (53-08): SC wording revision gap closure — pure doc fix; no code/test/manifest changes. SC1 second clause revised from 'does not warn on a fresh default cluster' to crictl-on-cluster-node evidence path. SC3 third clause revised from 'issues a certificate with the new UID (65532)' to runAsNonRoot: true + distroless USER nonroot enforcement. Both gaps closed via ROADMAP.md revision per developer decision (no override acceptance). 53-VERIFICATION.md frontmatter transitioned: gaps_filed → gaps_closed, status=verified, score=6/6. REQUIREMENTS.md ADDON-01/03/05 scope unchanged. Phase 53 fully closed (9/9 plans).
+- 2026-05-12 (54-01): Ad-hoc Mach-O codesign wired into .goreleaser.yaml builds[].hooks.post with darwin shell-conditional (`{{ .Os }} == darwin` gate, NOT GoReleaser `if:` field which is undocumented for build hooks); `-s` added to ldflags to satisfy DIST-01 wording; release.yml runs-on switched `ubuntu-latest` → `macos-latest`. SC4 ordering invariant established: hooks is the last builds[0] key, no top-level `signs:`, no post-sign strip/UPX. `macos-latest` left as floating tag. CI verification (SC1/SC2) + install-doc wording (SC3) + REQUIREMENTS DIST-01 mark-complete all deferred to Plan 54-02.
 
 ### Pending Todos
 
@@ -115,6 +117,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-12T14:13:00Z
-Stopped at: Phase 53 ALL 9 PLANS COMPLETE — Plan 53-08 (SC wording gap closure) closed. Commits: e376a05c (Task 1 ROADMAP.md), 3f721fdd (Task 2 53-VERIFICATION.md). Both SC1+SC3 wording gaps closed. Phase 53 fully verified (status=verified).
+Last session: 2026-05-12T15:04:04Z
+Stopped at: Phase 54 Plan 54-01 COMPLETE — GoReleaser darwin codesign hook + macos-latest runner landed. Commits: f1df8c88 (Task 1 -s ldflags), bedb9541 (Task 2 builds[].hooks.post codesign), 5c894f67 (Task 3 release.yml macos-latest). SC4 ordering invariant verified structurally (hooks is last builds[0] key; no top-level signs:; no post-sign strip/UPX). Plan 54-02 (snapshot-verify workflow + install doc SC3 wording + PROJECT.md decision row + REQUIREMENTS.md DIST-01 mark-complete) ready to start.
 Resume file: None

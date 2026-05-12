@@ -169,7 +169,7 @@ Plans:
   3. Release notes and install guide explicitly state: "ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`"
   4. The sign step is the LAST operation on each binary before archiving — no post-sign strip, UPX, or binary copy invalidates the Mach-O signature block
 **Plans**: 2 plans
-- [ ] 54-01-goreleaser-darwin-signing-PLAN.md — Add darwin-gated codesign post-hook to .goreleaser.yaml builds[] + -s ldflags + switch release.yml to macos-latest runner (SC4 + prerequisite plumbing for SC1/SC2)
+- [x] 54-01-goreleaser-darwin-signing-PLAN.md — Add darwin-gated codesign post-hook to .goreleaser.yaml builds[] + -s ldflags + switch release.yml to macos-latest runner (SC4 + prerequisite plumbing for SC1/SC2)
 - [ ] 54-02-snapshot-verify-and-docs-PLAN.md — Add .github/workflows/macos-sign-verify.yml snapshot+verify CI gate + SC3 install-guide wording + PROJECT.md Key Decisions row (SC1+SC2+SC3)
 
 ### Phase 55: Windows PR-CI Build Step
@@ -280,7 +280,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 47-51. v2.3 phases | v2.3 | 25/25 | Complete (SYNC-02 deferred) | 2026-05-07 |
 | 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 9/9 | Complete | 2026-05-12 |
-| 54. macOS Ad-Hoc Code Signing | v2.4 | 0/TBD | Not started | - |
+| 54. macOS Ad-Hoc Code Signing | v2.4 | 1/2 | In Progress|  |
 | 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
 | 57. Doctor Cosmetic Fixes | v2.4 | 0/TBD | Not started | - |
