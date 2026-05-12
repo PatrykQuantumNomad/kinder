@@ -107,7 +107,7 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 52: HA Etcd Peer-TLS Fix** - IP-pin HA control-plane containers so Docker IPAM reassignment cannot break peer connectivity on resume (completed 2026-05-10; live UAT carries forward to Phase 58)
 - [x] **Phase 53: Addon Version Audit, Bumps & SYNC-05** - Audit all 7 addons, execute security and version bumps, conditionally re-run SYNC-05 node image bump (completed 2026-05-12; 4 bumps + 2 holds + 1 INCONCLUSIVE SYNC-05 probe + offlinereadiness consolidation + SC wording gap closure)
 - [x] **Phase 54: macOS Ad-Hoc Code Signing** - Sign darwin/amd64 and darwin/arm64 GoReleaser artifacts via `codesign --force --sign -` on a macOS runner (completed 2026-05-12; SC4 sign-as-last-op invariant established in 54-01, snapshot-verify CI gate + 3-file SC3 disclosure + PROJECT.md Key Decisions row landed in 54-02; CI run 25746519788 green — both darwin binaries verified `satisfies its Designated Requirement`)
-- [ ] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI
+- [x] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI (completed 2026-05-12; `.github/workflows/build-check.yml` on `ubuntu-24.04` runs `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` on every PR to `main` + workflow_dispatch; SC3 satisfied at workflow level — merge-level branch protection deferred to future CI-policy phase per RESEARCH; CI run 25750801764 green in 32s; verifier 3/3 passed)
 - [ ] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper
 - [ ] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text
 - [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items
@@ -180,7 +180,8 @@ Plans:
   1. A new `.github/workflows/build-check.yml` job runs `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` on every PR and fails the check if the build fails
   2. `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` is verified locally before the CI YAML is written (cgo transitive dependency probe — Pitfall 18)
   3. The Windows build job is blocking (failure fails the PR check) per DIST-02 requirement
-**Plans**: TBD (1 plan)
+**Plans**: 1 plan
+- [x] 55-01-windows-build-check-workflow-PLAN.md — Add `.github/workflows/build-check.yml` (ubuntu-24.04, SHA-pinned actions, env-block cross-compile) + green workflow_dispatch run 25750801764 (Task 3 merge-level protection deferred per RESEARCH)
 
 ### Phase 56: DEBT-04 Doctor Test Race Fix
 **Goal**: `go test -race ./pkg/internal/doctor/... -count=100` passes with zero data races; the production `RunAllChecks` read path remains lock-free
@@ -281,7 +282,7 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 52. HA Etcd Peer-TLS Fix | v2.4 | 4/4 | Complete (UAT→Phase 58) | 2026-05-10 |
 | 53. Addon Version Audit, Bumps & SYNC-05 | v2.4 | 9/9 | Complete | 2026-05-12 |
 | 54. macOS Ad-Hoc Code Signing | v2.4 | 2/2 | Complete | 2026-05-12 |
-| 55. Windows PR-CI Build Step | v2.4 | 0/TBD | Not started | - |
+| 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 0/TBD | Not started | - |
 | 57. Doctor Cosmetic Fixes | v2.4 | 0/TBD | Not started | - |
 | 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/TBD | Not started | - |
