@@ -169,30 +169,42 @@ func (c *clusterResumeReadinessCheck) Run() []Result {
 	// /etc/kubernetes/pki/etcd/ bind-mounted by kubelet.
 	healthArgs := append([]string{"crictl", "exec", etcdContainerID, "etcdctl"}, etcdctlAuthArgs...)
 	healthArgs = append(healthArgs, "endpoint", "health", "--cluster", "--write-out=json")
-	healthLines, err := c.execInContainer(binaryName, bootstrap, healthArgs...)
-	if err != nil {
-		// etcdctl ran (which succeeded) but health probe failed — quorum
-		// likely lost. Warn (never fail).
-		return []Result{{
-			Name:     c.Name(),
-			Category: c.Category(),
-			Status:   "warn",
-			Message:  "etcd endpoint health probe failed",
-			Reason:   fmt.Sprintf("etcdctl endpoint health returned error: %v", err),
-			Fix:      "Investigate etcd state: kinder status; kubectl get nodes",
-		}}
-	}
-	healthy, total, healthErr := parseEtcdHealth(strings.Join(healthLines, ""))
-	if healthErr != nil {
+	healthLines, healthExecErr := c.execInContainer(binaryName, bootstrap, healthArgs...)
+	// DIAG-06 (Phase 57 SC2): etcd 3.5+ etcdctl `endpoint health --cluster` exits
+	// non-zero when any member is unhealthy, but still writes the JSON array to
+	// stdout for ALL members. pkg/exec.OutputLines returns BOTH the stdout lines
+	// AND the error, so the JSON is recoverable. We attempt parseEtcdHealth
+	// BEFORE deciding the verdict; if parse succeeds (total > 0) we fall through
+	// to the existing healthy/unhealthy/zero branches that already emit the
+	// SC2-mandated wording ("N/M etcd members healthy" + "quorum at risk").
+	healthy, total, healthParseErr := parseEtcdHealth(strings.Join(healthLines, ""))
+	if healthParseErr != nil || total == 0 {
+		// Parse failed (malformed JSON) OR parse succeeded but zero members were
+		// reported (empty array). Surface the exec error context if present,
+		// otherwise emit the existing generic parse-error warn.
+		if healthExecErr != nil {
+			return []Result{{
+				Name:     c.Name(),
+				Category: c.Category(),
+				Status:   "warn",
+				Message:  "etcd endpoint health probe failed",
+				Reason:   fmt.Sprintf("etcdctl exit error: %v; output not JSON-parseable or empty array (parse err: %v)", healthExecErr, healthParseErr),
+				Fix:      "Investigate etcd state: kinder status; kubectl get nodes",
+			}}
+		}
 		return []Result{{
 			Name:     c.Name(),
 			Category: c.Category(),
 			Status:   "warn",
 			Message:  "could not parse etcd health output",
-			Reason:   healthErr.Error(),
+			Reason:   fmt.Sprintf("%v", healthParseErr),
 			Fix:      "Re-run with: kinder doctor --output json | jq",
 		}}
 	}
+	// Parse succeeded with total > 0. healthExecErr (if any) is intentionally
+	// discarded — the JSON content authoritatively describes each member's
+	// health, which is what we need to verdict on. Fall through to the existing
+	// branches below.
 	if healthy == 0 {
 		return []Result{{
 			Name:     c.Name(),
