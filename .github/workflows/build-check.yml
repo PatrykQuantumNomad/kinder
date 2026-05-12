@@ -1,0 +1,50 @@
+# Source: .planning/phases/55-windows-pr-ci-build-step/55-RESEARCH.md (Example 1)
+# Purpose: DIST-02 — Pitfall 18 prevention. Cross-compile the Go module for
+# windows/amd64 from a Linux runner on every PR to main, so silent cgo transitive
+# dependency regressions surface at PR-open instead of release-tag time.
+#
+# Runner pin: this workflow uses `ubuntu-24.04` (NOT `ubuntu-latest` per DIST-02
+# literal wording). Rationale: the repo pins ubuntu versions in four other PR
+# workflows (docker.yaml, nerdctl.yaml, podman.yml, vm.yaml); `ubuntu-latest`
+# floats and has caused CI drift industry-wide. The DIST-02 intent (a Linux
+# Ubuntu runner) is fully satisfied by `ubuntu-24.04`.
+#
+# Check name in PR UI: "Windows Build Check / windows-build"
+# Workflow-level "blocking": this job's non-zero exit fails the PR check status.
+# Merge-level "blocking" (preventing merge on red): requires repo-level branch
+# protection on `main` listing `windows-build` as a required status check. As of
+# this workflow's creation, `main` is NOT protected (verified via `gh api`); the
+# check is therefore advisory until branch protection is configured. See Plan
+# 55-01 Task 3 (optional, [NEEDS USER CONFIRMATION]).
+name: Windows Build Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'site/**'
+      - 'kinder-site/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    name: windows-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: .go-version
+
+      - name: Cross-compile for windows/amd64 (cgo transitive dep probe — Pitfall 18)
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+          GOARCH: amd64
+        run: go build ./...
