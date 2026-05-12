@@ -762,21 +762,24 @@ Phase 54 is CI-config + docs only. No Go test framework applies. Validation is v
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `-s` be added to ldflags?**
    - What we know: DIST-01 says "after `-ldflags="-s -w"` strip"; current config has only `-w`
    - What's unclear: Was DIST-01 written assuming `-s` would be added, or was it written describing existing state?
    - Recommendation: Add `-s` in Plan A. It reduces binary size and is standard for release builds. If developer objects, revert; `-w` alone is fine for AMFI.
+   - **RESOLVED:** Yes — `-s` added to `.goreleaser.yaml` ldflags in Plan 54-01 Task 1 to satisfy DIST-01's literal `-ldflags="-s -w"` wording. The ordering `-s` before `-w` is enforced by Task 1 verify (awk ordering check).
 
 2. **Should `macos-latest` be pinned to `macos-15` explicitly?**
    - What we know: `macos-latest` maps to macos-15 as of mid-2025. macos-26 is GA but not yet default.
    - What's unclear: Will macos-latest shift to macos-26 before/during this phase?
    - Recommendation: Use `macos-latest` (not pinned). If a pinned version is desired, use `macos-15`. Avoid `macos-26` until it is the stable default.
+   - **RESOLVED:** No — `macos-latest` left as a floating tag (Plan 54-01 Task 3, Plan 54-02 Task 1). Rationale: matches DIST-01 wording verbatim and GitHub auto-rolls the alias when macos-26 becomes default. If a pin is needed later (e.g., reproducibility drift surfaces), file a new debt item rather than pre-pinning now.
 
 3. **Does the snapshot-verify workflow need to run on PR or main-branch-push only?**
    - What we know: macOS runner minutes are 10x cost; full goreleaser snapshot builds take 3-5 minutes
    - Recommendation: Main-branch push only, with `paths:` filter on goreleaser.yaml and workflow files.
+   - **RESOLVED:** Push to `main` + `workflow_dispatch` with a `paths:` filter on `.goreleaser.yaml` and `.github/workflows/macos-sign-verify.yml` (Plan 54-02 Task 1). Rationale: minimizes macOS-runner billing (10x multiplier) while catching signing regressions on main before the next tag-push release. `workflow_dispatch` enables manual re-runs without a code change.
 
 ---
 

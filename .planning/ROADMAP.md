@@ -168,7 +168,9 @@ Plans:
   2. `codesign -vvv dist/kinder_darwin_arm64/kinder` returns `satisfies its Designated Requirement` in CI after a snapshot build (both architectures verified independently)
   3. Release notes and install guide explicitly state: "ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`"
   4. The sign step is the LAST operation on each binary before archiving — no post-sign strip, UPX, or binary copy invalidates the Mach-O signature block
-**Plans**: TBD (1-2 plans: GoReleaser config split + CI runner change + release notes)
+**Plans**: 2 plans
+- [ ] 54-01-goreleaser-darwin-signing-PLAN.md — Add darwin-gated codesign post-hook to .goreleaser.yaml builds[] + -s ldflags + switch release.yml to macos-latest runner (SC4 + prerequisite plumbing for SC1/SC2)
+- [ ] 54-02-snapshot-verify-and-docs-PLAN.md — Add .github/workflows/macos-sign-verify.yml snapshot+verify CI gate + SC3 install-guide wording + PROJECT.md Key Decisions row (SC1+SC2+SC3)
 
 ### Phase 55: Windows PR-CI Build Step
 **Goal**: Every PR is cross-compiled for `windows/amd64` on `ubuntu-latest`, preventing silent Windows compilation regressions
