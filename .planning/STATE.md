@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: verifying
-stopped_at: "Phase 57.1 Plan 02 COMPLETE — Phase 1.25 LB reapply wired into lifecycle.Resume() (f35eaae7 RED lbreapply_test, 4c646f1a GREEN lbreapply+bridge, 2f78fd26 GREEN resume). All 6 D-lock 5 tests pass. Phase 57.1 is 2/2 plans complete. Phase 58 unblocked."
-last_updated: "2026-05-13T14:35:10.556Z"
-last_activity: 2026-05-13
+status: in_progress
+stopped_at: "Phase 57.1 VERIFIED + APPROVED 2026-05-13 (status=passed; score 3/3 code-level SCs verified; SC1+SC2+SC6 live-UAT items carry forward to Phase 58 per ROADMAP depends-on chain). Next: Phase 58 (Live UAT Closure for Phase 47 + 51) — re-run hack/uat-47-ha-smoke.sh test_09 against rebuilt binary that includes 57.1 commits."
+last_updated: "2026-05-13T14:45:00Z"
+last_activity: "2026-05-13T14:45:00Z — Phase 57.1 verified + approved; routing to Phase 58"
 progress:
   total_phases: 8
   completed_phases: 7
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 57.1 of 58 (Phase 47 Resume re-applies Envoy LB cds/lds config — COMPLETE 2026-05-13)
-Plan: 02 of 02 — COMPLETE (WriteDynamicConfig wired into lifecycle.Resume Phase 1.25)
-Status: Phase 57.1 complete — Phase 58 unblocked
-Last activity: 2026-05-13T14:33:30Z
+Phase: 58 of 58 (Live UAT Closure for Phase 47 + 51) — NOT STARTED; unblocked by Phase 57.1
+Plan: 58-01 already partially-staged on main (5bd9e673 script, 74b90199 marker fix, 696c2cc3 pipefail fix); resume with rebuilt v2.4 binary that includes 57.1 commits
+Status: Phase 57.1 verified+approved 2026-05-13; live-UAT carry-forward (SC1/SC2/SC6) is Phase 58 scope by design
+Last activity: 2026-05-13T14:45:00Z — Phase 57.1 closed; routing to Phase 58
 
 Progress: [█████████░] 91%
 
