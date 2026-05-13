@@ -110,7 +110,8 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 55: Windows PR-CI Build Step** - Add blocking `GOOS=windows go build ./...` cross-compile step to PR CI (completed 2026-05-12; `.github/workflows/build-check.yml` on `ubuntu-24.04` runs `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` on every PR to `main` + workflow_dispatch; SC3 satisfied at workflow level — merge-level branch protection deferred to future CI-policy phase per RESEARCH; CI run 25750801764 green in 32s; verifier 3/3 passed)
 - [x] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper (completed 2026-05-12; `runChecks(checks []Check) []Result` helper extracted in `pkg/internal/doctor/check.go` with `RunAllChecks()` now a 1-line delegate; three racing parallel tests in `check_test.go` rewritten to use local `[]Check` slices; `Makefile` `test-race-doctor` target + `.github/workflows/race-check.yml` CI gate added; `CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100` exits 0 in 2.662s with zero DATA RACE; verifier 3/3 passed)
 - [x] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text (completed 2026-05-12; inline `external-load-balancer` + `external-etcd` role guard in `realListNodes` at `clusterskew.go:111-126` eliminates the false-positive version-skew warning; tolerant flow in `resumereadiness.go:172-207` calls `parseEtcdHealth` BEFORE the verdict so etcd 3.5+ non-zero exits still surface `"N/M etcd members healthy"` + `"quorum at risk"`; raw `"etcdctl endpoint health returned error: %v"` dump removed; Pitfall 22 fixture matrix covers etcd 3.4 + 3.5 JSON shapes; `make test-race-doctor` over `-count=100` green in 2.661s; verifier 3/3 passed)
-- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items
+- [x] **Phase 57.1: Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED)** - Fix Phase 47↔51 regression: `lifecycle.Resume` never re-applies the Envoy LB dynamic xDS config after the LB container restarts. The container's hardcoded entrypoint resets `/home/envoy/{cds,lds}.yaml` to `resources: []` on every start, so after pause+resume the LB has zero upstreams and host kubectl gets EOF — discovered during Phase 58 live UAT test_09 (2026-05-13) (completed 2026-05-13)
+- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (BLOCKED on Phase 57.1)
 
 ## Phase Details
 
@@ -208,16 +209,48 @@ Plans:
 - [x] 57-01-PLAN.md — DIAG-05 cluster-node-skew inline LB/external-etcd role guard in realListNodes (clusterskew.go) + regression test (SC1) — SUMMARY: 57-01-SUMMARY.md
 - [x] 57-02-PLAN.md — DIAG-06 cluster-resume-readiness tolerant JSON parsing in Run() error-branch (resumereadiness.go) + Pitfall 22 fixture matrix etcd 3.4/3.5 (SC2 + SC3) — SUMMARY: 57-02-SUMMARY.md
 
+### Phase 57.1: Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED)
+
+**Goal**: `kinder resume` on an HA cluster restores Envoy LB connectivity to all control-plane apiservers, so `kubectl` through the LB succeeds within the documented `--wait` window
+**Depends on**: Phase 57 (clean baseline; same lifecycle package as 47/52)
+**Requirements**: To be derived during planning (likely a new LIFE-10 requirement, or appended scope to LIFE-09)
+**Why urgent (discovered 2026-05-13 during Phase 58 UAT test_09)**:
+  - `pkg/internal/lifecycle/resume.go` starts the LB container in the documented quorum-safe ordering but **never re-applies the LB upstream config** after the LB restart
+  - The Envoy LB container's entrypoint hardcodes `echo -en 'resources: []' > /home/envoy/cds.yaml && echo -en 'resources: []' > /home/envoy/lds.yaml` on every start
+  - Result: post-resume the LB has zero clusters and zero listeners; host `kubectl` gets `EOF`; the apiservers themselves heal internally (verified `curl https://localhost:6443/healthz` returns `ok` from within the CP container)
+  - This gap was masked in the May 7 v2.3 47-UAT because test 9 failed earlier at `strconv.ParseInt` (the `--wait` IntVar bug, fixed in 47-06 commit 7a4f722f); v2.4 Phase 58 exposed the next layer of the onion
+  - Git archaeology: 47-03 commit `50c686aa` implemented Resume **before** Phase 51 swapped HAProxy→Envoy; 51-01 commit `4267886a` added the Envoy atomic-swap mechanism but only to the **create-time** action; 52-03 commit `c38bbdf1` added the HA strategy dispatch but didn't add LB reapply
+
+**Success Criteria** (what must be TRUE):
+  1. After `kinder pause` + `kinder resume --wait 5m` on a 3-CP + 2-worker + 1-LB cluster, host `kubectl --context kind-<cluster> get nodes` succeeds within the wait window (no `EOF` from the LB)
+  2. After resume, `docker exec <lb> cat /home/envoy/cds.yaml` contains the 3 CP container names as upstream backends (NOT `resources: []`); `lds.yaml` contains the :6443 listener (NOT `resources: []`)
+  3. Single-CP clusters (no `external-load-balancer` container present) incur zero overhead — the new code path is no-op when `nodeutils.ExternalLoadBalancerNode(allNodes)` returns nil
+  4. The fix mirrors the create-time atomic-swap path (template render → `nodeutils.WriteFile` to `.tmp` → `mv` swap → Envoy file-poll picks it up); no SIGHUP, no container restart of the LB, no `docker cp` from host
+  5. New regression test in `pkg/internal/lifecycle/` exercises the LB reapply path against a `FakeNode` LB and asserts the post-resume cds/lds content is non-empty
+  6. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes after this fix lands (the existing script is the regression gate — no further script changes required)
+
+**Plans**: 2 plans (sequential — Wave 1 → Wave 2 — to avoid the 57-01 parallel-cwd commit-contamination lesson)
+
+Plans:
+- [x] 57.1-01-extract-helper-PLAN.md — Wave 1: Extract `WriteDynamicConfig(node nodes.Node, cps []nodes.Node, ipv6 bool) error` into `pkg/cluster/internal/loadbalancer/config.go`; refactor create-time `Execute()` to delegate; add 4 helper-level unit tests (happy IPv4, happy IPv6, WriteFile err, mv err)
+- [x] 57.1-02-resume-wire-PLAN.md — Wave 2 (depends on 01): Wire helper into `Resume()` at Phase 1.25; add `reapplyLBConfig` + IPv6 discovery (docker network inspect) + retry-3x-with-1s-backoff in new `pkg/internal/lifecycle/lbreapply.go`; add 6 lifecycle tests (no-LB no-op, happy IPv4, IPv6 detect, retry success on attempt 2, retry exhausted, IPv6 discovery fallback)
+
+**RISK NOTE (SUPERSEDED by 57.1-CONTEXT.md D-lock 1)**: The earlier guidance ("AFTER cert-regen/ip-pin finishes") was caution, not a derived constraint. CONTEXT.md locks the insertion at Phase 1.25 (after LB start, BEFORE Phase 1.5 ip-pin / Phase 2 CP start). Rationale: cds/lds encode CP container *names*, not IPs; ip-pin and cert-regen are CP-side concerns; Envoy file-polls and tolerates not-yet-running upstream backends. Symmetric with create-time which writes cds/lds while CPs are still starting.
+
 ### Phase 58: Live UAT Closure for Phase 47 + 51
 **Goal**: Both carry-forward UAT items from v2.3 are formally closed with live evidence recorded against the final v2.4 binary
-**Depends on**: Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23)
+**Depends on**: Phase 57.1 (LB reapply fix; otherwise test_09 fails at LB connectivity), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23)
 **Requirements**: UAT-01, UAT-02
 **Success Criteria** (what must be TRUE):
   1. `./bin/kinder version` confirms the v2.4 build hash before any UAT run begins — smoke never runs against a stale PATH binary
   2. Phase 47 UAT: `scripts/uat-47-ha-smoke.sh` runs against a 3-CP + 2-worker + 1-LB cluster; verifies pause (workers→CP→LB ordering), resume (LB→CP→workers ordering), and `kubectl get nodes` returns all nodes Ready; `.planning/phases/47-cluster-pause-resume/47-UAT.md` status fields updated from `issue` to `pass`
   3. Phase 51 UAT: `docker ps` confirms `envoyproxy/envoy` (not `kindest/haproxy`) as the LB container on the HA cluster; `kinder create cluster --config <ipvs+1.36-config>` is rejected at validate with migration URL in the error message; K8s 1.36 guide page renders with its sidebar entry; `.planning/phases/51-upstream-sync-k8s-1-36/51-UAT.md` created with full evidence
   4. Both UAT scripts reference `./bin/kinder` (not `kinder` from PATH) to guarantee evidence corresponds to the rebuilt binary
-**Plans**: TBD (2 plans: 58-01 Phase 47 HA smoke; 58-02 Phase 51 Envoy LB + IPVS + guide)
+**Plans**: 2 plans
+
+Plans:
+- [ ] 58-01-ha-smoke-PLAN.md — Phase 47 HA pause/resume live UAT against rebuilt v2.4 binary; flips 47-UAT.md tests 3/9/12/13/14 from issue to pass
+- [ ] 58-02-envoy-ipvs-guide-PLAN.md — Phase 51 Envoy LB + IPVS-1.36 reject + K8s 1.36 guide re-verification against rebuilt v2.4 binary; augments 51-UAT.md with v2.4 evidence section
 
 ---
 
@@ -231,7 +264,8 @@ Phase 52 (etcd peer-TLS / IP pinning)  [highest blast radius; isolated]
   → Phase 53 (addon bumps + SYNC-05)   [sequential sub-plans; offlinereadiness.go final]
     → Phase 56 (DEBT-04 race fix)       [must precede Phase 57; same package]
       → Phase 57 (doctor cosmetics)     [depends on race-clean baseline]
-        → Phase 58 (live UAT closure)   [MUST run against final v2.4 binary]
+        → Phase 57.1 (LB reapply fix)   [INSERTED 2026-05-13; UAT test_09 regression]
+          → Phase 58 (live UAT closure) [MUST run against final v2.4 binary]
 
 Phase 54 (macOS signing)   — independent of source code; starts after Phase 52
 Phase 55 (Windows CI)      — independent of source code; starts after Phase 52
@@ -288,4 +322,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
-| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/TBD | Not started | - |
+| 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete   | 2026-05-13 |
+| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Blocked on 57.1 | - |

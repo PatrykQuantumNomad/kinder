@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: in_progress
-stopped_at: "Phase 57.1 Plan 01 COMPLETE — WriteDynamicConfig helper extracted into loadbalancer pkg (97048452), Execute() collapsed to delegate (1a751c9c), 4 unit tests added (fe235b49). Plan 02 (resume wire-in) next."
-last_updated: "2026-05-13T14:23:00Z"
-last_activity: "2026-05-13T14:23:00Z — Phase 57.1 Plan 01 complete; WriteDynamicConfig helper live; Plan 02 (resume wire-in) unblocked"
+status: verifying
+stopped_at: "Phase 57.1 Plan 02 COMPLETE — Phase 1.25 LB reapply wired into lifecycle.Resume() (f35eaae7 RED lbreapply_test, 4c646f1a GREEN lbreapply+bridge, 2f78fd26 GREEN resume). All 6 D-lock 5 tests pass. Phase 57.1 is 2/2 plans complete. Phase 58 unblocked."
+last_updated: "2026-05-13T14:35:10.556Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 8
-  completed_phases: 6
-  total_plans: 19
-  completed_plans: 19
-  percent: 75
+  completed_phases: 7
+  total_plans: 23
+  completed_plans: 21
+  percent: 91
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 57.1 INSERTED (Phase 47 Resume re-applies Envoy LB cds/lds config). Phase 58 BLOCKED on 57.1.
+**Current focus:** v2.4 Hardening — Phase 57.1 COMPLETE (Phase 47 Resume re-applies Envoy LB cds/lds config). Phase 58 unblocked.
 
 ## Current Position
 
-Phase: 57.1 of 58 (Phase 47 Resume re-applies Envoy LB cds/lds config — INSERTED 2026-05-13)
-Plan: 02 of 02 — resume wire-in (WriteDynamicConfig → lifecycle.Resume)
-Status: Plan 01 COMPLETE (97048452, 1a751c9c, fe235b49). WriteDynamicConfig helper is live with 4 unit tests. Plan 02 wires the helper into lifecycle.Resume after LB start.
-Last activity: 2026-05-13T14:23:00Z — Plan 57.1-01 complete
+Phase: 57.1 of 58 (Phase 47 Resume re-applies Envoy LB cds/lds config — COMPLETE 2026-05-13)
+Plan: 02 of 02 — COMPLETE (WriteDynamicConfig wired into lifecycle.Resume Phase 1.25)
+Status: Phase 57.1 complete — Phase 58 unblocked
+Last activity: 2026-05-13T14:33:30Z
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [████████░░] 75%
 *(v2.4 plan counts evolving — updated after each plan)*
 
 *Updated after each plan completion*
+| Phase 57.1 P02 | 452s | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,7 @@ Progress: [████████░░] 75%
 - 2026-05-12 (56-01): DEBT-04 fix is parameter-injection (not synchronization) — runChecks(checks []Check) helper replaces the allChecks= global-mutation pattern in 3 parallel tests; production read path stays fully lock-free (SC2); 100-iteration race gate (SC1) took 2.57s locally. REQUIREMENTS.md mention of socket_test.go as a race site is doc drift — actual mutation sites are in check_test.go only; socket_test.go is a read-only race victim. No REQUIREMENTS.md edit beyond DEBT-04 mark-complete was performed. TestSetMountPaths in hostmount_test.go untouched (out-of-scope guard held). DEBT-04 Complete.
 - 2026-05-12 (57-01): DIAG-05 fixed via INLINE role guard inside realListNodes (NOT a nodeutils.InternalNodes import). The doctor package cannot import cluster/internal/nodeutils because of the documented cycle (cluster/internal/create imports doctor — see clusterskew.go:64-66). Role-string comparison against the leaf `pkg/cluster/constants` package is the established workaround (precedent: 52-04 resumestrategy.go). The guard branch handles BOTH `ExternalLoadBalancerNodeRoleValue` AND `ExternalEtcdNodeRoleValue` defensively per RESEARCH M6 — the external-etcd role is "not yet implemented" upstream per constants.go:62 but the cost is one string comparison and the future-proofing eliminates a class of DIAG-05 regressions. allChecks registry untouched (TestAllChecks_CountIs26 invariant preserved). Phase 56 race gate (make test-race-doctor) preserved at -count=100. DIAG-05 mark-complete in REQUIREMENTS.md deferred to Phase 57 close. CROSS-PLAN STAGING CONTAMINATION: running parallel with 57-02 in shared cwd (branching=none, parallelization=true) produced misleading commit log — 866f2c22 ("test(57-01): add RED tests…") absorbed 57-02's resumereadiness_test.go +128 LOC; c43bb599 ("feat(57-01): inline LB/external-etcd role guard…") actually contains ONLY 57-02's resumereadiness.go +44 LOC; the real clusterskew.go change is in 33544309 ("feat(57-01): apply DIAG-05 LB-role guard to clusterskew.go") committed via `git commit --only` to bypass the racing index. File-level dispositions are correct at HEAD; commit log is contaminated. Pattern lesson: parallel executors in shared cwd MUST use `git commit --only <path>` not `git add` + `git commit`. Recovery via rebase/cherry-pick deliberately NOT attempted (destructive-git-prohibition).
 - 2026-05-13 (57.1-01): WriteDynamicConfig helper extracted into loadbalancer pkg. Import cycle fix: providers/common imports loadbalancer (for loadbalancer.Image), so loadbalancer cannot import providers/common — solved by adding private apiServerInternalPort=6443 const to const.go. Test call count: nodeutils.WriteFile issues 2 node.Command calls (mkdir+cp) per file, not 1; happy-path is 5 calls (MvError test uses errs[4]). D-lock 3 signature locked: WriteDynamicConfig(node nodes.Node, cps []nodes.Node, ipv6 bool) error. D-lock 5 4-test matrix satisfied with corrected call counts.
+- 2026-05-13 (57.1-02): Go internal package visibility blocks pkg/internal/lifecycle from importing pkg/cluster/internal/loadbalancer (different subtrees, not a cycle). Created pkg/cluster/loadbalancer/ non-internal bridge re-exporting WriteDynamicConfig. lbCmderState dispatches on binary arg (not args[0]) for node-level fakeNode.Command calls (mkdir/cp/sh). startCallRecorder.Cmder() extended with node-level handlers for Phase 1.25 pass-through. Phase 1.25 guard: if lb != nil && len(startErrs) == 0. All 6 D-lock 5 tests pass. Phase 57.1 COMPLETE. Phase 58 unblocked.
 - 2026-05-13 (57.1 INSERTED): Phase 47↔51 LB-reapply regression discovered during Phase 58 live UAT test_09. `pkg/internal/lifecycle/resume.go` starts the Envoy LB container in correct ordering but never re-applies the dynamic xDS config (`/home/envoy/cds.yaml`, `/home/envoy/lds.yaml`). The LB container's hardcoded entrypoint resets both to `resources: []` on every start. After pause+resume the apiservers heal internally (`curl https://localhost:6443/healthz` returns `ok` from within CP1) but the host can't reach them through the LB (`kubectl` returns `Unable to connect to the server: EOF`). Create-time path at `pkg/cluster/internal/create/actions/loadbalancer/loadbalancer.go:97-110` writes cds/lds via `nodeutils.WriteFile` + atomic mv-swap; Envoy file-polls. The fix mirrors that path inside `Resume()` after LB start. Gap was masked in May 7 v2.3 47-UAT because test 9 failed earlier at `strconv.ParseInt` (fixed in 47-06). Git archaeology: 47-03 (50c686aa) predates Envoy; 51-01 (4267886a) added atomic-swap only to create-time; 52-03 (c38bbdf1) didn't add reapply either. Phase 58 wave 1 commits already landed: 5bd9e673 (script), 74b90199 (marker bug — Go doesn't concat Command() args), 696c2cc3 (pipefail+grep -q SIGPIPE bug). Phase 58 cluster `uat-58-01` deleted after diagnosis.
 
 ### Roadmap Evolution
@@ -132,11 +134,11 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 - **Phase 53-03 (ADDON-03)**: RESOLVED — cert-manager v1.20.2 bumped; UAT-3 Path A confirmed. ADDON-03 delivered.
 - **Phase 53-04 (ADDON-04)**: RESOLVED — Envoy Gateway v1.7.2 bumped; UAT-4 Path A confirmed. ADDON-04 delivered. Gateway API CRDs at v1.4.1; eg-gateway-helm-certgen Job name verified unchanged.
 - **SYNC-05**: Probe ran in Plan 53-00 (2026-05-10) — Outcome B (count=0). DEFERRED. Re-run when kind publishes v1.36 image. Sub-plans 53-01 through 53-07 unblocked.
-- **Phase 57.1 (LB reapply)**: NEW URGENT INSERT 2026-05-13. `pkg/internal/lifecycle/resume.go` does not re-apply the Envoy LB cds/lds dynamic xDS config after starting the LB container. Result: host kubectl gets EOF after pause+resume on HA clusters. Blocks Phase 58. Recommend `/gsd:discuss-phase 57.1` before planning to lock the ordering (LB reapply must fire AFTER LB start AND AFTER cert-regen/ip-pin completes).
-- **Phase 58 (UAT-01 + UAT-02)**: BLOCKED on Phase 57.1. Script work for 58-01 already landed (5bd9e673, 74b90199, 696c2cc3) and is correct; re-run after 57.1 ships.
+- **Phase 57.1 (LB reapply)**: COMPLETE 2026-05-13. Phase 1.25 wired into Resume(); all 6 D-lock 5 tests pass. Commits: f35eaae7 (RED), 4c646f1a (GREEN lbreapply+bridge), 2f78fd26 (GREEN resume).
+- **Phase 58 (UAT-01 + UAT-02)**: UNBLOCKED. Re-run `hack/uat-47-ha-smoke.sh` against rebuilt binary (includes 57.1 commits) to verify test_09.
 
 ## Session Continuity
 
-Last session: 2026-05-12T18:36:52Z
+Last session: 2026-05-13T14:35:05.574Z
 Stopped at: Phase 56 Plan 56-01 CLOSED. Task 1 commit 9d57b54b (check.go: runChecks helper extracted, RunAllChecks one-line delegate). Task 2 commit b797b729 (check_test.go: 3 racing tests rewritten to call runChecks with local slices; SC1 gate: zero DATA RACE over -count=100). Task 3 commit ee9b0af0 (Makefile test-race-doctor target + .github/workflows/race-check.yml). SC1/SC2/SC3 all green. DEBT-04 marked Complete in REQUIREMENTS.md. Phase 56 has 1 plan — phase complete. Phase 57 (DIAG-05 + DIAG-06 doctor cosmetics) is next.
 Resume file: None
