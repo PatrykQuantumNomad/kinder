@@ -22,6 +22,8 @@ import (
 	"net"
 	"text/template"
 
+	"sigs.k8s.io/kind/pkg/cluster/nodes"
+	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/errors"
 )
 
@@ -149,6 +151,59 @@ func Config(data *ConfigData, configTemplate string) (config string, err error) 
 		return "", errors.Wrap(err, "error executing config template")
 	}
 	return buff.String(), nil
+}
+
+// WriteDynamicConfig renders the LDS + CDS templates from the given control-
+// plane node list and atomically swaps the rendered files into Envoy's
+// config dir on `node`. Envoy's filesystem path_config_source picks up the
+// new files via inotify/kqueue — no SIGHUP, no LB container restart.
+//
+// Used by BOTH create-time (pkg/cluster/internal/create/actions/loadbalancer)
+// AND resume-time (pkg/internal/lifecycle/lbreapply.go) so the atomic-swap
+// mechanism has a single source of truth (CONTEXT.md D-lock 3, phase 57.1).
+//
+// The mv shell command is verbatim-equivalent to the create-time line
+// (loadbalancer.go:106-110 pre-refactor); see Plan 57.1-01.
+func WriteDynamicConfig(node nodes.Node, cps []nodes.Node, ipv6 bool) error {
+	backendServers := map[string]string{}
+	for _, n := range cps {
+		backendServers[n.String()] = fmt.Sprintf("%s:%d", n.String(), apiServerInternalPort)
+	}
+
+	data := &ConfigData{
+		ControlPlanePort: apiServerInternalPort,
+		BackendServers:   backendServers,
+		IPv6:             ipv6,
+	}
+
+	ldsConfig, err := Config(data, ProxyLDSConfigTemplate)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate loadbalancer LDS config")
+	}
+	cdsConfig, err := Config(data, ProxyCDSConfigTemplate)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate loadbalancer CDS config")
+	}
+
+	tmpLDS := ProxyConfigPathLDS + ".tmp"
+	tmpCDS := ProxyConfigPathCDS + ".tmp"
+
+	if err := nodeutils.WriteFile(node, tmpLDS, ldsConfig); err != nil {
+		return errors.Wrap(err, "failed to copy LDS config to load balancer node")
+	}
+	if err := nodeutils.WriteFile(node, tmpCDS, cdsConfig); err != nil {
+		return errors.Wrap(err, "failed to copy CDS config to load balancer node")
+	}
+
+	cmd := fmt.Sprintf("chmod 666 %s %s && mv %s %s && mv %s %s",
+		tmpLDS, tmpCDS,
+		tmpLDS, ProxyConfigPathLDS,
+		tmpCDS, ProxyConfigPathCDS)
+	if err := node.Command("sh", "-c", cmd).Run(); err != nil {
+		return errors.Wrap(err, "failed to reload Envoy load balancer config")
+	}
+
+	return nil
 }
 
 // GenerateBootstrapCommand returns the docker run command args that initialize

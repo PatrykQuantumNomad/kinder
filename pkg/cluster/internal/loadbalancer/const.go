@@ -26,3 +26,8 @@ const (
 	ProxyConfigPath    = "/home/envoy/envoy.yaml"
 	ProxyConfigDir     = "/home/envoy"
 )
+
+// apiServerInternalPort is the port where the control plane is listening
+// inside the node network. Mirrors providers/common.APIServerInternalPort
+// to avoid the import cycle (providers/common imports loadbalancer).
+const apiServerInternalPort = 6443
