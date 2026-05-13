@@ -32,7 +32,7 @@ preamble() {
 
   # 2) POSITIVE marker gate
   local positive=(
-    "crictl ps --name etcd -q"
+    "crictl ps for etcd container failed"
     "all control-plane containers stopped"
     "docker.io/envoyproxy/envoy:v1.36.2"
     "kubeProxyMode: ipvs is not supported with Kubernetes 1.36+"
