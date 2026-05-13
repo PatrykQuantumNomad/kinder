@@ -266,6 +266,7 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 
 	// Five-phase start order (reverse of pause, with HA hooks inserted):
 	//   Phase 1: LB (if present)
+	//   Phase 1.25: re-apply Envoy LB cds/lds dynamic xDS config (HA + LB)
 	//   Phase 1.5 (HA + ip-pinned): reconnect each CP with --ip before start
 	//   Phase 2: control-plane nodes
 	//   Phase 3 (HA only, post-CP / pre-workers): inline cluster-resume-readiness
@@ -317,6 +318,26 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 	// Phase 1: LB
 	if lb != nil {
 		startNodes([]nodes.Node{lb})
+	}
+
+	// Phase 1.25: LB cds/lds reapply (NEW — phase 57.1).
+	// The Envoy LB container's entrypoint resets cds.yaml + lds.yaml to
+	// "resources: []" on every start (loadbalancer/config.go:167-174).
+	// Re-apply the rendered config so Envoy's file-poll picks it up before
+	// the CPs come up. No-op for single-CP clusters (lb == nil short-
+	// circuit inside reapplyLBConfig). Hard-fails Resume on retry
+	// exhaustion — matches applyPinnedIPsBeforeCPStart shape below.
+	if lb != nil && len(startErrs) == 0 {
+		if err := reapplyLBConfig(binaryName, lb, cp, opts.Logger); err != nil {
+			res := &ResumeResult{
+				Cluster:  opts.ClusterName,
+				State:    "resumed",
+				Nodes:    results,
+				Duration: time.Since(t0).Seconds(),
+			}
+			startErrs = append(startErrs, err)
+			return res, aggregateErrors(startErrs)
+		}
 	}
 
 	// Phase 1.5: ip-pinned pre-start reconnect.

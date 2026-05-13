@@ -83,7 +83,17 @@ type startCallRecorder struct {
 
 func (r *startCallRecorder) Cmder() Cmder {
 	return func(name string, args ...string) exec.Cmd {
-		// args[0] is the subcommand for docker/podman/nerdctl
+		// Phase 1.25 (reapplyLBConfig) routes fakeNode.Command calls here.
+		// nodeutils.WriteFile issues node.Command("mkdir",...), node.Command("cp",...);
+		// WriteDynamicConfig issues node.Command("sh","-c",...). These are node-level
+		// commands where 'name' is the command, not a container runtime subcommand.
+		// startCallRecorder only cares about start ordering; return success silently.
+		switch name {
+		case "mkdir", "cp", "sh":
+			return &fakeCmd{}
+		}
+
+		// args[0] is the subcommand for docker/podman/nerdctl (runtime-level calls).
 		if len(args) == 0 {
 			return &fakeCmd{err: fmt.Errorf("no args")}
 		}
@@ -110,6 +120,9 @@ func (r *startCallRecorder) Cmder() Cmder {
 				state = "exited"
 			}
 			return &fakeCmd{stdout: state + "\n"}
+		case "network":
+			// docker network inspect (from discoverLBIPv6) — return "false\n" (IPv4).
+			return &fakeCmd{stdout: "false\n"}
 		}
 		return &fakeCmd{err: fmt.Errorf("unhandled subcommand %q", args[0])}
 	}
