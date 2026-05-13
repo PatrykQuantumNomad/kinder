@@ -18,15 +18,12 @@ limitations under the License.
 package loadbalancer
 
 import (
-	"fmt"
-
 	"sigs.k8s.io/kind/pkg/cluster/constants"
 	"sigs.k8s.io/kind/pkg/errors"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/create/actions"
 	"sigs.k8s.io/kind/pkg/cluster/internal/loadbalancer"
-	"sigs.k8s.io/kind/pkg/cluster/internal/providers/common"
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 )
 
@@ -62,7 +59,6 @@ func (a *Action) Execute(ctx *actions.ActionContext) error {
 	defer ctx.Status.End(false)
 
 	// collect info about the existing controlplane nodes
-	var backendServers = map[string]string{}
 	controlPlaneNodes, err := nodeutils.SelectNodesByRole(
 		allNodes,
 		constants.ControlPlaneNodeRoleValue,
@@ -70,45 +66,12 @@ func (a *Action) Execute(ctx *actions.ActionContext) error {
 	if err != nil {
 		return err
 	}
-	for _, n := range controlPlaneNodes {
-		backendServers[n.String()] = fmt.Sprintf("%s:%d", n.String(), common.APIServerInternalPort)
-	}
 
-	loadbalancerConfigData := &loadbalancer.ConfigData{
-		ControlPlanePort: common.APIServerInternalPort,
-		BackendServers:   backendServers,
-		IPv6:             ctx.Config.Networking.IPFamily == config.IPv6Family || ctx.Config.Networking.IPFamily == config.DualStackFamily,
-	}
+	ipv6 := ctx.Config.Networking.IPFamily == config.IPv6Family ||
+		ctx.Config.Networking.IPFamily == config.DualStackFamily
 
-	// Generate the Dynamic Config strings
-	ldsConfig, err := loadbalancer.Config(loadbalancerConfigData, loadbalancer.ProxyLDSConfigTemplate)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate loadbalancer LDS config")
-	}
-	cdsConfig, err := loadbalancer.Config(loadbalancerConfigData, loadbalancer.ProxyCDSConfigTemplate)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate loadbalancer CDS config")
-	}
-
-	// Atomic update inside the container: write to tmp files then mv-swap.
-	tmpLDS := loadbalancer.ProxyConfigPathLDS + ".tmp"
-	tmpCDS := loadbalancer.ProxyConfigPathCDS + ".tmp"
-
-	if err := nodeutils.WriteFile(loadBalancerNode, tmpLDS, ldsConfig); err != nil {
-		return errors.Wrap(err, "failed to copy LDS config to load balancer node")
-	}
-	if err := nodeutils.WriteFile(loadBalancerNode, tmpCDS, cdsConfig); err != nil {
-		return errors.Wrap(err, "failed to copy CDS config to load balancer node")
-	}
-
-	// Atomically swap the tmp files into place so Envoy picks them up via
-	// its filesystem-based xDS polling (no SIGHUP needed).
-	cmd := fmt.Sprintf("chmod 666 %s %s && mv %s %s && mv %s %s",
-		tmpLDS, tmpCDS,
-		tmpLDS, loadbalancer.ProxyConfigPathLDS,
-		tmpCDS, loadbalancer.ProxyConfigPathCDS)
-	if err := loadBalancerNode.Command("sh", "-c", cmd).Run(); err != nil {
-		return errors.Wrap(err, "failed to reload Envoy load balancer config")
+	if err := loadbalancer.WriteDynamicConfig(loadBalancerNode, controlPlaneNodes, ipv6); err != nil {
+		return errors.Wrap(err, "failed to configure external load balancer")
 	}
 
 	ctx.Status.End(true)
