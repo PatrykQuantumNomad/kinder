@@ -30,6 +30,12 @@ preamble() {
   echo "--- make build ---"
   make build
 
+  # Cache strings output once — avoids pipefail+grep -q SIGPIPE bug
+  # (grep -q exits early, strings gets SIGPIPE 141, pipefail propagates non-zero,
+  #  ! inverts to truthy, gate falsely claims marker absent).
+  local binary_strings
+  binary_strings="$(strings "${KINDER_BIN}")"
+
   # 2) POSITIVE marker gate
   local positive=(
     "crictl ps for etcd container failed"
@@ -39,7 +45,7 @@ preamble() {
     "quorum at risk"
   )
   for m in "${positive[@]}"; do
-    if ! strings "${KINDER_BIN}" | grep -qF "${m}"; then
+    if ! grep -qF "${m}" <<< "${binary_strings}"; then
       echo "[FAIL] STALE BINARY — required v2.4 marker absent: ${m}" >&2
       exit 1
     fi
@@ -52,7 +58,7 @@ preamble() {
     "kindest/haproxy"
   )
   for m in "${negative[@]}"; do
-    if strings "${KINDER_BIN}" | grep -qF "${m}"; then
+    if grep -qF "${m}" <<< "${binary_strings}"; then
       echo "[FAIL] STALE BINARY — forbidden pre-v2.4 marker present: ${m}" >&2
       exit 1
     fi
