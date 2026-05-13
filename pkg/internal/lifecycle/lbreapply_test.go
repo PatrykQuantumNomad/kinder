@@ -114,54 +114,60 @@ func (c *lbFakeCmd) SetStderr(_ io.Writer) exec.Cmd { return c }
 func newLBCmder(s *lbCmderState) Cmder {
 	return func(binary string, args ...string) exec.Cmd {
 		s.calls++
+		// joined is used for format-string matching in docker inspect calls.
 		joined := strings.Join(args, " ")
-		// Case 1: docker inspect <lb> --format ...Networks → JSON
+
+		// Case 1: `docker inspect <lb> --format '{{json .NetworkSettings.Networks}}'`
+		// Issued by discoverLBIPv6 via defaultCmder; binary="docker"/"podman",
+		// args[0]="inspect". Dispatch on args[0] (docker subcommand).
 		if len(args) >= 4 && args[0] == "inspect" &&
 			strings.Contains(joined, "NetworkSettings.Networks") {
 			s.sawNetworkInspect = true
 			return &lbFakeCmd{state: s, slot: -1, stdoutS: fmt.Sprintf(`{%q:{}}`, s.networkName)}
 		}
-		// Case 2: docker network inspect <name> --format ...EnableIPv6
+		// Case 2: `docker network inspect <name> --format '{{.EnableIPv6}}'`
 		if len(args) >= 3 && args[0] == "network" && args[1] == "inspect" &&
 			strings.Contains(joined, "EnableIPv6") {
 			s.sawIPv6Inspect = true
 			return &lbFakeCmd{state: s, slot: -1, stdoutS: s.ipv6Stdout}
 		}
-		// Case 3a: mkdir -p (issued by nodeutils.WriteFile before cp).
+		// Case 3a: `mkdir -p <dir>` issued by nodeutils.WriteFile before cp.
+		// nodeutils.WriteFile calls node.Command("mkdir", "-p", dir); fakeNode
+		// routes through defaultCmder("mkdir", "-p", dir), so binary="mkdir".
 		// Always succeeds silently; does NOT advance attempt or capture stdin.
-		if len(args) > 0 && args[0] == "mkdir" {
+		if binary == "mkdir" {
 			return &lbFakeCmd{state: s, slot: -1}
 		}
-		// Case 3b: any WriteDynamicConfig path-cmd. Inspect the args[0]
-		// — `cp` (WriteFile) or `sh` (chmod+mv). Both flow through
-		// node.Command(...) which routes here via fakeNode.Command.
-		//
-		// We count the first cp call as "start of attempt"; if
-		// attemptErrs[attempt] != nil, return that error and advance.
-		if len(args) > 0 && (args[0] == "cp" || (args[0] == "sh" && len(args) >= 2 && args[1] == "-c")) {
+		// Case 3b: `cp /dev/stdin <dest>` issued by nodeutils.WriteFile.
+		// nodeutils.WriteFile calls node.Command("cp", "/dev/stdin", dest); so
+		// binary="cp".
+		if binary == "cp" {
 			idx := s.attempt
 			var err error
 			if idx < len(s.attemptErrs) {
 				err = s.attemptErrs[idx]
 			}
-			// Allocate a stdinByCall slot for cp calls so Run() can record
-			// the YAML payload. sh calls don't carry payload — slot = -1.
-			slot := -1
-			if args[0] == "cp" {
-				slot = len(s.stdinByCall)
-				s.stdinByCall = append(s.stdinByCall, "")
-			}
-			// Advance attempt on the FINAL command of an attempt — the
-			// `sh -c chmod && mv && mv`. WriteFile (cp) calls don't
-			// advance the counter.
-			if args[0] == "sh" {
-				s.attempt++
-			}
-			// Also advance on a cp error so the next attempt starts cleanly.
-			if args[0] == "cp" && err != nil {
+			// Allocate a stdinByCall slot to capture the YAML payload.
+			slot := len(s.stdinByCall)
+			s.stdinByCall = append(s.stdinByCall, "")
+			// Advance attempt on cp error so the next attempt starts cleanly.
+			if err != nil {
 				s.attempt++
 			}
 			return &lbFakeCmd{state: s, slot: slot, err: err}
+		}
+		// Case 3c: `sh -c chmod && mv && mv` issued by WriteDynamicConfig.
+		// node.Command("sh", "-c", cmd) routes as binary="sh", args[0]="-c".
+		if binary == "sh" && len(args) >= 1 && args[0] == "-c" {
+			idx := s.attempt
+			var err error
+			if idx < len(s.attemptErrs) {
+				err = s.attemptErrs[idx]
+			}
+			// Advance attempt counter on the FINAL command of the attempt
+			// (the `sh -c chmod && mv && mv`).
+			s.attempt++
+			return &lbFakeCmd{state: s, slot: -1, err: err}
 		}
 		return &lbFakeCmd{state: s, slot: -1, err: fmt.Errorf("unexpected call: %s %v", binary, args)}
 	}
@@ -342,6 +348,7 @@ func TestReapplyLBConfig_IPv6DiscoveryFailureDefaultsToIPv4(t *testing.T) {
 	// Custom cmder: docker inspect LB networks returns error (IPv6 discovery fails).
 	// All other commands (mkdir, cp, sh) proceed via the standard lbCmderState logic.
 	withCmder(t, func(binary string, args ...string) exec.Cmd {
+		// The network inspect call uses binary="docker"/"podman" with args[0]="inspect".
 		if len(args) >= 4 && args[0] == "inspect" &&
 			strings.Contains(strings.Join(args, " "), "NetworkSettings.Networks") {
 			s.calls++
