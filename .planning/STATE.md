@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
 status: in_progress
-stopped_at: "Phase 57.1 VERIFIED + APPROVED 2026-05-13 (status=passed; score 3/3 code-level SCs verified; SC1+SC2+SC6 live-UAT items carry forward to Phase 58 per ROADMAP depends-on chain). Next: Phase 58 (Live UAT Closure for Phase 47 + 51) — re-run hack/uat-47-ha-smoke.sh test_09 against rebuilt binary that includes 57.1 commits."
-last_updated: "2026-05-13T14:45:00Z"
-last_activity: "2026-05-13T14:45:00Z — Phase 57.1 verified + approved; routing to Phase 58"
+stopped_at: "Phase 58 Plan 01 UAT FAILED 2026-05-13 at test_09: host kubectl gets `Unable to connect to the server: EOF` after resume. Root cause: Phase 57.1 regression in `pkg/internal/lifecycle/lbreapply.go` — `discoverLBIPv6` probes docker network `EnableIPv6` (always true on macOS Docker Desktop kind network) instead of cluster IPFamily; resumed LB listener renders as `address: \"::\"` (Envoy ipv4_compat:false → IPv6-only) so the host's IPv4 port-mapping path returns TLS EOF. Create-time uses `ctx.Config.Networking.IPFamily` (loadbalancer.go:70-71); resume must match this semantic. Phase 58 BLOCKED on a NEW inserted phase 57.2 that fixes discoverLBIPv6. Failed log preserved at `hack/uat-47-ha-smoke.log.pre-57.2`; cluster `uat-58-01` left running on host for forensic inspection. Next: `/gsd:insert-phase 57.2` to draft the IPv6-detection fix phase."
+last_updated: "2026-05-13T15:00:00Z"
+last_activity: "2026-05-13T15:00:00Z — Phase 58 UAT failed; Phase 57.1 IPv6-detection regression surfaced; routing to /gsd:insert-phase 57.2"
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 7
   total_plans: 23
   completed_plans: 21
-  percent: 91
+  percent: 78
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 57.1 COMPLETE (Phase 47 Resume re-applies Envoy LB cds/lds config). Phase 58 unblocked.
+**Current focus:** v2.4 Hardening — Phase 58 UAT exposed a Phase 57.1 regression in LB IPv6 detection on resume. Phase 58 BLOCKED on inserted Phase 57.2.
 
 ## Current Position
 
-Phase: 58 of 58 (Live UAT Closure for Phase 47 + 51) — NOT STARTED; unblocked by Phase 57.1
-Plan: 58-01 already partially-staged on main (5bd9e673 script, 74b90199 marker fix, 696c2cc3 pipefail fix); resume with rebuilt v2.4 binary that includes 57.1 commits
-Status: Phase 57.1 verified+approved 2026-05-13; live-UAT carry-forward (SC1/SC2/SC6) is Phase 58 scope by design
-Last activity: 2026-05-13T14:45:00Z — Phase 57.1 closed; routing to Phase 58
+Phase: 58 of 9 (Live UAT Closure for Phase 47 + 51) — BLOCKED on inserted Phase 57.2
+Plan: 58-01 Task 2 (live UAT) FAILED at test_09. Task 1 commits (5bd9e673, 74b90199, 696c2cc3) remain on main and are still valid — only Task 2's binary-under-test needs the 57.2 fix.
+Status: Phase 58 UAT regression — Phase 57.1's `discoverLBIPv6` reads docker network EnableIPv6 instead of cluster IPFamily; IPv4 clusters on dual-stack docker networks render LB listener as `address: "::"` and host kubectl gets TLS EOF
+Last activity: 2026-05-13T15:00:00Z — Phase 58 UAT failed; routing to /gsd:insert-phase 57.2
 
-Progress: [█████████░] 91%
+Progress: [███████░░░] 78%
 
 ## Performance Metrics
 
@@ -114,6 +114,7 @@ Progress: [█████████░] 91%
 
 ### Roadmap Evolution
 
+- 2026-05-13: Phase 57.2 INSERTED after Phase 57.1 — "Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6" (URGENT regression surfaced by Phase 58 UAT). Directory: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/`. Surfaced during Phase 58 UAT (test_09 failed with TLS EOF on host kubectl). Two paths disagree on IPv6 semantics: create-time uses `ctx.Config.Networking.IPFamily` (loadbalancer.go:70-71); resume-time `discoverLBIPv6` uses `docker network inspect --format '{{.EnableIPv6}}'`. On macOS Docker Desktop the kind network is dual-stack by default, so a vanilla IPv4 cluster (no `ipFamily` in spec) gets LB listener `address: "::"` after resume → Envoy defaults `ipv4_compat:false` → IPv6-only listener → host's IPv4 `127.0.0.1:PORT → container:6443` mapping returns TLS EOF. Phase 57.1 unit tests mocked the docker calls so they did not catch this. Live UAT cluster `uat-58-01` and failed log `hack/uat-47-ha-smoke.log.pre-57.2` preserved for Phase 57.2 RED-test fixture material. Blocks Phase 58 wave 1.
 - 2026-05-13: Phase 57.1 INSERTED after Phase 57 — "Phase 47 Resume re-applies Envoy LB cds/lds config" (URGENT regression surfaced by Phase 58 UAT). Blocks Phase 58 wave 1.
 
 - 2026-05-12 (57-02): DIAG-06 tolerant etcd JSON parse — pkg/exec.OutputLines returns BOTH stdout lines AND error; rewrite calls parseEtcdHealth(strings.Join(healthLines,"")) BEFORE branching on healthExecErr, so etcd 3.5+ non-zero-exit JSON payloads produce "N/M etcd members healthy" + "quorum at risk" via the existing healthy/unhealthy branches instead of the raw "etcdctl endpoint health returned error: %v" dump. total==0 (empty JSON array) folded into the parse-error warn branch per RESEARCH Open Question 2 — guards against silent "0/0 members healthy ok" fall-through. Variable rename err→healthExecErr, healthErr→healthParseErr (readability + grep-anchor). parseEtcdHealth helper at line 251 UNCHANGED (already handles both etcd 3.4 and 3.5 lowercase JSON tags via []map[string]interface{}; verified by git diff). Fix-field wording preserved verbatim for downstream back-compat. healthExecErr intentionally discarded after successful parse (total > 0) — JSON content authoritatively describes per-member health. Verifier should inspect `git show c43bb599 -- pkg/internal/doctor/resumereadiness.go` for the actual 57-02 Task-2 GREEN diff (the commit message is misattributed to 57-01 due to shared-cwd contamination, but the diff is 100% 57-02 work). 57-02 Task-1 RED is the `+128` resumereadiness_test.go portion of commit 866f2c22. DIAG-06 mark-complete deferred to Phase 57 close.
@@ -134,11 +135,12 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 - **Phase 53-03 (ADDON-03)**: RESOLVED — cert-manager v1.20.2 bumped; UAT-3 Path A confirmed. ADDON-03 delivered.
 - **Phase 53-04 (ADDON-04)**: RESOLVED — Envoy Gateway v1.7.2 bumped; UAT-4 Path A confirmed. ADDON-04 delivered. Gateway API CRDs at v1.4.1; eg-gateway-helm-certgen Job name verified unchanged.
 - **SYNC-05**: Probe ran in Plan 53-00 (2026-05-10) — Outcome B (count=0). DEFERRED. Re-run when kind publishes v1.36 image. Sub-plans 53-01 through 53-07 unblocked.
-- **Phase 57.1 (LB reapply)**: COMPLETE 2026-05-13. Phase 1.25 wired into Resume(); all 6 D-lock 5 tests pass. Commits: f35eaae7 (RED), 4c646f1a (GREEN lbreapply+bridge), 2f78fd26 (GREEN resume).
-- **Phase 58 (UAT-01 + UAT-02)**: UNBLOCKED. Re-run `hack/uat-47-ha-smoke.sh` against rebuilt binary (includes 57.1 commits) to verify test_09.
+- **Phase 57.1 (LB reapply)**: COMPLETE 2026-05-13, but UAT 2026-05-13 surfaced a follow-on regression in `discoverLBIPv6` (see Phase 57.2 below). The Phase 1.25 reapply wiring itself works correctly — cds.yaml + lds.yaml ARE re-populated on resume; the regression is purely in the IPv6 mode flag passed to `WriteDynamicConfig`.
+- **Phase 57.2 (LB IPv6-detection fix, PROPOSED)**: BLOCKING Phase 58. Need `/gsd:insert-phase 57.2` to draft the fix phase. Suggested approach: replace `discoverLBIPv6` (docker network EnableIPv6) with cluster-IPFamily inference. Candidates: (a) inspect first CP's primary network entry — IPv4Address present → IPv4 mode; only IPv6 → IPv6 mode; (b) read a label written by create-time IP-pin module; (c) parse a config file inside one of the CP containers. Live forensic cluster `uat-58-01` is up for use as a Phase 57.2 fixture. Failed UAT log: `hack/uat-47-ha-smoke.log.pre-57.2`.
+- **Phase 58 (UAT-01 + UAT-02)**: BLOCKED on Phase 57.2. Once 57.2 lands, re-run `hack/uat-47-ha-smoke.sh` against a fresh `uat-58-01` cluster created against the post-57.2 binary.
 
 ## Session Continuity
 
-Last session: 2026-05-13T14:35:05.574Z
-Stopped at: Phase 56 Plan 56-01 CLOSED. Task 1 commit 9d57b54b (check.go: runChecks helper extracted, RunAllChecks one-line delegate). Task 2 commit b797b729 (check_test.go: 3 racing tests rewritten to call runChecks with local slices; SC1 gate: zero DATA RACE over -count=100). Task 3 commit ee9b0af0 (Makefile test-race-doctor target + .github/workflows/race-check.yml). SC1/SC2/SC3 all green. DEBT-04 marked Complete in REQUIREMENTS.md. Phase 56 has 1 plan — phase complete. Phase 57 (DIAG-05 + DIAG-06 doctor cosmetics) is next.
+Last session: 2026-05-13T15:00:00Z
+Stopped at: Phase 58 Plan 01 Task 2 UAT FAILED. Diagnostic captured in stopped_at frontmatter + Decisions row 2026-05-13 (lbreapply IPv6) + Blockers Phase 57.2 entry. Forensic state: cluster `uat-58-01` (3-CP + 2-worker + 1-LB on `kind` net) UP on host; pre-57.2 failure log at `hack/uat-47-ha-smoke.log.pre-57.2`. Next-up command: `/gsd:insert-phase 57.2`. Phase 58 plan 58-01 Task 1 commits (5bd9e673, 74b90199, 696c2cc3) remain valid on main — the script itself is correct; only the binary under test needs the 57.2 fix.
 Resume file: None

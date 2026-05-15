@@ -111,7 +111,8 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper (completed 2026-05-12; `runChecks(checks []Check) []Result` helper extracted in `pkg/internal/doctor/check.go` with `RunAllChecks()` now a 1-line delegate; three racing parallel tests in `check_test.go` rewritten to use local `[]Check` slices; `Makefile` `test-race-doctor` target + `.github/workflows/race-check.yml` CI gate added; `CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100` exits 0 in 2.662s with zero DATA RACE; verifier 3/3 passed)
 - [x] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text (completed 2026-05-12; inline `external-load-balancer` + `external-etcd` role guard in `realListNodes` at `clusterskew.go:111-126` eliminates the false-positive version-skew warning; tolerant flow in `resumereadiness.go:172-207` calls `parseEtcdHealth` BEFORE the verdict so etcd 3.5+ non-zero exits still surface `"N/M etcd members healthy"` + `"quorum at risk"`; raw `"etcdctl endpoint health returned error: %v"` dump removed; Pitfall 22 fixture matrix covers etcd 3.4 + 3.5 JSON shapes; `make test-race-doctor` over `-count=100` green in 2.661s; verifier 3/3 passed)
 - [x] **Phase 57.1: Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED)** - Fix Phase 47↔51 regression: `lifecycle.Resume` never re-applies the Envoy LB dynamic xDS config after the LB container restarts. The container's hardcoded entrypoint resets `/home/envoy/{cds,lds}.yaml` to `resources: []` on every start, so after pause+resume the LB has zero upstreams and host kubectl gets EOF — discovered during Phase 58 live UAT test_09 (2026-05-13) (completed 2026-05-13)
-- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (BLOCKED on Phase 57.1)
+- [ ] **Phase 57.2: Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6 (INSERTED)** - Phase 57.1's `discoverLBIPv6` probes `docker network inspect --format '{{.EnableIPv6}}'`, which is `true` on macOS Docker Desktop's kind network by default. Vanilla IPv4 clusters then re-render the resumed LB listener as `address: "::"` (Envoy ipv4_compat:false → IPv6-only listener), so host kubectl on the IPv4 127.0.0.1:port mapping returns TLS EOF after resume — discovered during Phase 58 live UAT test_09 (2026-05-13)
+- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (BLOCKED on Phase 57.2)
 
 ## Phase Details
 
@@ -237,9 +238,45 @@ Plans:
 
 **RISK NOTE (SUPERSEDED by 57.1-CONTEXT.md D-lock 1)**: The earlier guidance ("AFTER cert-regen/ip-pin finishes") was caution, not a derived constraint. CONTEXT.md locks the insertion at Phase 1.25 (after LB start, BEFORE Phase 1.5 ip-pin / Phase 2 CP start). Rationale: cds/lds encode CP container *names*, not IPs; ip-pin and cert-regen are CP-side concerns; Envoy file-polls and tolerates not-yet-running upstream backends. Symmetric with create-time which writes cds/lds while CPs are still starting.
 
+### Phase 57.2: Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6 (INSERTED)
+
+**Goal**: `kinder resume` on a vanilla IPv4 HA cluster renders the LB listener at `address: "0.0.0.0"` (IPv4) — not `"::"` (IPv6-only) — so host `kubectl` on the docker port-mapping reaches the apiserver after resume, on macOS Docker Desktop's default dual-stack kind network.
+**Depends on**: Phase 57.1 (same lifecycle package; fixes a bug introduced by 57.1)
+**Requirements**: To be derived during planning (likely a new LIFE-11 requirement, or appended scope to whatever 57.1 wrote)
+**Why urgent (discovered 2026-05-13 during Phase 58 UAT test_09)**:
+  - `pkg/internal/lifecycle/lbreapply.go:59-90` (`discoverLBIPv6`) probes `docker network inspect --format '{{.EnableIPv6}}'`. On macOS Docker Desktop the `kind` network is dual-stack by default (`EnableIPv6=true`), regardless of cluster IPFamily.
+  - For a vanilla IPv4 cluster (no `ipFamily` in spec), the create-time path at `pkg/cluster/internal/create/actions/loadbalancer/loadbalancer.go:70-71` correctly sets `ipv6 := ctx.Config.Networking.IPFamily == config.IPv6Family || == config.DualStackFamily` → IPv4 mode → listener `address: "0.0.0.0"`.
+  - On resume, `discoverLBIPv6` returns `true` for the same cluster → re-renders listener `address: "::"`. Envoy defaults `socket_address.ipv4_compat: false`, so the listener becomes IPv6-only.
+  - Forensic evidence (cluster `uat-58-01` left running 2026-05-13): TCP from host's port-mapping reaches Envoy but TLS returns EOF; from inside the `kind` network `openssl s_client -connect 172.19.0.2:6443` → `Connection refused`; `[fc00:f853:ccd:e793::2]:6443` → TLS OK with `subject=CN=kube-apiserver`.
+  - The two paths must agree on the meaning of "IPv6". Authoritative source is the cluster spec, not the docker network's capability flag.
+
+**Success Criteria** (what must be TRUE):
+  1. After `kinder pause` + `kinder resume --wait 5m` on a vanilla IPv4 3-CP + 2-worker + 1-LB cluster, `docker exec <lb> cat /home/envoy/lds.yaml | grep -E 'address:\s*"0\.0\.0\.0"'` returns a match (IPv4 listener); `address: "::"` does NOT appear in the listener block.
+  2. After resume on a vanilla IPv4 cluster, host `kubectl --context kind-<cluster> get nodes` succeeds within the `--wait` window (validates SC1 end-to-end; closes the 58-UAT test_09 regression).
+  3. After resume on an explicit IPv6 or DualStack cluster (`networking.ipFamily: ipv6` or `dual`), `docker exec <lb> cat /home/envoy/lds.yaml | grep -E 'address:\s*"::"'` returns a match — IPv6 mode is preserved when the cluster genuinely wants it.
+  4. `discoverLBIPv6` no longer references `docker network inspect ... EnableIPv6`; the IPv6 decision is derived from a cluster-authoritative source (candidates per STATE Blockers: first CP's primary network IP family; a label set by create-time IP-pin module; a config file inside a CP container — to be locked during `/gsd:discuss-phase 57.2`).
+  5. Phase 57.1's existing 6 lifecycle tests still pass; Phase 57.2 adds at least one regression test that asserts the resume-time IPv6 flag matches the create-time IPv6 flag for both IPv4 and dual-stack clusters (using FakeNode/FakeCmd test infra to avoid live docker dependency).
+  6. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.2 binary on macOS Docker Desktop (the failed pre-57.2 log at `hack/uat-47-ha-smoke.log.pre-57.2` is the comparison baseline).
+
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD — run `/gsd:discuss-phase 57.2` then `/gsd:plan-phase 57.2` to break down
+
+**Details**:
+The fix-shape options to discuss (each has tradeoffs; the right choice depends on existing labels/state already written during create-time):
+
+  - **Option A — Inspect first CP's primary network entry**: `docker inspect <cp1> --format '{{json .NetworkSettings.Networks}}'` and check whether the network entry has a non-empty `IPAddress` (IPv4) vs only `GlobalIPv6Address` (IPv6-only). Self-contained; no schema change. Risk: dual-stack clusters have BOTH; need to align on whether the LB listener for dual-stack should be `"::"` (matches create-time) or `"0.0.0.0"` (broader macOS Docker Desktop compatibility).
+  - **Option B — Read a label written by create-time**: Phase 52's IP-pin module already writes labels (`io.x-k8s.kinder.resume-strategy`); extend that with `io.x-k8s.kinder.ip-family={ipv4|ipv6|dual}` so resume reads the authoritative cluster decision directly. Requires create-time edit; cleaner for the long term.
+  - **Option C — Parse a config file inside a CP container**: Read `/kind/kinder-cluster-config.yaml` (or wherever the cluster spec is persisted) via `docker exec <cp1> cat`. Most authoritative but slowest and most fragile (path/format coupling).
+
+Forensic state available for the planner:
+  - Failed UAT log: `hack/uat-47-ha-smoke.log.pre-57.2` (untracked)
+  - Live cluster `uat-58-01` left running on host (3-CP + 2-worker + 1-LB; cert-regen strategy; on dual-stack `kind` network) — exercise candidate fixes against this cluster before committing.
+
 ### Phase 58: Live UAT Closure for Phase 47 + 51
 **Goal**: Both carry-forward UAT items from v2.3 are formally closed with live evidence recorded against the final v2.4 binary
-**Depends on**: Phase 57.1 (LB reapply fix; otherwise test_09 fails at LB connectivity), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23)
+**Depends on**: Phase 57.2 (LB IPv6-detection fix; otherwise test_09 still fails at TLS EOF on macOS Docker Desktop), then Phase 57.1 (LB reapply fix; otherwise test_09 fails at empty cds/lds), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23)
 **Requirements**: UAT-01, UAT-02
 **Success Criteria** (what must be TRUE):
   1. `./bin/kinder version` confirms the v2.4 build hash before any UAT run begins — smoke never runs against a stale PATH binary
@@ -265,7 +302,8 @@ Phase 52 (etcd peer-TLS / IP pinning)  [highest blast radius; isolated]
     → Phase 56 (DEBT-04 race fix)       [must precede Phase 57; same package]
       → Phase 57 (doctor cosmetics)     [depends on race-clean baseline]
         → Phase 57.1 (LB reapply fix)   [INSERTED 2026-05-13; UAT test_09 regression]
-          → Phase 58 (live UAT closure) [MUST run against final v2.4 binary]
+          → Phase 57.2 (LB IPv6 detect) [INSERTED 2026-05-13; surfaced by Phase 58 UAT; fixes a 57.1 sub-regression]
+            → Phase 58 (live UAT closure) [MUST run against final v2.4 binary]
 
 Phase 54 (macOS signing)   — independent of source code; starts after Phase 52
 Phase 55 (Windows CI)      — independent of source code; starts after Phase 52
@@ -322,5 +360,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 55. Windows PR-CI Build Step | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
-| 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete   | 2026-05-13 |
-| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Blocked on 57.1 | - |
+| 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete (regression filed → 57.2) | 2026-05-13 |
+| 57.2. Fix `discoverLBIPv6` (PROPOSED) | v2.4 | 0/? | Pending `/gsd:insert-phase 57.2` | - |
+| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Blocked on 57.2 | - |
