@@ -258,10 +258,11 @@ Plans:
   5. Phase 57.1's existing 6 lifecycle tests still pass; Phase 57.2 adds at least one regression test that asserts the resume-time IPv6 flag matches the create-time IPv6 flag for both IPv4 and dual-stack clusters (using FakeNode/FakeCmd test infra to avoid live docker dependency).
   6. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.2 binary on macOS Docker Desktop (the failed pre-57.2 log at `hack/uat-47-ha-smoke.log.pre-57.2` is the comparison baseline).
 
-**Plans**: 0 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD — run `/gsd:discuss-phase 57.2` then `/gsd:plan-phase 57.2` to break down
+- [ ] 57.2-01-PLAN.md — Atomic code fix (autonomous): RED tests + GREEN implementation of ip-family label injection across docker/podman/nerdctl (LB+CP+worker); ClusterIPFamily helper in pkg/cluster/loadbalancer/; ipv4_compat: true on the IPv6/dual listener template branch; resume calls helper; delete discoverLBIPv6 entirely
+- [ ] 57.2-02-PLAN.md — Live IPv6 UAT on macOS Docker Desktop (developer-driven; requires Docker Desktop IPv6 enabled): IPv4 + IPv6 cluster create/pause/resume listener invariance + host kubectl succeeds + ip-family label present on every container
 
 **Details**:
 The fix-shape options to discuss (each has tradeoffs; the right choice depends on existing labels/state already written during create-time):
