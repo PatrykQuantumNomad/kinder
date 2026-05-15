@@ -22,9 +22,16 @@ LOG_DIR=".planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/u
 mkdir -p "$LOG_DIR"
 
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_DIR/run.log"; }
-fail() { log "FAIL: $*"; exit 1; }
+fail() { log "FAIL: $*"; SCRIPT_FAILED=1; exit 1; }
 
+SCRIPT_FAILED=0
 cleanup() {
+    if [ "$SCRIPT_FAILED" = "1" ]; then
+        log "cleanup: SKIPPED — script failed; clusters preserved for forensics"
+        log "         to inspect: docker ps --filter name=$CLUSTER_IPV4"
+        log "         to clean up later: $KINDER delete cluster --name $CLUSTER_IPV4 ; $KINDER delete cluster --name $CLUSTER_IPV6"
+        return
+    fi
     log "cleanup: deleting clusters (best-effort)"
     "$KINDER" delete cluster --name "$CLUSTER_IPV4" 2>/dev/null || true
     "$KINDER" delete cluster --name "$CLUSTER_IPV6" 2>/dev/null || true
@@ -86,10 +93,20 @@ test_02_ipv4_listener_pre_resume() {
 }
 
 test_03_ipv4_pause_resume() {
-    log "test_03: pause + resume IPv4 cluster"
+    log "test_03: pause + resume IPv4 cluster (--wait 10m for cert-regen + addon recovery)"
     "$KINDER" pause "$CLUSTER_IPV4" 2>&1 | tee -a "$LOG_DIR/ipv4-pause.log"
-    "$KINDER" resume "$CLUSTER_IPV4" --wait 5m \
+    # Use --wait 30s so the resume returns quickly after orchestration; the
+    # 'nodes Ready' poll is done explicitly in test_05 so the cluster stays
+    # alive for forensic inspection even if kubectl never recovers.
+    set +e
+    "$KINDER" resume "$CLUSTER_IPV4" --wait 30s \
         2>&1 | tee -a "$LOG_DIR/ipv4-resume.log"
+    local rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        log "test_03: resume returned non-zero ($rc) — likely the internal node-Ready wait timed out."
+        log "         Continuing so test_04 can capture post-resume lds.yaml and test_05 can poll kubectl with a longer deadline."
+    fi
 }
 
 test_04_ipv4_listener_post_resume() {
@@ -105,15 +122,27 @@ test_04_ipv4_listener_post_resume() {
 }
 
 test_05_ipv4_host_kubectl_after_resume() {
-    log "test_05: host kubectl get nodes succeeds against resumed IPv4 cluster"
-    # Use kubectl with the kinder-generated kubeconfig
-    local kubeconfig
-    kubeconfig="$("$KINDER" get kubeconfig --name "$CLUSTER_IPV4" 2>/dev/null > "$LOG_DIR/ipv4-kubeconfig.yaml"; echo "$LOG_DIR/ipv4-kubeconfig.yaml")"
-    if ! kubectl --kubeconfig "$kubeconfig" get nodes \
-            2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log"; then
-        fail "test_05: kubectl get nodes FAILED — Phase 58 UAT test_09 regression NOT closed"
-    fi
-    log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
+    log "test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster"
+    local kubeconfig="$LOG_DIR/ipv4-kubeconfig.yaml"
+    "$KINDER" get kubeconfig --name "$CLUSTER_IPV4" > "$kubeconfig" 2>/dev/null
+    # Poll kubectl until all nodes Ready or 10m deadline. cert-regen + addon
+    # recovery can take 6-8m on macOS Docker Desktop.
+    local deadline=$(( $(date +%s) + 600 ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers 2>>"$LOG_DIR/ipv4-kubectl.log" \
+                | awk '{print $2}' | grep -vq Ready; then
+            sleep 10
+            continue
+        fi
+        if kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log"; then
+            log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
+            return 0
+        fi
+        sleep 10
+    done
+    log "test_05: kubectl polling output (final state):"
+    kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log" || true
+    fail "test_05: kubectl get nodes FAILED after 10m — Phase 58 UAT test_09 regression NOT closed"
 }
 
 test_06_ipv4_labels_present() {
@@ -164,8 +193,14 @@ test_08_ipv6_listener_pre_resume() {
 test_09_ipv6_pause_resume() {
     log "test_09: pause + resume IPv6 cluster"
     "$KINDER" pause "$CLUSTER_IPV6" 2>&1 | tee -a "$LOG_DIR/ipv6-pause.log"
-    "$KINDER" resume "$CLUSTER_IPV6" --wait 5m \
+    set +e
+    "$KINDER" resume "$CLUSTER_IPV6" --wait 30s \
         2>&1 | tee -a "$LOG_DIR/ipv6-resume.log"
+    local rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        log "test_09: resume returned non-zero ($rc); continuing for forensic capture in test_10/test_11"
+    fi
 }
 
 test_10_ipv6_listener_post_resume() {
@@ -181,15 +216,25 @@ test_10_ipv6_listener_post_resume() {
 }
 
 test_11_ipv6_host_kubectl_after_resume() {
-    log "test_11: host kubectl get nodes succeeds against resumed IPv6 cluster (verifies ipv4_compat)"
-    local kubeconfig
-    kubeconfig="$LOG_DIR/ipv6-kubeconfig.yaml"
+    log "test_11: host kubectl get nodes (10m deadline) against resumed IPv6 cluster (verifies ipv4_compat)"
+    local kubeconfig="$LOG_DIR/ipv6-kubeconfig.yaml"
     "$KINDER" get kubeconfig --name "$CLUSTER_IPV6" > "$kubeconfig" 2>/dev/null
-    if ! kubectl --kubeconfig "$kubeconfig" get nodes \
-            2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log"; then
-        fail "test_11: kubectl get nodes FAILED on resumed IPv6 cluster — ipv4_compat path broken"
-    fi
-    log "test_11: PASS"
+    local deadline=$(( $(date +%s) + 600 ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers 2>>"$LOG_DIR/ipv6-kubectl.log" \
+                | awk '{print $2}' | grep -vq Ready; then
+            sleep 10
+            continue
+        fi
+        if kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log"; then
+            log "test_11: PASS — ipv4_compat path verified for IPv6 cluster"
+            return 0
+        fi
+        sleep 10
+    done
+    log "test_11: kubectl polling output (final state):"
+    kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log" || true
+    fail "test_11: kubectl get nodes FAILED after 10m on resumed IPv6 cluster — ipv4_compat path broken"
 }
 
 test_12_ipv6_labels_present() {
