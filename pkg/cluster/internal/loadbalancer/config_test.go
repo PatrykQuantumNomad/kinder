@@ -51,12 +51,14 @@ type testCall struct {
 
 var _ nodes.Node = (*testNode)(nil)
 
-func (n *testNode) String() string                                              { return n.name }
-func (n *testNode) Role() (string, error)                                       { return "external-load-balancer", nil }
-func (n *testNode) IP() (string, string, error)                                 { return "", "", nil }
-func (n *testNode) SerialLogs(_ io.Writer) error                                { return nil }
-func (n *testNode) Command(c string, a ...string) exec.Cmd                     { return n.newCmd(c, a) }
-func (n *testNode) CommandContext(_ context.Context, c string, a ...string) exec.Cmd { return n.newCmd(c, a) }
+func (n *testNode) String() string                         { return n.name }
+func (n *testNode) Role() (string, error)                  { return "external-load-balancer", nil }
+func (n *testNode) IP() (string, string, error)            { return "", "", nil }
+func (n *testNode) SerialLogs(_ io.Writer) error           { return nil }
+func (n *testNode) Command(c string, a ...string) exec.Cmd { return n.newCmd(c, a) }
+func (n *testNode) CommandContext(_ context.Context, c string, a ...string) exec.Cmd {
+	return n.newCmd(c, a)
+}
 
 func (n *testNode) newCmd(c string, args []string) exec.Cmd {
 	idx := len(n.calls)

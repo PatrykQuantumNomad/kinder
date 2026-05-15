@@ -38,11 +38,13 @@ type cipTestNode struct {
 
 var _ nodes.Node = (*cipTestNode)(nil)
 
-func (n *cipTestNode) String() string                                              { return n.name }
-func (n *cipTestNode) Role() (string, error)                                       { return "external-load-balancer", nil }
-func (n *cipTestNode) IP() (string, string, error)                                 { return "", "", nil }
-func (n *cipTestNode) SerialLogs(_ io.Writer) error                                { return nil }
-func (n *cipTestNode) Command(_ string, _ ...string) exec.Cmd                     { return &cipTestCmd{err: fmt.Errorf("cipTestNode.Command should not be called")} }
+func (n *cipTestNode) String() string               { return n.name }
+func (n *cipTestNode) Role() (string, error)        { return "external-load-balancer", nil }
+func (n *cipTestNode) IP() (string, string, error)  { return "", "", nil }
+func (n *cipTestNode) SerialLogs(_ io.Writer) error { return nil }
+func (n *cipTestNode) Command(_ string, _ ...string) exec.Cmd {
+	return &cipTestCmd{err: fmt.Errorf("cipTestNode.Command should not be called")}
+}
 func (n *cipTestNode) CommandContext(_ context.Context, _ string, _ ...string) exec.Cmd {
 	return &cipTestCmd{err: fmt.Errorf("cipTestNode.CommandContext should not be called")}
 }
@@ -85,10 +87,10 @@ func (c *cipTestCmd) Run() error {
 	}
 	return c.err
 }
-func (c *cipTestCmd) SetEnv(_ ...string) exec.Cmd     { return c }
-func (c *cipTestCmd) SetStdin(_ io.Reader) exec.Cmd   { return c }
-func (c *cipTestCmd) SetStdout(w io.Writer) exec.Cmd  { c.stdoutW = w; return c }
-func (c *cipTestCmd) SetStderr(_ io.Writer) exec.Cmd  { return c }
+func (c *cipTestCmd) SetEnv(_ ...string) exec.Cmd    { return c }
+func (c *cipTestCmd) SetStdin(_ io.Reader) exec.Cmd  { return c }
+func (c *cipTestCmd) SetStdout(w io.Writer) exec.Cmd { c.stdoutW = w; return c }
+func (c *cipTestCmd) SetStderr(_ io.Writer) exec.Cmd { return c }
 
 // newCIPCmder returns a fake cmder that dispatches on the `docker inspect`
 // vs `docker network inspect` shape. The "label" path returns labelStdout
@@ -173,8 +175,8 @@ func TestClusterIPFamily_LabelMatrix(t *testing.T) {
 // test for the bug-of-record (Phase 58 UAT test_09 failure, 2026-05-13). The
 // scenario: an IPv4 cluster (config.IPFamily="" or "ipv4") running on macOS
 // Docker Desktop's `kind` network, which is dual-stack by default (the docker
-// network has `EnableIPv6=true`). Phase 57.1's discoverLBIPv6 probed the network
-// and mis-classified the cluster as IPv6, causing the resumed LB listener to
+// network has `EnableIPv6=true`). Phase 57.1's resume-time IPv6 probe inspected
+// the docker network and mis-classified the cluster as IPv6, causing the resumed LB listener to
 // render `address: "::"` (IPv6-only) → host kubectl IPv4 port-mapping → TLS EOF.
 //
 // Phase 57.2 fix: ClusterIPFamily reads the cluster-authoritative

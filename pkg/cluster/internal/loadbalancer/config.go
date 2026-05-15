@@ -60,7 +60,11 @@ admin:
       port_value: 10000
 `
 
-// ProxyLDSConfigTemplate is the loadbalancer config template for listeners
+// ProxyLDSConfigTemplate is the loadbalancer config template for listeners.
+// Phase 57.2: the IPv6/dual branch renders `ipv4_compat: true` so the `::`
+// listener accepts IPv4-mapped peers (Envoy default is ipv4_compat:false →
+// IPv6-only); without this, macOS Docker Desktop's IPv4 port-mapping cannot
+// reach a dual-stack listener and host kubectl gets TLS EOF.
 const ProxyLDSConfigTemplate = `
 resources:
 - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
@@ -69,6 +73,9 @@ resources:
     socket_address:
       address: {{ if .IPv6 }}"::"{{ else }}"0.0.0.0"{{ end }}
       port_value: {{ .ControlPlanePort }}
+{{- if .IPv6 }}
+      ipv4_compat: true
+{{- end }}
   filter_chains:
   - filters:
     - name: envoy.filters.network.tcp_proxy

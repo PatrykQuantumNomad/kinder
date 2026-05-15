@@ -30,6 +30,7 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster/internal/loadbalancer"
 	"sigs.k8s.io/kind/pkg/cluster/internal/providers/common"
+	publiclb "sigs.k8s.io/kind/pkg/cluster/loadbalancer"
 	"sigs.k8s.io/kind/pkg/internal/apis/config"
 )
 
@@ -38,6 +39,13 @@ import (
 // containers (e.g. constants.StrategyIPPinned or constants.StrategyCertRegen).
 // An empty string means no strategy label is injected (single-CP path).
 func planCreation(cfg *config.Cluster, networkName string, strategy string) (createContainerFuncs []func() error, err error) {
+	// Phase 57.2: compute the ip-family label value ONCE; injected into
+	// every container (LB + CPs + workers) so resume can derive IPv6 mode
+	// from a cluster-authoritative source rather than docker network probing.
+	ipFamilyLabel := fmt.Sprintf("%s=%s",
+		constants.IPFamilyLabel,
+		publiclb.IPFamilyLabelValue(cfg.Networking.IPFamily))
+
 	// we need to know all the names for NO_PROXY
 	// compute the names first before any actual node details
 	nodeNamer := common.MakeNodeNamer(cfg.Name)
@@ -114,6 +122,11 @@ func planCreation(cfg *config.Cluster, networkName string, strategy string) (cre
 				if err != nil {
 					return err
 				}
+				// Phase 57.2: inject ip-family label on CP containers. Insert
+				// --label before the image (the last element in args per
+				// runArgsForNode) so the resulting `docker run` line is valid.
+				ipFamilyLabelArgs := []string{"--label", ipFamilyLabel}
+				args = append(args[:len(args)-1], append(ipFamilyLabelArgs, args[len(args)-1])...)
 				// Inject resume-strategy label on CP containers at run time.
 				// Labels MUST be set at `docker run`; there is no container-update
 				// equivalent (Docker API limitation). Strategy is decided once by
@@ -134,6 +147,10 @@ func planCreation(cfg *config.Cluster, networkName string, strategy string) (cre
 				if err != nil {
 					return err
 				}
+				// Phase 57.2: inject ip-family label on worker containers (parity
+				// with LB and CPs; needed for diagnostic queries and future migrations).
+				ipFamilyLabelArgs := []string{"--label", ipFamilyLabel}
+				args = append(args[:len(args)-1], append(ipFamilyLabelArgs, args[len(args)-1])...)
 				return createContainerWithWaitUntilSystemdReachesMultiUserSystem(name, args)
 			})
 		default:
@@ -294,6 +311,13 @@ func runArgsForLoadBalancer(cfg *config.Cluster, name string, args []string) ([]
 		return nil, err
 	}
 	args = append(args, mappingArgs...)
+
+	// Phase 57.2: inject ip-family label on the LB container BEFORE the image
+	// (the image is followed by GenerateBootstrapCommand args; --label must come
+	// before the image per `docker run` arg order). Same label value as CPs/workers.
+	args = append(args, "--label", fmt.Sprintf("%s=%s",
+		constants.IPFamilyLabel,
+		publiclb.IPFamilyLabelValue(cfg.Networking.IPFamily)))
 
 	// finally, specify the image to run, then append the Envoy bootstrap command
 	args = append(args, loadbalancer.Image)

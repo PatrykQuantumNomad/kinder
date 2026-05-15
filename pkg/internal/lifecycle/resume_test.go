@@ -107,6 +107,15 @@ func (r *startCallRecorder) Cmder() Cmder {
 			r.mu.Unlock()
 			return &fakeCmd{err: err}
 		case "inspect":
+			// Phase 57.2: ClusterIPFamily issues `<bin> inspect --format
+			// {{index .Config.Labels "io.x-k8s.kinder.ip-family"}} <container>`.
+			// Distinguish from State.Status inspect via the format string.
+			joined := strings.Join(args, " ")
+			if strings.Contains(joined, "Config.Labels") && strings.Contains(joined, "ip-family") {
+				// Default to ipv4 for resume tests (none currently exercise
+				// IPv6/dual semantics through this recorder).
+				return &fakeCmd{stdout: "ipv4\n"}
+			}
 			// `<bin> inspect --format {{.State.Status}} <container>`
 			container := args[len(args)-1]
 			r.mu.Lock()
@@ -121,7 +130,10 @@ func (r *startCallRecorder) Cmder() Cmder {
 			}
 			return &fakeCmd{stdout: state + "\n"}
 		case "network":
-			// docker network inspect (from discoverLBIPv6) — return "false\n" (IPv4).
+			// Phase 57.1 dispatch case (docker network inspect EnableIPv6) was
+			// deleted by Phase 57.2. Keep a defensive handler so any stray call
+			// produces deterministic IPv4 stdout — but ClusterIPFamily MUST NOT
+			// reach this branch under Phase 57.2 semantics.
 			return &fakeCmd{stdout: "false\n"}
 		}
 		return &fakeCmd{err: fmt.Errorf("unhandled subcommand %q", args[0])}

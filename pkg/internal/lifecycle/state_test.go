@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/kind/pkg/cluster/loadbalancer"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/exec"
 )
@@ -36,10 +37,10 @@ type fakeNode struct {
 
 var _ nodes.Node = (*fakeNode)(nil)
 
-func (f *fakeNode) String() string                      { return f.name }
-func (f *fakeNode) Role() (string, error)               { return f.role, f.err }
-func (f *fakeNode) IP() (string, string, error)         { return "", "", nil }
-func (f *fakeNode) SerialLogs(_ io.Writer) error        { return nil }
+func (f *fakeNode) String() string               { return f.name }
+func (f *fakeNode) Role() (string, error)        { return f.role, f.err }
+func (f *fakeNode) IP() (string, string, error)  { return "", "", nil }
+func (f *fakeNode) SerialLogs(_ io.Writer) error { return nil }
 func (f *fakeNode) Command(c string, a ...string) exec.Cmd {
 	return defaultCmder(c, a...)
 }
@@ -49,8 +50,8 @@ func (f *fakeNode) CommandContext(_ context.Context, c string, a ...string) exec
 
 // fakeCmd implements exec.Cmd, returning a canned stdout line and optional err.
 type fakeCmd struct {
-	stdout string
-	err    error
+	stdout  string
+	err     error
 	stdoutW io.Writer
 }
 
@@ -62,17 +63,28 @@ func (f *fakeCmd) Run() error {
 	}
 	return f.err
 }
-func (f *fakeCmd) SetEnv(_ ...string) exec.Cmd        { return f }
-func (f *fakeCmd) SetStdin(_ io.Reader) exec.Cmd      { return f }
-func (f *fakeCmd) SetStdout(w io.Writer) exec.Cmd     { f.stdoutW = w; return f }
-func (f *fakeCmd) SetStderr(_ io.Writer) exec.Cmd     { return f }
+func (f *fakeCmd) SetEnv(_ ...string) exec.Cmd    { return f }
+func (f *fakeCmd) SetStdin(_ io.Reader) exec.Cmd  { return f }
+func (f *fakeCmd) SetStdout(w io.Writer) exec.Cmd { f.stdoutW = w; return f }
+func (f *fakeCmd) SetStderr(_ io.Writer) exec.Cmd { return f }
 
 // withCmder swaps the package-level cmder for the duration of the test.
+// Phase 57.2: ALSO swaps loadbalancer.ClusterIPFamily's package-level cmder
+// (via the exported SetClusterIPFamilyCmderForTest hook) so reapplyLBConfig
+// drives the same fake. Lifecycle tests don't need to override the helper
+// independently — when they do (lbreapply_test.go), the explicit
+// withClusterIPFamilyCmderInLifecycle takes precedence.
 func withCmder(t *testing.T, c Cmder) {
 	t.Helper()
 	prev := defaultCmder
 	defaultCmder = c
-	t.Cleanup(func() { defaultCmder = prev })
+	prevLB := loadbalancer.SetClusterIPFamilyCmderForTest(func(name string, args ...string) exec.Cmd {
+		return c(name, args...)
+	})
+	t.Cleanup(func() {
+		defaultCmder = prev
+		loadbalancer.SetClusterIPFamilyCmderForTest(prevLB)
+	})
 }
 
 // fakeCmderByName returns canned fakeCmds keyed by container name (the last arg).

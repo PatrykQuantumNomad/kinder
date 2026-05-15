@@ -21,19 +21,21 @@ limitations under the License.
 // this reapply, post-resume the LB has zero clusters and host kubectl gets
 // EOF — see Phase 57.1 ROADMAP entry.
 //
-// Architecture (per 57.1-CONTEXT.md D-locks):
+// Architecture (per 57.1-CONTEXT.md D-locks + Phase 57.2 amendment):
 //   - Fires at Phase 1.25 (after LB start, before ip-pin/CP start)
 //   - No-op for single-CP clusters (lb == nil short-circuit)
 //   - Retry 3x with 1s backoff between attempts (no sleep before attempt 1)
 //   - Hard-fail after 3 attempts (Resume returns error; downstream phases
 //     do not run)
-//   - IPv6 detected via docker network inspect; failure defaults to IPv4
-//     + V(1) log line (graceful fallback per CONTEXT.md Discretion)
+//   - IPv6 detected via `loadbalancer.ClusterIPFamily(node)` which reads
+//     the `io.x-k8s.kinder.ip-family` label stamped on the LB container at
+//     create time (Phase 57.2; replaces the broken docker-network probe
+//     from Phase 57.1 which read `docker network inspect EnableIPv6` and
+//     mis-classified IPv4 clusters as IPv6 on macOS Docker Desktop's
+//     dual-stack `kind` network — see hack/uat-47-ha-smoke.log.pre-57.2)
 package lifecycle
 
 import (
-	"encoding/json"
-	"strings"
 	"time"
 
 	"sigs.k8s.io/kind/pkg/cluster/loadbalancer"
@@ -47,58 +49,26 @@ import (
 // retry-exhaustion tests (CONTEXT.md D-lock 2). Production value: 1 second.
 var defaultLBRetryBackoff = 1 * time.Second
 
-// discoverLBIPv6 returns true iff the docker network the LB is attached to
-// has EnableIPv6=true. On any docker-inspect error, returns false and
-// logs a V(1) line — sensible default per CONTEXT.md Claude's Discretion.
-//
-// Call shape (RESEARCH Finding 8):
-//  1. <binary> inspect --format '{{json .NetworkSettings.Networks}}' <lb>
-//     → JSON object whose first key is the network name
-//  2. <binary> network inspect <network> --format '{{.EnableIPv6}}'
-//     → "true\n" or "false\n"
-func discoverLBIPv6(binaryName string, lb nodes.Node, logger log.Logger) bool {
-	var out strings.Builder
-	cmd := defaultCmder(binaryName, "inspect", "--format",
-		"{{json .NetworkSettings.Networks}}", lb.String())
-	cmd.SetStdout(&out)
-	if err := cmd.Run(); err != nil {
-		logger.V(1).Infof("LB IPv6 discovery: docker inspect failed (%v); defaulting to IPv4", err)
-		return false
-	}
-	var networks map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &networks); err != nil {
-		logger.V(1).Infof("LB IPv6 discovery: networks JSON parse failed (%v); defaulting to IPv4", err)
-		return false
-	}
-	var networkName string
-	for k := range networks {
-		networkName = k
-		break // RESEARCH PIT-3: take first key; kind LB is on its dedicated network
-	}
-	if networkName == "" {
-		logger.V(1).Infof("LB IPv6 discovery: no network attachments; defaulting to IPv4")
-		return false
-	}
-	var out2 strings.Builder
-	cmd2 := defaultCmder(binaryName, "network", "inspect", networkName, "--format", "{{.EnableIPv6}}")
-	cmd2.SetStdout(&out2)
-	if err := cmd2.Run(); err != nil {
-		logger.V(1).Infof("LB IPv6 discovery: docker network inspect %q failed (%v); defaulting to IPv4", networkName, err)
-		return false
-	}
-	return strings.TrimSpace(out2.String()) == "true"
-}
-
 // reapplyLBConfig re-renders and atomically swaps the Envoy LB's cds.yaml
 // and lds.yaml inside `lb`, using container names from `cps` as upstream
 // backends. No-op when lb is nil (single-CP clusters per SC3). Retries
 // 3x with defaultLBRetryBackoff between attempts; on exhaustion returns
 // a wrapped error so Resume's downstream phases do not run.
+//
+// Phase 57.2: IPv6 mode is derived from the cluster-authoritative
+// `io.x-k8s.kinder.ip-family` label on the LB container via
+// loadbalancer.ClusterIPFamily. If the label is absent or unrecognized,
+// the call fails loudly with "delete and recreate the cluster" guidance —
+// there is no fallback to the (broken) docker-network probe.
 func reapplyLBConfig(binaryName string, lb nodes.Node, cps []nodes.Node, logger log.Logger) error {
 	if lb == nil {
 		return nil
 	}
-	ipv6 := discoverLBIPv6(binaryName, lb, logger)
+	ipv6, err := loadbalancer.ClusterIPFamily(binaryName, lb)
+	if err != nil {
+		return errors.Wrapf(err,
+			"reapplyLBConfig: cannot determine cluster IP family")
+	}
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {

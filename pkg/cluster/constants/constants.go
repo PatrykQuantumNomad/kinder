@@ -38,6 +38,28 @@ const StrategyIPPinned = "ip-pinned"
 // probe returned a non-pinned verdict for this runtime).
 const StrategyCertRegen = "cert-regen"
 
+/* ip-family label constants (Phase 57.2) */
+
+// IPFamilyLabel is the Docker/Podman/Nerdctl label key written at container
+// creation time to record the cluster's IPFamily. Stamped on ALL cluster
+// containers (LB + control-planes + workers). Read at resume time by
+// `pkg/cluster/loadbalancer.ClusterIPFamily` to render the Envoy LB
+// listener with the right address (0.0.0.0 for IPv4; :: with ipv4_compat
+// for IPv6/dual). Absence on resume fails loud — there is no fallback
+// (no installed pre-Phase-57.2 user base; users delete-and-recreate).
+const IPFamilyLabel = "io.x-k8s.kinder.ip-family"
+
+// IPFamilyValueIPv4 is the IPFamilyLabel value for IPv4-only clusters.
+const IPFamilyValueIPv4 = "ipv4"
+
+// IPFamilyValueIPv6 is the IPFamilyLabel value for IPv6-only clusters.
+const IPFamilyValueIPv6 = "ipv6"
+
+// IPFamilyValueDual is the IPFamilyLabel value for dual-stack clusters.
+// On the LB listener, dual collapses to IPv6: true (renders address: "::"
+// with socket_address.ipv4_compat: true).
+const IPFamilyValueDual = "dual"
+
 /* node role value constants */
 const (
 	// ControlPlaneNodeRoleValue identifies a node that hosts a Kubernetes
