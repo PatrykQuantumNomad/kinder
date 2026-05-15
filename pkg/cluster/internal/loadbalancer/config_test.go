@@ -156,6 +156,51 @@ func TestConfigLDSIPv6(t *testing.T) {
 	}
 }
 
+// TestConfigLDSIPv6IncludesIPv4Compat (Phase 57.2): the IPv6 listener template
+// must render `ipv4_compat: true` under socket_address so the `::` listener
+// accepts IPv4-mapped peers. Without this, macOS Docker Desktop's IPv4
+// port-mapping cannot reach an IPv6-only listener (host kubectl gets TLS EOF).
+func TestConfigLDSIPv6IncludesIPv4Compat(t *testing.T) {
+	t.Parallel()
+	out, err := Config(&ConfigData{ControlPlanePort: 6443, IPv6: true}, ProxyLDSConfigTemplate)
+	if err != nil {
+		t.Fatalf("Config() error: %v", err)
+	}
+	if !strings.Contains(out, "ipv4_compat: true") {
+		t.Errorf("IPv6 LDS output does not contain 'ipv4_compat: true'; got:\n%s", out)
+	}
+}
+
+// TestConfigLDSDualStackIncludesIPv4Compat (Phase 57.2): the ClusterIPFamily
+// helper collapses `dual` to IPv6=true, so the dual-stack render goes through
+// the same template branch as IPv6. Assert ipv4_compat is present so future
+// readers see the dual-stack intent symmetric with IPv6.
+func TestConfigLDSDualStackIncludesIPv4Compat(t *testing.T) {
+	t.Parallel()
+	// ConfigData has only one bool (IPv6); dual-stack collapses to IPv6=true.
+	out, err := Config(&ConfigData{ControlPlanePort: 6443, IPv6: true}, ProxyLDSConfigTemplate)
+	if err != nil {
+		t.Fatalf("Config() error: %v", err)
+	}
+	if !strings.Contains(out, "ipv4_compat: true") {
+		t.Errorf("dual-stack LDS output does not contain 'ipv4_compat: true'; got:\n%s", out)
+	}
+}
+
+// TestConfigLDSIPv4DoesNotIncludeIPv4Compat (Phase 57.2): the IPv4-only listener
+// binds to "0.0.0.0" and must NOT render `ipv4_compat` — it is a meaningless
+// field on an IPv4 socket and would be surprising in the rendered YAML.
+func TestConfigLDSIPv4DoesNotIncludeIPv4Compat(t *testing.T) {
+	t.Parallel()
+	out, err := Config(&ConfigData{ControlPlanePort: 6443, IPv6: false}, ProxyLDSConfigTemplate)
+	if err != nil {
+		t.Fatalf("Config() error: %v", err)
+	}
+	if strings.Contains(out, "ipv4_compat") {
+		t.Errorf("IPv4 LDS output unexpectedly contains 'ipv4_compat'; got:\n%s", out)
+	}
+}
+
 func TestConfigCDSRendersBackendServers(t *testing.T) {
 	t.Parallel()
 	data := &ConfigData{

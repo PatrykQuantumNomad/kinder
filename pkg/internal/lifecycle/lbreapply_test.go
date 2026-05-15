@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"sigs.k8s.io/kind/pkg/cluster/loadbalancer"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/exec"
 )
@@ -48,10 +49,15 @@ func fakeCPs(names ...string) []nodes.Node {
 	return out
 }
 
-// lbCmderState scripts the cmder behavior for one test.
+// lbCmderState scripts the cmder behavior for one test. Phase 57.2: rewritten
+// from the Phase 57.1 docker-network-probe shape to the ip-family-label shape.
+// `sawIPFamilyInspect` replaces the old `sawNetworkInspect` / `sawIPv6Inspect`
+// tripwires; `ipFamilyStdout` is the canned label value returned by the fake
+// `docker inspect --format ... Config.Labels` call.
 type lbCmderState struct {
-	ipv6Stdout  string // "true\n" or "false\n"
-	networkName string // first key in networks JSON
+	// ipFamilyStdout is the value the fake label-inspect call returns.
+	// Tests set "ipv4\n", "ipv6\n", "dual\n", or "" (label absent).
+	ipFamilyStdout string
 	// attemptErrs scripts the error returned by each WriteDynamicConfig
 	// *attempt*. An "attempt" is one full triple (WriteFile LDS, WriteFile
 	// CDS, sh -c chmod+mv). For simplicity, this cmder fails the FIRST
@@ -63,17 +69,16 @@ type lbCmderState struct {
 	attempt int
 	// calls counts ALL invocations regardless of attempt.
 	calls int
-	// sawNetworkInspect / sawIPv6Inspect track docker inspect calls so
-	// tests can assert IPv6 discovery happened.
-	sawNetworkInspect, sawIPv6Inspect bool
+	// sawIPFamilyInspect is set true when the fake cmder sees the host-side
+	// `inspect --format ... Config.Labels ... ip-family ...` call issued by
+	// loadbalancer.ClusterIPFamily. The Phase 57.2 replacement for the
+	// removed sawNetworkInspect / sawIPv6Inspect tripwires.
+	sawIPFamilyInspect bool
 	// stdinByCall captures the stdin payload (LDS/CDS YAML) handed to
 	// each `cp /dev/stdin <dest>` invocation routed through fakeNode.
 	// Lets SC5 assert at the lifecycle layer that the bytes flowing to
 	// the LB node are non-empty AND contain a CP container name (the
 	// regression-detection signal: cds.yaml must NOT be "resources: []").
-	// RESEARCH §Pattern 4 confirms nodeutils.WriteFile uses
-	// `cp /dev/stdin <dest>` with `SetStdin(...)`; capturing stdin in
-	// this cmder is the right hook point.
 	stdinByCall []string
 }
 
@@ -111,61 +116,61 @@ func (c *lbFakeCmd) SetStdin(r io.Reader) exec.Cmd  { c.in = r; return c }
 func (c *lbFakeCmd) SetStdout(w io.Writer) exec.Cmd { c.stdoutW = w; return c }
 func (c *lbFakeCmd) SetStderr(_ io.Writer) exec.Cmd { return c }
 
+// newLBCmder dispatches on docker subcommand shape. Phase 57.2 dispatch cases:
+//   - args[0]=="inspect" AND args contains "Config.Labels" AND "ip-family"
+//     → label inspect (Phase 57.2 ClusterIPFamily). Sets sawIPFamilyInspect=true,
+//     returns ipFamilyStdout. This replaces the Phase 57.1
+//     NetworkSettings.Networks + network inspect EnableIPv6 dispatch pair.
+//   - binary=="mkdir" → silent success (nodeutils.WriteFile mkdir before cp).
+//   - binary=="cp" → captures stdin payload, advances attempt on error.
+//   - binary=="sh" with args[0]=="-c" → final atomic-swap step; advances attempt.
+//
+// Phase 57.2: routes loadbalancer.ClusterIPFamily through a swapped cmder.
+// Implementation detail: ClusterIPFamily uses its own package-level cmder
+// (`defaultClusterIPFamilyCmder` in pkg/cluster/loadbalancer), distinct from
+// lifecycle's `defaultCmder`. The lifecycle integration test swaps BOTH so
+// the helper sees this fake too — done in each test via the loadbalancer
+// helper withClusterIPFamilyCmder.
 func newLBCmder(s *lbCmderState) Cmder {
 	return func(binary string, args ...string) exec.Cmd {
 		s.calls++
-		// joined is used for format-string matching in docker inspect calls.
 		joined := strings.Join(args, " ")
 
-		// Case 1: `docker inspect <lb> --format '{{json .NetworkSettings.Networks}}'`
-		// Issued by discoverLBIPv6 via defaultCmder; binary="docker"/"podman",
-		// args[0]="inspect". Dispatch on args[0] (docker subcommand).
-		if len(args) >= 4 && args[0] == "inspect" &&
-			strings.Contains(joined, "NetworkSettings.Networks") {
-			s.sawNetworkInspect = true
-			return &lbFakeCmd{state: s, slot: -1, stdoutS: fmt.Sprintf(`{%q:{}}`, s.networkName)}
+		// Case 1 (Phase 57.2): `docker inspect --format {{index .Config.Labels
+		// "io.x-k8s.kinder.ip-family"}} <lb>` issued by ClusterIPFamily.
+		// Binary is "docker"/"podman", args[0]=="inspect".
+		if len(args) >= 2 && args[0] == "inspect" &&
+			strings.Contains(joined, "Config.Labels") &&
+			strings.Contains(joined, "ip-family") {
+			s.sawIPFamilyInspect = true
+			return &lbFakeCmd{state: s, slot: -1, stdoutS: s.ipFamilyStdout}
 		}
-		// Case 2: `docker network inspect <name> --format '{{.EnableIPv6}}'`
-		if len(args) >= 3 && args[0] == "network" && args[1] == "inspect" &&
-			strings.Contains(joined, "EnableIPv6") {
-			s.sawIPv6Inspect = true
-			return &lbFakeCmd{state: s, slot: -1, stdoutS: s.ipv6Stdout}
-		}
-		// Case 3a: `mkdir -p <dir>` issued by nodeutils.WriteFile before cp.
-		// nodeutils.WriteFile calls node.Command("mkdir", "-p", dir); fakeNode
-		// routes through defaultCmder("mkdir", "-p", dir), so binary="mkdir".
-		// Always succeeds silently; does NOT advance attempt or capture stdin.
+		// Case 2a: `mkdir -p <dir>` issued by nodeutils.WriteFile before cp.
+		// fakeNode routes through defaultCmder("mkdir", "-p", dir), so binary="mkdir".
 		if binary == "mkdir" {
 			return &lbFakeCmd{state: s, slot: -1}
 		}
-		// Case 3b: `cp /dev/stdin <dest>` issued by nodeutils.WriteFile.
-		// nodeutils.WriteFile calls node.Command("cp", "/dev/stdin", dest); so
-		// binary="cp".
+		// Case 2b: `cp /dev/stdin <dest>` issued by nodeutils.WriteFile.
 		if binary == "cp" {
 			idx := s.attempt
 			var err error
 			if idx < len(s.attemptErrs) {
 				err = s.attemptErrs[idx]
 			}
-			// Allocate a stdinByCall slot to capture the YAML payload.
 			slot := len(s.stdinByCall)
 			s.stdinByCall = append(s.stdinByCall, "")
-			// Advance attempt on cp error so the next attempt starts cleanly.
 			if err != nil {
 				s.attempt++
 			}
 			return &lbFakeCmd{state: s, slot: slot, err: err}
 		}
-		// Case 3c: `sh -c chmod && mv && mv` issued by WriteDynamicConfig.
-		// node.Command("sh", "-c", cmd) routes as binary="sh", args[0]="-c".
+		// Case 2c: `sh -c chmod && mv && mv` issued by WriteDynamicConfig.
 		if binary == "sh" && len(args) >= 1 && args[0] == "-c" {
 			idx := s.attempt
 			var err error
 			if idx < len(s.attemptErrs) {
 				err = s.attemptErrs[idx]
 			}
-			// Advance attempt counter on the FINAL command of the attempt
-			// (the `sh -c chmod && mv && mv`).
 			s.attempt++
 			return &lbFakeCmd{state: s, slot: -1, err: err}
 		}
@@ -173,14 +178,25 @@ func newLBCmder(s *lbCmderState) Cmder {
 	}
 }
 
+// withClusterIPFamilyCmderInLifecycle swaps the loadbalancer package's
+// ClusterIPFamily cmder via the exported test hook
+// loadbalancer.SetClusterIPFamilyCmderForTest, so the lifecycle tests can
+// drive ClusterIPFamily via a single newLBCmder fixture. The exported hook
+// exists because Go's package-private access prevents cross-package var swap.
+func withClusterIPFamilyCmderInLifecycle(t *testing.T, c Cmder) {
+	t.Helper()
+	prev := loadbalancer.SetClusterIPFamilyCmderForTest(func(name string, args ...string) exec.Cmd {
+		return c(name, args...)
+	})
+	t.Cleanup(func() { loadbalancer.SetClusterIPFamilyCmderForTest(prev) })
+}
+
 // TestReapplyLBConfig_NoLBNoOp (SC3): when lb is nil, zero docker calls.
-// MUST NOT call t.Parallel() — mutates package-level defaultCmder and defaultLBRetryBackoff.
+// MUST NOT call t.Parallel().
 func TestReapplyLBConfig_NoLBNoOp(t *testing.T) {
-	s := &lbCmderState{
-		ipv6Stdout:  "false\n",
-		networkName: "kind",
-	}
+	s := &lbCmderState{ipFamilyStdout: "ipv4\n"}
 	withCmder(t, newLBCmder(s))
+	withClusterIPFamilyCmderInLifecycle(t, newLBCmder(s))
 
 	cps := fakeCPs("kinder-control-plane")
 	err := reapplyLBConfig("docker", nil, cps, noopLogger{})
@@ -192,17 +208,16 @@ func TestReapplyLBConfig_NoLBNoOp(t *testing.T) {
 	}
 }
 
-// TestReapplyLBConfig_HappyIPv4 (SC5 + IPv4 detection): 3-CP HA cluster,
-// IPv6 disabled; all writes succeed on first attempt.
+// TestReapplyLBConfig_HappyIPv4 (SC5 + Phase 57.2 label-driven IPv4):
+// 3-CP HA cluster, ip-family label = ipv4; all writes succeed first try.
 // MUST NOT call t.Parallel().
 func TestReapplyLBConfig_HappyIPv4(t *testing.T) {
 	withLBRetryBackoff(t, 0)
 
-	s := &lbCmderState{
-		ipv6Stdout:  "false\n",
-		networkName: "kind",
-	}
-	withCmder(t, newLBCmder(s))
+	s := &lbCmderState{ipFamilyStdout: "ipv4\n"}
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
 
 	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
 	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
@@ -211,21 +226,14 @@ func TestReapplyLBConfig_HappyIPv4(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
-	if !s.sawNetworkInspect {
-		t.Error("expected sawNetworkInspect=true (docker inspect LB networks)")
-	}
-	if !s.sawIPv6Inspect {
-		t.Error("expected sawIPv6Inspect=true (docker network inspect EnableIPv6)")
+	if !s.sawIPFamilyInspect {
+		t.Error("expected sawIPFamilyInspect=true (ClusterIPFamily must read the label)")
 	}
 	if s.attempt != 1 {
 		t.Errorf("expected succeeded on first attempt (attempt=1), got attempt=%d", s.attempt)
 	}
 
 	// SC5: cds/lds content non-empty at the lifecycle integration layer.
-	// The cmder captured every `cp /dev/stdin <dest>` stdin payload as the
-	// helper streamed YAML to the LB node via nodeutils.WriteFile. If any
-	// capture is empty OR none contain a CP container name, the cds.yaml
-	// resources-empty regression (Phase 47↔51) has snuck back in.
 	if len(s.stdinByCall) == 0 {
 		t.Fatal("expected WriteFile stdin captures from WriteDynamicConfig, got 0")
 	}
@@ -243,16 +251,16 @@ func TestReapplyLBConfig_HappyIPv4(t *testing.T) {
 	}
 }
 
-// TestReapplyLBConfig_IPv6Detection: same as HappyIPv4 but IPv6 enabled.
+// TestReapplyLBConfig_IPv6FromLabel (Phase 57.2 — renamed from IPv6Detection):
+// IPv6 ip-family label drives the IPv6 listener (write succeeds).
 // MUST NOT call t.Parallel().
-func TestReapplyLBConfig_IPv6Detection(t *testing.T) {
+func TestReapplyLBConfig_IPv6FromLabel(t *testing.T) {
 	withLBRetryBackoff(t, 0)
 
-	s := &lbCmderState{
-		ipv6Stdout:  "true\n",
-		networkName: "kind",
-	}
-	withCmder(t, newLBCmder(s))
+	s := &lbCmderState{ipFamilyStdout: "ipv6\n"}
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
 
 	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
 	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
@@ -261,11 +269,59 @@ func TestReapplyLBConfig_IPv6Detection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error for IPv6 path, got: %v", err)
 	}
-	if !s.sawNetworkInspect {
-		t.Error("expected sawNetworkInspect=true")
+	if !s.sawIPFamilyInspect {
+		t.Error("expected sawIPFamilyInspect=true")
 	}
-	if !s.sawIPv6Inspect {
-		t.Error("expected sawIPv6Inspect=true")
+}
+
+// TestReapplyLBConfig_DualFromLabel (Phase 57.2): dual ip-family label
+// collapses to IPv6=true (write succeeds). Symmetric with IPv6FromLabel.
+// MUST NOT call t.Parallel().
+func TestReapplyLBConfig_DualFromLabel(t *testing.T) {
+	withLBRetryBackoff(t, 0)
+
+	s := &lbCmderState{ipFamilyStdout: "dual\n"}
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
+
+	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
+	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
+
+	err := reapplyLBConfig("docker", lb, cps, noopLogger{})
+	if err != nil {
+		t.Fatalf("expected nil error for dual path, got: %v", err)
+	}
+	if !s.sawIPFamilyInspect {
+		t.Error("expected sawIPFamilyInspect=true")
+	}
+}
+
+// TestReapplyLBConfig_LabelAbsent_FailsLoud (Phase 57.2): label missing on
+// LB container → ClusterIPFamily returns error → reapplyLBConfig propagates,
+// returns error containing "delete and recreate the cluster"; no write is
+// attempted (attempt stays 0).
+// MUST NOT call t.Parallel().
+func TestReapplyLBConfig_LabelAbsent_FailsLoud(t *testing.T) {
+	withLBRetryBackoff(t, 0)
+
+	s := &lbCmderState{ipFamilyStdout: ""} // label absent
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
+
+	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
+	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
+
+	err := reapplyLBConfig("docker", lb, cps, noopLogger{})
+	if err == nil {
+		t.Fatal("expected non-nil error when ip-family label is absent, got nil")
+	}
+	if !strings.Contains(err.Error(), "delete and recreate the cluster") {
+		t.Errorf("error message does not contain 'delete and recreate the cluster'; got: %v", err)
+	}
+	if s.attempt != 0 {
+		t.Errorf("no WriteDynamicConfig attempts should be made on label-missing failure; got attempt=%d", s.attempt)
 	}
 }
 
@@ -276,11 +332,12 @@ func TestReapplyLBConfig_RetrySuccessOnAttempt2(t *testing.T) {
 	withLBRetryBackoff(t, 0)
 
 	s := &lbCmderState{
-		ipv6Stdout:  "false\n",
-		networkName: "kind",
-		attemptErrs: []error{fmt.Errorf("transient cp error")},
+		ipFamilyStdout: "ipv4\n",
+		attemptErrs:    []error{fmt.Errorf("transient cp error")},
 	}
-	withCmder(t, newLBCmder(s))
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
 
 	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
 	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
@@ -301,15 +358,16 @@ func TestReapplyLBConfig_RetryExhausted(t *testing.T) {
 	withLBRetryBackoff(t, 0)
 
 	s := &lbCmderState{
-		ipv6Stdout:  "false\n",
-		networkName: "kind",
+		ipFamilyStdout: "ipv4\n",
 		attemptErrs: []error{
 			fmt.Errorf("e1"),
 			fmt.Errorf("e2"),
 			fmt.Errorf("e3"),
 		},
 	}
-	withCmder(t, newLBCmder(s))
+	cmder := newLBCmder(s)
+	withCmder(t, cmder)
+	withClusterIPFamilyCmderInLifecycle(t, cmder)
 
 	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
 	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
@@ -332,40 +390,5 @@ func TestReapplyLBConfig_RetryExhausted(t *testing.T) {
 	}
 	if s.attempt != 3 {
 		t.Errorf("expected attempt=3 (all 3 exhausted), got attempt=%d", s.attempt)
-	}
-}
-
-// TestReapplyLBConfig_IPv6DiscoveryFailureDefaultsToIPv4: docker inspect error
-// during IPv6 discovery → graceful fallback to IPv4, write path still succeeds.
-// MUST NOT call t.Parallel().
-func TestReapplyLBConfig_IPv6DiscoveryFailureDefaultsToIPv4(t *testing.T) {
-	withLBRetryBackoff(t, 0)
-
-	s := &lbCmderState{
-		ipv6Stdout:  "false\n",
-		networkName: "kind",
-	}
-	// Custom cmder: docker inspect LB networks returns error (IPv6 discovery fails).
-	// All other commands (mkdir, cp, sh) proceed via the standard lbCmderState logic.
-	withCmder(t, func(binary string, args ...string) exec.Cmd {
-		// The network inspect call uses binary="docker"/"podman" with args[0]="inspect".
-		if len(args) >= 4 && args[0] == "inspect" &&
-			strings.Contains(strings.Join(args, " "), "NetworkSettings.Networks") {
-			s.calls++
-			s.sawNetworkInspect = true
-			return &lbFakeCmd{state: s, slot: -1, err: fmt.Errorf("docker inspect: container not found")}
-		}
-		return newLBCmder(s)(binary, args...)
-	})
-
-	lb := &fakeNode{name: "kinder-lb", role: "external-load-balancer"}
-	cps := fakeCPs("kinder-control-plane", "kinder-control-plane2", "kinder-control-plane3")
-
-	err := reapplyLBConfig("docker", lb, cps, noopLogger{})
-	if err != nil {
-		t.Fatalf("expected nil error (graceful IPv6 fallback), got: %v", err)
-	}
-	if s.attempt != 1 {
-		t.Errorf("expected attempt=1 (write succeeded despite IPv6 discovery error), got attempt=%d", s.attempt)
 	}
 }
