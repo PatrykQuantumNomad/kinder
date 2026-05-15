@@ -261,7 +261,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 57.2-01-PLAN.md — Atomic code fix (autonomous): RED tests + GREEN implementation of ip-family label injection across docker/podman/nerdctl (LB+CP+worker); ClusterIPFamily helper in pkg/cluster/loadbalancer/; ipv4_compat: true on the IPv6/dual listener template branch; resume calls helper; delete discoverLBIPv6 entirely
+- [x] 57.2-01-PLAN.md — Atomic code fix (autonomous): RED tests + GREEN implementation of ip-family label injection across docker/podman/nerdctl (LB+CP+worker); ClusterIPFamily helper in pkg/cluster/loadbalancer/; ipv4_compat: true on the IPv6/dual listener template branch; resume calls helper; delete discoverLBIPv6 entirely
 - [ ] 57.2-02-PLAN.md — Live IPv6 UAT on macOS Docker Desktop (developer-driven; requires Docker Desktop IPv6 enabled): IPv4 + IPv6 cluster create/pause/resume listener invariance + host kubectl succeeds + ip-family label present on every container
 
 **Details**:
@@ -362,5 +362,5 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete (regression filed → 57.2) | 2026-05-13 |
-| 57.2. Fix `discoverLBIPv6` (PROPOSED) | v2.4 | 0/? | Pending `/gsd:insert-phase 57.2` | - |
+| 57.2. Fix `discoverLBIPv6` (PROPOSED) | v2.4 | 1/2 | In Progress|  |
 | 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Blocked on 57.2 | - |

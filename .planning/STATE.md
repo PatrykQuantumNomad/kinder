@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: in_progress
-stopped_at: "Phase 58 Plan 01 UAT FAILED 2026-05-13 at test_09: host kubectl gets `Unable to connect to the server: EOF` after resume. Root cause: Phase 57.1 regression in `pkg/internal/lifecycle/lbreapply.go` — `discoverLBIPv6` probes docker network `EnableIPv6` (always true on macOS Docker Desktop kind network) instead of cluster IPFamily; resumed LB listener renders as `address: \"::\"` (Envoy ipv4_compat:false → IPv6-only) so the host's IPv4 port-mapping path returns TLS EOF. Create-time uses `ctx.Config.Networking.IPFamily` (loadbalancer.go:70-71); resume must match this semantic. Phase 58 BLOCKED on a NEW inserted phase 57.2 that fixes discoverLBIPv6. Failed log preserved at `hack/uat-47-ha-smoke.log.pre-57.2`; cluster `uat-58-01` left running on host for forensic inspection. Next: `/gsd:insert-phase 57.2` to draft the IPv6-detection fix phase."
-last_updated: "2026-05-13T15:00:00Z"
-last_activity: "2026-05-13T15:00:00Z — Phase 58 UAT failed; Phase 57.1 IPv6-detection regression surfaced; routing to /gsd:insert-phase 57.2"
+status: "Phase 58 UAT regression — Phase 57.1's `discoverLBIPv6` reads docker network EnableIPv6 instead of cluster IPFamily; IPv4 clusters on dual-stack docker networks render LB listener as `address: "::"` and host kubectl gets TLS EOF"
+stopped_at: "Phase 57.2 Plan 01 COMPLETE. discoverLBIPv6 deleted; resume-side IPv6 derivation now reads ip-family label via loadbalancer.ClusterIPFamily; Envoy listener gains ipv4_compat: true on IPv6/dual branch. Next: Phase 57.2 Plan 02 (live IPv6 UAT) requires Docker Desktop IPv6 enabled, then Phase 58 re-run UAT against post-57.2 binary."
+last_updated: "2026-05-15T20:28:30.432Z"
+last_activity: "2026-05-13T15:00:00Z — Phase 58 UAT failed; routing to /gsd:insert-phase 57.2"
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 23
-  completed_plans: 21
-  percent: 78
+  total_plans: 25
+  completed_plans: 22
+  percent: 88
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created
 
 ## Current Position
 
-Phase: 58 of 9 (Live UAT Closure for Phase 47 + 51) — BLOCKED on inserted Phase 57.2
-Plan: 58-01 Task 2 (live UAT) FAILED at test_09. Task 1 commits (5bd9e673, 74b90199, 696c2cc3) remain on main and are still valid — only Task 2's binary-under-test needs the 57.2 fix.
-Status: Phase 58 UAT regression — Phase 57.1's `discoverLBIPv6` reads docker network EnableIPv6 instead of cluster IPFamily; IPv4 clusters on dual-stack docker networks render LB listener as `address: "::"` and host kubectl gets TLS EOF
-Last activity: 2026-05-13T15:00:00Z — Phase 58 UAT failed; routing to /gsd:insert-phase 57.2
+Phase: 57.2 (Fix discoverLBIPv6 — derive IPv6 mode from cluster IPFamily) — Plan 01 COMPLETE, Plan 02 (live IPv6 UAT) pending
+Plan: 57.2-01 ✅ landed on main (commits 653d7790 RED + 2c8d80db GREEN). discoverLBIPv6 deleted; loadbalancer.ClusterIPFamily is the new source of truth for resume-side IPv6 derivation; ip-family label stamped on all containers by all 3 providers; ipv4_compat: true under IPv6/dual listener branch.
+Status: Phase 57.2 Plan 01 closes the Phase 58 UAT regression at the unit-test level. Plan 02 (live IPv6 UAT) requires Docker Desktop IPv6 enabled before execution. Phase 58 unblocked at the binary level; awaits Plan 02 sign-off before re-running UAT.
+Last activity: 2026-05-15 — Phase 57.2 Plan 01 GREEN landed (TestClusterIPFamily_MacOSDualStackNetwork_IPv4Cluster passes; sawNetworkInspect==false asserted)
 
-Progress: [███████░░░] 78%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [███████░░░] 78%
 
 *Updated after each plan completion*
 | Phase 57.1 P02 | 452s | 3 tasks | 5 files |
+| Phase 57.2 P01 | 625 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,7 @@ Progress: [███████░░░] 78%
 - 2026-05-13 (57.1-01): WriteDynamicConfig helper extracted into loadbalancer pkg. Import cycle fix: providers/common imports loadbalancer (for loadbalancer.Image), so loadbalancer cannot import providers/common — solved by adding private apiServerInternalPort=6443 const to const.go. Test call count: nodeutils.WriteFile issues 2 node.Command calls (mkdir+cp) per file, not 1; happy-path is 5 calls (MvError test uses errs[4]). D-lock 3 signature locked: WriteDynamicConfig(node nodes.Node, cps []nodes.Node, ipv6 bool) error. D-lock 5 4-test matrix satisfied with corrected call counts.
 - 2026-05-13 (57.1-02): Go internal package visibility blocks pkg/internal/lifecycle from importing pkg/cluster/internal/loadbalancer (different subtrees, not a cycle). Created pkg/cluster/loadbalancer/ non-internal bridge re-exporting WriteDynamicConfig. lbCmderState dispatches on binary arg (not args[0]) for node-level fakeNode.Command calls (mkdir/cp/sh). startCallRecorder.Cmder() extended with node-level handlers for Phase 1.25 pass-through. Phase 1.25 guard: if lb != nil && len(startErrs) == 0. All 6 D-lock 5 tests pass. Phase 57.1 COMPLETE. Phase 58 unblocked.
 - 2026-05-13 (57.1 INSERTED): Phase 47↔51 LB-reapply regression discovered during Phase 58 live UAT test_09. `pkg/internal/lifecycle/resume.go` starts the Envoy LB container in correct ordering but never re-applies the dynamic xDS config (`/home/envoy/cds.yaml`, `/home/envoy/lds.yaml`). The LB container's hardcoded entrypoint resets both to `resources: []` on every start. After pause+resume the apiservers heal internally (`curl https://localhost:6443/healthz` returns `ok` from within CP1) but the host can't reach them through the LB (`kubectl` returns `Unable to connect to the server: EOF`). Create-time path at `pkg/cluster/internal/create/actions/loadbalancer/loadbalancer.go:97-110` writes cds/lds via `nodeutils.WriteFile` + atomic mv-swap; Envoy file-polls. The fix mirrors that path inside `Resume()` after LB start. Gap was masked in May 7 v2.3 47-UAT because test 9 failed earlier at `strconv.ParseInt` (fixed in 47-06). Git archaeology: 47-03 (50c686aa) predates Envoy; 51-01 (4267886a) added atomic-swap only to create-time; 52-03 (c38bbdf1) didn't add reapply either. Phase 58 wave 1 commits already landed: 5bd9e673 (script), 74b90199 (marker bug — Go doesn't concat Command() args), 696c2cc3 (pipefail+grep -q SIGPIPE bug). Phase 58 cluster `uat-58-01` deleted after diagnosis.
+- [Phase 57.2-01]: discoverLBIPv6 docker-network probe DELETED entirely; resume-time IPv6 derivation now via loadbalancer.ClusterIPFamily(binaryName, node) reading io.x-k8s.kinder.ip-family label stamped at create-time by all 3 providers (docker/podman/nerdctl) on every container (LB + CPs + workers). ProxyLDSConfigTemplate adds ipv4_compat: true under IPv6/dual branch (closes latent create-time bug + resume regression atomically). No fallback for absent label — fails loud with 'delete and recreate the cluster'. Cross-package test cmder swap via exported loadbalancer.SetClusterIPFamilyCmderForTest hook; lifecycle's withCmder also swaps it so 20+ existing resume tests need no per-test wiring. Bug-of-record (Phase 58 UAT test_09 2026-05-13) covered by named regression test TestClusterIPFamily_MacOSDualStackNetwork_IPv4Cluster which asserts sawNetworkInspect==false. Phase 58 unblocked. Commits: 653d7790 (RED) + 2c8d80db (GREEN).
 
 ### Roadmap Evolution
 
@@ -141,6 +143,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-13T15:00:00Z
-Stopped at: Phase 58 Plan 01 Task 2 UAT FAILED. Diagnostic captured in stopped_at frontmatter + Decisions row 2026-05-13 (lbreapply IPv6) + Blockers Phase 57.2 entry. Forensic state: cluster `uat-58-01` (3-CP + 2-worker + 1-LB on `kind` net) UP on host; pre-57.2 failure log at `hack/uat-47-ha-smoke.log.pre-57.2`. Next-up command: `/gsd:insert-phase 57.2`. Phase 58 plan 58-01 Task 1 commits (5bd9e673, 74b90199, 696c2cc3) remain valid on main — the script itself is correct; only the binary under test needs the 57.2 fix.
+Last session: 2026-05-15T20:28:30.422Z
+Stopped at: Phase 57.2 Plan 01 COMPLETE. discoverLBIPv6 deleted; resume-side IPv6 derivation now reads ip-family label via loadbalancer.ClusterIPFamily; Envoy listener gains ipv4_compat: true on IPv6/dual branch. Next: Phase 57.2 Plan 02 (live IPv6 UAT) requires Docker Desktop IPv6 enabled, then Phase 58 re-run UAT against post-57.2 binary.
 Resume file: None
