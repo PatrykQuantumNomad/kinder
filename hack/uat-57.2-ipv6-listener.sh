@@ -87,8 +87,8 @@ test_02_ipv4_listener_pre_resume() {
 
 test_03_ipv4_pause_resume() {
     log "test_03: pause + resume IPv4 cluster"
-    "$KINDER" pause cluster --name "$CLUSTER_IPV4" 2>&1 | tee -a "$LOG_DIR/ipv4-pause.log"
-    "$KINDER" resume cluster --name "$CLUSTER_IPV4" --wait 5m \
+    "$KINDER" pause "$CLUSTER_IPV4" 2>&1 | tee -a "$LOG_DIR/ipv4-pause.log"
+    "$KINDER" resume "$CLUSTER_IPV4" --wait 5m \
         2>&1 | tee -a "$LOG_DIR/ipv4-resume.log"
 }
 
@@ -163,8 +163,8 @@ test_08_ipv6_listener_pre_resume() {
 
 test_09_ipv6_pause_resume() {
     log "test_09: pause + resume IPv6 cluster"
-    "$KINDER" pause cluster --name "$CLUSTER_IPV6" 2>&1 | tee -a "$LOG_DIR/ipv6-pause.log"
-    "$KINDER" resume cluster --name "$CLUSTER_IPV6" --wait 5m \
+    "$KINDER" pause "$CLUSTER_IPV6" 2>&1 | tee -a "$LOG_DIR/ipv6-pause.log"
+    "$KINDER" resume "$CLUSTER_IPV6" --wait 5m \
         2>&1 | tee -a "$LOG_DIR/ipv6-resume.log"
 }
 
