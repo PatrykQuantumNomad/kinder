@@ -312,7 +312,9 @@ This is architecturally upstream of Phase 57.2's LB listener fix (LB lds.yaml + 
   4. New regression test asserts the regenerated etcd cert chain allows apiserver→etcd TLS handshake to succeed (using FakeNode/FakeCmd + a real openssl x509 verify on the regenerated cert) — covers both IPv4 and IPv6 loopback SANs.
   5. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.3+57.4 binary on macOS Docker Desktop. Phase 57.2 UAT script `hack/uat-57.2-ipv6-listener.sh` test_11 also passes (IPv6 parity).
 
-**Plans**: TBD (1-3 plans expected; `/gsd:discuss-phase 57.3` to lock fix-shape; then `/gsd:plan-phase 57.3`).
+**Plans**: 2 plans (`/gsd:plan-phase 57.3` 2026-05-16):
+- [ ] 57.3-01-PLAN.md — Diagnostic capture from uat-58-01; widen RegenerateEtcdPeerCertsWholesale cert scope; active etcd + apiserver health-gates replace static sleep; IPv6/dual-stack loopback addressing; post-pass `kubeadm certs check-expiration` verify; diagnostic dump on hard-fail; `--strategy=<auto|ip-pin|cert-regen>` cobra flag wired through ResumeOptions; unit-test matrix; ROADMAP/REQUIREMENTS doc updates
+- [ ] 57.3-02-PLAN.md — Live UAT `hack/uat-57.3-cert-regen.sh` covering IPv4 + IPv6 + dual-stack HA fixtures; 57.3-02-UAT.md evidence + verdict
 
 **Forensic state available for the planner**:
   - IPv4 failure (this expansion): `.planning/phases/58-live-uat-closure-for-phase-47-51/uat-logs/2026-05-16-uat-58-01-cert-regen-failure.txt` (full forensic snapshot) + `2026-05-16-uat-58-01-fail.log` (script's tee output)
