@@ -125,24 +125,22 @@ test_05_ipv4_host_kubectl_after_resume() {
     log "test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster"
     local kubeconfig="$LOG_DIR/ipv4-kubeconfig.yaml"
     "$KINDER" get kubeconfig --name "$CLUSTER_IPV4" > "$kubeconfig" 2>/dev/null
-    # Poll kubectl until all nodes Ready or 10m deadline. cert-regen + addon
-    # recovery can take 6-8m on macOS Docker Desktop.
+    # Poll until all nodes have $2 EXACTLY == "Ready" (not "NotReady").
     local deadline=$(( $(date +%s) + 600 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers 2>>"$LOG_DIR/ipv4-kubectl.log" \
-                | awk '{print $2}' | grep -vq Ready; then
+        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers \
+                2>>"$LOG_DIR/ipv4-kubectl.log" \
+                | awk 'NF>=2 && $2 != "Ready" { found=1 } END { exit !(found || NR==0) }'; then
             sleep 10
             continue
         fi
-        if kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log"; then
-            log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
-            return 0
-        fi
-        sleep 10
+        kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log"
+        log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
+        return 0
     done
     log "test_05: kubectl polling output (final state):"
     kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log" || true
-    fail "test_05: kubectl get nodes FAILED after 10m — Phase 58 UAT test_09 regression NOT closed"
+    fail "test_05: not all nodes Ready after 10m — Phase 58 UAT test_09 regression NOT closed"
 }
 
 test_06_ipv4_labels_present() {
@@ -221,20 +219,19 @@ test_11_ipv6_host_kubectl_after_resume() {
     "$KINDER" get kubeconfig --name "$CLUSTER_IPV6" > "$kubeconfig" 2>/dev/null
     local deadline=$(( $(date +%s) + 600 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers 2>>"$LOG_DIR/ipv6-kubectl.log" \
-                | awk '{print $2}' | grep -vq Ready; then
+        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers \
+                2>>"$LOG_DIR/ipv6-kubectl.log" \
+                | awk 'NF>=2 && $2 != "Ready" { found=1 } END { exit !(found || NR==0) }'; then
             sleep 10
             continue
         fi
-        if kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log"; then
-            log "test_11: PASS — ipv4_compat path verified for IPv6 cluster"
-            return 0
-        fi
-        sleep 10
+        kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log"
+        log "test_11: PASS — ipv4_compat path verified for IPv6 cluster"
+        return 0
     done
     log "test_11: kubectl polling output (final state):"
     kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log" || true
-    fail "test_11: kubectl get nodes FAILED after 10m on resumed IPv6 cluster — ipv4_compat path broken"
+    fail "test_11: not all nodes Ready after 10m on resumed IPv6 cluster — ipv4_compat path may be broken OR slow CP recovery"
 }
 
 test_12_ipv6_labels_present() {
