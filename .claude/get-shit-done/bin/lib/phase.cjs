@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, loadConfig, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, replaceInCurrentMilestone, toPosixPath, output, error, readSubdirectories, phaseTokenMatches } = require('./core.cjs');
+const { escapeRegex, loadConfig, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, replaceInCurrentMilestone, toPosixPath, output, error, readSubdirectories, phaseTokenMatches, ERROR_REASON } = require('./core.cjs');
 const { platformWriteSync, platformReadSync, platformEnsureDir } = require('./shell-command-projection.cjs');
 const { planningDir, withPlanningLock } = require('./planning-workspace.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
@@ -208,6 +208,65 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
   } catch (e) {
     error('Failed to calculate next decimal phase: ' + e.message);
   }
+}
+
+function getRoadmapModeForPhase(cwd, phaseNum) {
+  const roadmapPath = path.join(planningDir(cwd), 'ROADMAP.md');
+  if (!fs.existsSync(roadmapPath)) return null;
+
+  const rawContent = fs.readFileSync(roadmapPath, 'utf-8');
+  const milestoneContent = extractCurrentMilestone(rawContent, cwd);
+  const fullContent = stripShippedMilestones(rawContent);
+  const escapedPhase = phaseMarkdownRegexSource(phaseNum);
+  const phaseHeader = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}\\s*:`, 'i');
+
+  for (const content of [milestoneContent, fullContent]) {
+    const headerMatch = content.match(phaseHeader);
+    if (!headerMatch || headerMatch.index === undefined) continue;
+
+    const sectionStart = headerMatch.index;
+    const rest = content.slice(sectionStart);
+    const nextHeader = rest.slice(headerMatch[0].length).match(/\n#{2,4}\s+Phase\s+\S/i);
+    const sectionEnd = nextHeader ? sectionStart + headerMatch[0].length + nextHeader.index : content.length;
+    const section = content.slice(sectionStart, sectionEnd);
+    const modeMatch = section.match(/\*\*Mode(?::\*\*|\*\*:)\s*([^\n]+)/i);
+    if (modeMatch) return modeMatch[1].trim().toLowerCase();
+  }
+
+  return null;
+}
+
+function cmdPhaseMvpMode(cwd, args, raw) {
+  const phaseNum = args[0];
+  if (!phaseNum) {
+    error('Usage: phase.mvp-mode <phase-number> [--cli-flag]', ERROR_REASON.USAGE);
+  }
+
+  const cliFlagPresent = args.includes('--cli-flag');
+  const roadmapMode = getRoadmapModeForPhase(cwd, phaseNum);
+  const config = loadConfig(cwd);
+  const configMvpMode = Boolean(config.mvp_mode);
+
+  let active = false;
+  let source = 'none';
+  if (cliFlagPresent) {
+    active = true;
+    source = 'cli_flag';
+  } else if (roadmapMode === 'mvp') {
+    active = true;
+    source = 'roadmap';
+  } else if (configMvpMode) {
+    active = true;
+    source = 'config';
+  }
+
+  output({
+    active,
+    source,
+    roadmap_mode: roadmapMode,
+    config_mvp_mode: configMvpMode,
+    cli_flag_present: cliFlagPresent,
+  }, raw);
 }
 
 function cmdFindPhase(cwd, phase, raw) {
@@ -886,7 +945,24 @@ function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, rem
     let content = fs.readFileSync(roadmapPath, 'utf-8');
     const escaped = escapeRegex(targetPhase);
 
-    content = content.replace(new RegExp(`\\n?#{2,4}\\s*Phase\\s+${escaped}\\s*:[\\s\\S]*?(?=\\n#{2,4}\\s+Phase\\s+\\d+\\s*:|$)`, 'i'), '');
+    // #3601: the end-of-section lookahead is depth-aware. It captures the
+    // hash count of the header being removed and stops only at a subsequent
+    // header of the SAME depth, whether integer or decimal. This preserves
+    // two existing contracts:
+    //
+    //   (#3601 case) Remove `### Phase 2:` and stop at `### Phase 2.1:` —
+    //   `Phase 2.1` is a peer-level decimal phase (depth 3) and must be
+    //   preserved.
+    //
+    //   (#3355 case) Remove `### Phase 27:` and continue past
+    //   `#### Phase 27.1:` (depth 4 — a child of Phase 27) until the next
+    //   depth-3 header. The child decimal is part of the integer phase
+    //   being removed.
+    //
+    // The `(?!#)` negative lookahead after the backreference prevents the
+    // depth-3 match from being satisfied by a depth-4+ header that starts
+    // with the same three hashes.
+    content = content.replace(new RegExp(`\\n?(?<h>#{2,4})\\s*Phase\\s+${escaped}\\s*:[\\s\\S]*?(?=\\n\\k<h>(?!#)\\s+Phase\\s+[^\\n:]+\\s*:|$)`, 'i'), '');
     content = content.replace(new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${escaped}[:\\s][^\\n]*`, 'gi'), '');
     content = content.replace(new RegExp(`\\n?\\|\\s*${escaped}\\.?\\s[^|]*\\|[^\\n]*`, 'gi'), '');
 
@@ -903,8 +979,17 @@ function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, rem
         /(\|\s*)(\d+)(\.\s)/g,
         (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseNumber(num, removedInt)}${suffix}`
       );
+      // #3602: extend the suffix lookahead so slugged plan filenames like
+      // `07-01-cherry-pick-foundation-PLAN.md` match too. The previous
+      // pattern only allowed a compact `-(PLAN|SUMMARY).md` immediately
+      // after the plan number (or no suffix at all); a slug between the
+      // number and the `-PLAN.md` / `-SUMMARY.md` suffix made the
+      // lookahead fail and left the stale `07-01-` prefix in ROADMAP
+      // text while the on-disk file was already renamed to `06-01-…`.
+      // The slug segment `(?:-[A-Za-z][A-Za-z0-9-]*)*` allows any number
+      // of kebab-case tokens before the canonical PLAN/SUMMARY suffix.
       content = content.replace(
-        /(?<![0-9-])(\d{2})-(\d{2})(?=(?:-(?:PLAN|SUMMARY)\.md)?(?![0-9-]))/g,
+        /(?<![0-9-])(\d{2})-(\d{2})(?=(?:(?:-[A-Za-z][A-Za-z0-9-]*)*-(?:PLAN|SUMMARY)\.md)|(?![0-9-]))/g,
         (_match, phaseNum, planNum) => `${decrementRoadmapPaddedPhaseNumber(phaseNum, removedInt)}-${planNum}`
       );
       content = content.replace(
@@ -1329,6 +1414,7 @@ module.exports = {
   cmdPhasePlanIndex,
   cmdPhaseAdd,
   cmdPhaseAddBatch,
+  cmdPhaseMvpMode,
   cmdPhaseInsert,
   cmdPhaseRemove,
   cmdPhaseComplete,
