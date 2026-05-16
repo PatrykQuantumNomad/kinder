@@ -24,12 +24,16 @@ mkdir -p "$LOG_DIR"
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_DIR/run.log"; }
 fail() { log "FAIL: $*"; SCRIPT_FAILED=1; exit 1; }
 
-SCRIPT_FAILED=0
+# Default-fail pattern: any exit (set -e, signal, fail()) before main() flips
+# this back to 0 preserves the cluster for forensic inspection.
+SCRIPT_FAILED=1
 cleanup() {
     if [ "$SCRIPT_FAILED" = "1" ]; then
-        log "cleanup: SKIPPED — script failed; clusters preserved for forensics"
-        log "         to inspect: docker ps --filter name=$CLUSTER_IPV4"
-        log "         to clean up later: $KINDER delete cluster --name $CLUSTER_IPV4 ; $KINDER delete cluster --name $CLUSTER_IPV6"
+        log "cleanup: SKIPPED — script failed or exited abnormally; clusters preserved for forensics"
+        log "         inspect LB:    docker exec ${CLUSTER_IPV4}-external-load-balancer cat /home/envoy/cds.yaml"
+        log "                        docker exec ${CLUSTER_IPV4}-external-load-balancer cat /home/envoy/lds.yaml"
+        log "         list nodes:    docker ps --filter label=io.x-k8s.kind.cluster=$CLUSTER_IPV4"
+        log "         clean up later: $KINDER delete cluster --name $CLUSTER_IPV4 ; $KINDER delete cluster --name $CLUSTER_IPV6"
         return
     fi
     log "cleanup: deleting clusters (best-effort)"
@@ -37,6 +41,50 @@ cleanup() {
     "$KINDER" delete cluster --name "$CLUSTER_IPV6" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+# Returns 0 only when kubectl returns a non-empty node list AND every row's
+# STATUS column is exactly "Ready". Disables set -e / pipefail locally so a
+# transient TLS handshake error does NOT kill the script.
+all_nodes_ready() {
+    local kubeconfig="$1"
+    local logtag="$2"
+    local out
+    set +e
+    out="$(kubectl --kubeconfig "$kubeconfig" get nodes --no-headers 2>>"$LOG_DIR/${logtag}-kubectl.log")"
+    local rc=$?
+    set -e
+    if [ $rc -ne 0 ] || [ -z "$out" ]; then
+        return 1
+    fi
+    echo "$out" | awk 'NF>=2 && $2 != "Ready" { exit 1 }'
+}
+
+# Dumps Envoy LB state and CP container status for a given cluster. Called
+# when test_05 / test_11 give up so the next run has a forensic snapshot
+# committed alongside the script (cluster is also preserved on disk for
+# manual inspection).
+dump_lb_diagnostics() {
+    local cluster="$1"
+    local logtag="$2"
+    local lb="${cluster}-external-load-balancer"
+    log "diagnostic dump for $cluster -> $LOG_DIR/${logtag}-diag.txt"
+    {
+        echo "=== docker ps (cluster=$cluster) ==="
+        docker ps -a --filter "label=io.x-k8s.kind.cluster=$cluster" --format 'table {{.Names}}\t{{.Status}}' 2>&1 || true
+        echo
+        echo "=== $lb labels ==="
+        docker inspect "$lb" --format '{{json .Config.Labels}}' 2>&1 || true
+        echo
+        echo "=== $lb /home/envoy/lds.yaml ==="
+        docker exec "$lb" cat /home/envoy/lds.yaml 2>&1 || true
+        echo
+        echo "=== $lb /home/envoy/cds.yaml ==="
+        docker exec "$lb" cat /home/envoy/cds.yaml 2>&1 || true
+        echo
+        echo "=== ${cluster}-control-plane crictl pods ==="
+        docker exec --privileged "${cluster}-control-plane" crictl pods 2>&1 || true
+    } > "$LOG_DIR/${logtag}-diag.txt" 2>&1
+}
 
 # --- prereq: confirm Docker Desktop IPv6 is on ---
 test_00_docker_ipv6_enabled() {
@@ -125,22 +173,19 @@ test_05_ipv4_host_kubectl_after_resume() {
     log "test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster"
     local kubeconfig="$LOG_DIR/ipv4-kubeconfig.yaml"
     "$KINDER" get kubeconfig --name "$CLUSTER_IPV4" > "$kubeconfig" 2>/dev/null
-    # Poll until all nodes have $2 EXACTLY == "Ready" (not "NotReady").
     local deadline=$(( $(date +%s) + 600 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers \
-                2>>"$LOG_DIR/ipv4-kubectl.log" \
-                | awk 'NF>=2 && $2 != "Ready" { found=1 } END { exit !(found || NR==0) }'; then
-            sleep 10
-            continue
+        if all_nodes_ready "$kubeconfig" ipv4; then
+            kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log" || true
+            log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
+            return 0
         fi
-        kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log"
-        log "test_05: PASS — Phase 58 UAT test_09 regression CLOSED"
-        return 0
+        sleep 10
     done
     log "test_05: kubectl polling output (final state):"
     kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv4-kubectl.log" || true
-    fail "test_05: not all nodes Ready after 10m — Phase 58 UAT test_09 regression NOT closed"
+    dump_lb_diagnostics "$CLUSTER_IPV4" ipv4
+    fail "test_05: not all nodes Ready after 10m — Phase 58 UAT test_09 regression NOT closed; see $LOG_DIR/ipv4-diag.txt"
 }
 
 test_06_ipv4_labels_present() {
@@ -219,19 +264,17 @@ test_11_ipv6_host_kubectl_after_resume() {
     "$KINDER" get kubeconfig --name "$CLUSTER_IPV6" > "$kubeconfig" 2>/dev/null
     local deadline=$(( $(date +%s) + 600 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        if kubectl --kubeconfig "$kubeconfig" get nodes --no-headers \
-                2>>"$LOG_DIR/ipv6-kubectl.log" \
-                | awk 'NF>=2 && $2 != "Ready" { found=1 } END { exit !(found || NR==0) }'; then
-            sleep 10
-            continue
+        if all_nodes_ready "$kubeconfig" ipv6; then
+            kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log" || true
+            log "test_11: PASS — ipv4_compat path verified for IPv6 cluster"
+            return 0
         fi
-        kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log"
-        log "test_11: PASS — ipv4_compat path verified for IPv6 cluster"
-        return 0
+        sleep 10
     done
     log "test_11: kubectl polling output (final state):"
     kubectl --kubeconfig "$kubeconfig" get nodes 2>&1 | tee -a "$LOG_DIR/ipv6-kubectl.log" || true
-    fail "test_11: not all nodes Ready after 10m on resumed IPv6 cluster — ipv4_compat path may be broken OR slow CP recovery"
+    dump_lb_diagnostics "$CLUSTER_IPV6" ipv6
+    fail "test_11: not all nodes Ready after 10m on resumed IPv6 cluster — ipv4_compat path may be broken OR slow CP recovery; see $LOG_DIR/ipv6-diag.txt"
 }
 
 test_12_ipv6_labels_present() {
@@ -262,6 +305,7 @@ main() {
     test_10_ipv6_listener_post_resume
     test_11_ipv6_host_kubectl_after_resume
     test_12_ipv6_labels_present
+    SCRIPT_FAILED=0  # flip default-fail flag; cleanup() will now delete clusters
     log "ALL TESTS PASSED"
 }
 
