@@ -1,0 +1,131 @@
+=== Phase 58 Plan 01 — Phase 47 HA pause/resume live UAT ===
+ETA ~10 min; cluster uat-58-01; log hack/uat-47-ha-smoke.log
+HEAD:  6690939a5045fd48c49094fe3b987f26386b4b6a
+Date:  2026-05-16T12:42:24Z
+--- make build ---
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=6690939a5045fd48c49094fe3b987f26386b4b6a -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=109"
+sigs.k8s.io/kind
+kind v1.5.0 go1.25.7 darwin/arm64
+Using: /Users/patrykattc/work/git/kinder/bin/kinder
+Build: May 16 08:42:25 2026
+PATH-resolved kinder: /opt/homebrew/bin/kinder
+--- docker info (RAM headroom) ---
+ CPUs: 24
+ Total Memory: 15.84GiB
+--- create cluster uat-58-01 (3 CP + 2 worker) ---
+Creating cluster "uat-58-01" ...
+
+NOTE: The following addon images will be pulled during cluster creation.
+      Pre-load them and use --air-gapped to skip pulls:
+        docker.io/envoyproxy/envoy:v1.36.2
+        docker.io/envoyproxy/ratelimit:05c08d03
+        docker.io/library/busybox:1.37.0
+        docker.io/rancher/local-path-provisioner:v0.0.36
+        envoyproxy/gateway:v1.7.2
+        ghcr.io/headlamp-k8s/headlamp:v0.42.0
+        quay.io/jetstack/cert-manager-cainjector:v1.20.2
+        quay.io/jetstack/cert-manager-controller:v1.20.2
+        quay.io/jetstack/cert-manager-webhook:v1.20.2
+        quay.io/metallb/controller:v0.15.3
+        quay.io/metallb/speaker:v0.15.3
+        registry.k8s.io/metrics-server/metrics-server:v0.8.1
+        registry:2
+
+ • Ensuring node image (kindest/node:v1.35.1) 🖼  ...
+HA cluster will use cert-regen resume strategy: probe runtime error: inspect returned invalid IP "invalid IP"
+ ✓ Ensuring node image (kindest/node:v1.35.1) 🖼
+ • Preparing nodes 📦 📦 📦 📦 📦   ...
+ ✓ Preparing nodes 📦 📦 📦 📦 📦 
+ • Configuring the external load balancer ⚖️  ...
+ ✓ Configuring the external load balancer ⚖️
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Joining more control-plane nodes 🎮  ...
+ ✓ Joining more control-plane nodes 🎮
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+
+Local Registry:
+  Push:        docker push localhost:5001/myimage:latest
+  Pull in pods: image: localhost:5001/myimage:latest
+
+ * Skipping NVIDIA GPU (disabled in config)
+
+Dashboard:
+  Get token: kubectl -n kube-system get secret kinder-dashboard-token -o jsonpath='{.data.token}' | base64 -d
+  Port-forward: kubectl port-forward -n kube-system service/headlamp 8080:80
+  Then open: http://localhost:8080
+
+ • Installing Envoy Gateway  ...
+ ✓ Installing Envoy Gateway
+On darwin, MetalLB LoadBalancer IPs are not directly reachable from the host.
+   Use kubectl port-forward to access LoadBalancer services:
+   kubectl port-forward svc/<service-name> <local-port>:<service-port>
+
+Addons:
+ * Local Registry       installed (1.0s)
+ * MetalLB              installed (30.6s)
+ * Metrics Server       installed (37.5s)
+ * CoreDNS Tuning       installed (1.8s)
+ * Dashboard            installed (50.7s)
+ * Cert Manager         installed (19.1s)
+ * Local Path Provisioner installed (11.0s)
+ * NVIDIA GPU           skipped (disabled)
+ * Envoy Gateway        installed (24.5s)
+Set kubectl context to "kind-uat-58-01"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-uat-58-01
+
+Have a nice day! 👋
+node/uat-58-01-control-plane condition met
+node/uat-58-01-control-plane2 condition met
+node/uat-58-01-control-plane3 condition met
+node/uat-58-01-worker condition met
+node/uat-58-01-worker2 condition met
+--- SC1 baseline: docker stats + ps ---
+unknown flag: --filter
+
+Usage:  docker stats [OPTIONS] [CONTAINER...]
+
+Run 'docker stats --help' for more information
+uat-58-01-control-plane: Up 2 minutes
+uat-58-01-control-plane2: Up 2 minutes
+uat-58-01-control-plane3: Up 2 minutes
+uat-58-01-worker: Up 2 minutes
+uat-58-01-worker2: Up 2 minutes
+uat-58-01-external-load-balancer: Up 2 minutes
+--- test_03: get nodes <cluster> positional arg ---
+NAME                              ROLE                    STATUS  VERSION  IMAGE                                                                                         SKEW
+uat-58-01-control-plane           control-plane           Ready   v1.35.1  kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab  ✓
+uat-58-01-control-plane2          control-plane           Ready   v1.35.1  kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab  ✓
+uat-58-01-control-plane3          control-plane           Ready   v1.35.1  kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab  ✓
+uat-58-01-worker                  worker                  Ready   v1.35.1  kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab  ✓
+uat-58-01-worker2                 worker                  Ready   v1.35.1  kindest/node:v1.35.1@sha256:05d7bcdefbda08b4e038f644c4df690cdac3fba8b06f8289f30e10026720a1ab  ✓
+uat-58-01-external-load-balancer  external-load-balancer  Ready   unknown  docker.io/envoyproxy/envoy:v1.36.2                                                            n/a
+[OK] test_03 — get nodes uat-58-01 returned 6 rows
+--- test_09: resume --wait 5m duration-string parsing ---
+ - uat-58-01-worker stopped (role: worker, 0.5s)
+ - uat-58-01-worker2 stopped (role: worker, 5.3s)
+ - uat-58-01-control-plane stopped (role: control-plane, 30.3s)
+ - uat-58-01-control-plane2 stopped (role: control-plane, 30.3s)
+ - uat-58-01-control-plane3 stopped (role: control-plane, 30.4s)
+ - uat-58-01-external-load-balancer stopped (role: external-load-balancer, 30.2s)
+Cluster paused. Total time: 127.8s
+[FAIL] test_09 — resume --wait 5m exited 1
+ • ✓ uat-58-01-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-58-01-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-58-01-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-58-01-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-58-01-worker (role=worker, 0.1s)
+ • ✓ uat-58-01-worker2 (role=worker, 0.1s)
+IPDriftDetected error on uat-58-01-control-plane (treating as drift): docker cp uat-58-01-control-plane ipam-state: command "docker cp uat-58-01-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-58-01-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-58-01-control-plane (1/3)
+Regenerating etcd peer cert on uat-58-01-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-58-01-control-plane3 (3/3)
+timed out waiting for nodes Ready: deadline exceeded
+ERROR: timed out waiting for nodes Ready: deadline exceeded

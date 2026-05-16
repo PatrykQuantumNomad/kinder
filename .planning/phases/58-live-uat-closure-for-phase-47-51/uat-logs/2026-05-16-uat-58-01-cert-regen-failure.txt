@@ -1,0 +1,88 @@
+# Phase 58 Plan 01 — live UAT forensic snapshot
+Captured: 2026-05-16 (uat-58-01 cluster left up post-failure)
+Bug-of-record: test_09 kinder resume --wait 5m timed out waiting for nodes Ready
+
+## Container state (26 min after create)
+NAMES                              STATUS          IMAGE
+uat-58-01-control-plane            Up 24 minutes   kindest/node:v1.35.1
+uat-58-01-control-plane2           Up 24 minutes   kindest/node:v1.35.1
+uat-58-01-control-plane3           Up 24 minutes   kindest/node:v1.35.1
+uat-58-01-worker                   Up 24 minutes   kindest/node:v1.35.1
+uat-58-01-worker2                  Up 24 minutes   kindest/node:v1.35.1
+uat-58-01-external-load-balancer   Up 24 minutes   envoyproxy/envoy:v1.36.2
+
+## Container IPs
+uat-58-01-control-plane -> 172.19.0.3
+uat-58-01-control-plane2 -> 172.19.0.4
+uat-58-01-control-plane3 -> 172.19.0.5
+uat-58-01-worker -> 172.19.0.6
+uat-58-01-worker2 -> 172.19.0.7
+uat-58-01-external-load-balancer -> 172.19.0.2
+
+## Phase 52 + 57.2 labels on cp1
+    "io.x-k8s.kind.cluster": "uat-58-01",
+    "io.x-k8s.kind.role": "control-plane",
+    "io.x-k8s.kinder.ip-family": "ipv4",
+    "io.x-k8s.kinder.resume-strategy": "cert-regen"
+
+## /kind/ipam-state.json existence (Phase 52 ip-pin marker)
+--- uat-58-01-control-plane ---
+ls: cannot access '/kind/ipam-state.json': No such file or directory
+--- uat-58-01-control-plane2 ---
+ls: cannot access '/kind/ipam-state.json': No such file or directory
+--- uat-58-01-control-plane3 ---
+ls: cannot access '/kind/ipam-state.json': No such file or directory
+
+## Listening ports on cp1
+LISTEN 0      4096       127.0.0.1:2381       0.0.0.0:*    users:(("etcd",pid=2109,fd=12))         
+LISTEN 6      4096       127.0.0.1:2379       0.0.0.0:*    users:(("etcd",pid=2109,fd=6))          
+LISTEN 0      4096       127.0.0.1:10257      0.0.0.0:*    users:(("kube-controller",pid=496,fd=4))
+LISTEN 0      4096       127.0.0.1:10259      0.0.0.0:*    users:(("kube-scheduler",pid=510,fd=4)) 
+LISTEN 0      4096      172.19.0.3:2380       0.0.0.0:*    users:(("etcd",pid=2109,fd=3))          
+LISTEN 0      4096      172.19.0.3:2379       0.0.0.0:*    users:(("etcd",pid=2109,fd=7))          
+LISTEN 0      4096               *:10250            *:*    users:(("kubelet",pid=273,fd=19))       
+
+## apiserver pod state on cp1
+CONTAINER           IMAGE               CREATED             STATE               NAME                ATTEMPT             POD ID              POD                                      NAMESPACE
+f3e1b7f6f8aa2       7459ea0017638       23 seconds ago      Exited              kube-apiserver      9                   892dd41598e9a       kube-apiserver-uat-58-01-control-plane   kube-system
+a7a4d4cb26789       7459ea0017638       29 minutes ago      Exited              kube-apiserver      0                   aaf7ebada3552       kube-apiserver-uat-58-01-control-plane   kube-system
+
+## kube-apiserver fatal logs (ATTEMPT 8 — post-cert-regen instance)
+Latest apiserver container id: f3e1b7f6f8aa2
+I0516 13:11:12.641292       1 options.go:263] external host was not specified, using 172.19.0.3
+I0516 13:11:12.644149       1 server.go:150] Version: v1.35.1
+I0516 13:11:12.644167       1 server.go:152] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+W0516 13:11:12.787165       1 logging.go:55] [core] [Channel #2 SubChannel #5]grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379", ServerName: "127.0.0.1:2379", BalancerAttributes: {"<%!p(pickfirstleaf.managedByPickfirstKeyType={})>": "<%!p(bool=true)>" }}. Err: connection error: desc = "transport: Error while dialing: dial tcp 127.0.0.1:2379: operation was canceled"
+W0516 13:11:12.787199       1 logging.go:55] [core] [Channel #1 SubChannel #3]grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379", ServerName: "127.0.0.1:2379", BalancerAttributes: {"<%!p(pickfirstleaf.managedByPickfirstKeyType={})>": "<%!p(bool=true)>" }}. Err: connection error: desc = "transport: authentication handshake failed: context canceled"
+I0516 13:11:12.787658       1 shared_informer.go:349] "Waiting for caches to sync" controller="node_authorizer"
+I0516 13:11:12.791670       1 shared_informer.go:370] "Waiting for caches to sync"
+I0516 13:11:12.792731       1 plugins.go:157] Loaded 14 mutating admission controller(s) successfully in the following order: NamespaceLifecycle,LimitRanger,ServiceAccount,NodeRestriction,TaintNodesByCondition,Priority,DefaultTolerationSeconds,DefaultStorageClass,StorageObjectInUseProtection,RuntimeClass,DefaultIngressClass,PodTopologyLabels,MutatingAdmissionPolicy,MutatingAdmissionWebhook.
+I0516 13:11:12.792753       1 plugins.go:160] Loaded 14 validating admission controller(s) successfully in the following order: LimitRanger,ServiceAccount,PodSecurity,Priority,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,ClusterTrustBundleAttest,CertificateSubjectRestriction,NodeDeclaredFeatureValidator,ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,ResourceQuota.
+I0516 13:11:12.792886       1 instance.go:240] Using reconciler: lease
+W0516 13:11:12.793564       1 logging.go:55] [core] [Channel #7 SubChannel #8]grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379", ServerName: "127.0.0.1:2379", BalancerAttributes: {"<%!p(pickfirstleaf.managedByPickfirstKeyType={})>": "<%!p(bool=true)>" }}. Err: connection error: desc = "transport: Error while dialing: dial tcp 127.0.0.1:2379: operation was canceled"
+W0516 13:11:32.787383       1 logging.go:55] [core] [Channel #1 SubChannel #4]grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379", ServerName: "127.0.0.1:2379", BalancerAttributes: {"<%!p(pickfirstleaf.managedByPickfirstKeyType={})>": "<%!p(bool=true)>" }}. Err: connection error: desc = "transport: authentication handshake failed: context deadline exceeded"
+W0516 13:11:32.787398       1 logging.go:55] [core] [Channel #2 SubChannel #6]grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379", ServerName: "127.0.0.1:2379", BalancerAttributes: {"<%!p(pickfirstleaf.managedByPickfirstKeyType={})>": "<%!p(bool=true)>" }}. Err: connection error: desc = "transport: authentication handshake failed: context deadline exceeded"
+F0516 13:11:32.794019       1 instance.go:233] Error creating leases: error creating storage factory: context deadline exceeded
+
+## IPAM probe source (Phase 52-01 commit bb31049e)
+	// Use the same `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}`
+	// format as realInspectState uses the State.Status format — consistent pattern.
+	inspectLines, err := kindexec.OutputLines(ipamProbeCmder(binaryName,
+		"inspect", "--format",
+		"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+		probeName,
+	))
+	if err != nil {
+		return VerdictCertRegen,
+			fmt.Sprintf("probe runtime error: inspect (pre-stop) failed: %v", err),
+			nil
+	}
+	originalIP := strings.TrimSpace(strings.Join(inspectLines, ""))
+	// T-52-01-01: validate the captured IP before passing it back to --ip.
+	if net.ParseIP(originalIP) == nil {
+		return VerdictCertRegen,
+			fmt.Sprintf("probe runtime error: inspect returned invalid IP %q", originalIP),
+			nil
+	}
+
+	// Step 4: disconnect from the probe network.

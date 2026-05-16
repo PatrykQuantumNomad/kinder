@@ -12,7 +12,7 @@
 - SHIPPED **v2.1 Known Issues & Proactive Diagnostics** - Phases 38-41 (shipped 2026-03-06)
 - SHIPPED **v2.2 Cluster Capabilities** - Phases 42-46 (shipped 2026-04-10)
 - SHIPPED **v2.3 Inner Loop** - Phases 47-51 (shipped 2026-05-07)
-- IN PROGRESS **v2.4 Hardening** - Phases 52-58 (started 2026-05-09)
+- IN PROGRESS **v2.4 Hardening** - Phases 52-58 + 57.1/57.2/57.3/57.4 (started 2026-05-09)
 
 ## Phases
 
@@ -112,8 +112,9 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text (completed 2026-05-12; inline `external-load-balancer` + `external-etcd` role guard in `realListNodes` at `clusterskew.go:111-126` eliminates the false-positive version-skew warning; tolerant flow in `resumereadiness.go:172-207` calls `parseEtcdHealth` BEFORE the verdict so etcd 3.5+ non-zero exits still surface `"N/M etcd members healthy"` + `"quorum at risk"`; raw `"etcdctl endpoint health returned error: %v"` dump removed; Pitfall 22 fixture matrix covers etcd 3.4 + 3.5 JSON shapes; `make test-race-doctor` over `-count=100` green in 2.661s; verifier 3/3 passed)
 - [x] **Phase 57.1: Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED)** - Fix Phase 47↔51 regression: `lifecycle.Resume` never re-applies the Envoy LB dynamic xDS config after the LB container restarts. The container's hardcoded entrypoint resets `/home/envoy/{cds,lds}.yaml` to `resources: []` on every start, so after pause+resume the LB has zero upstreams and host kubectl gets EOF — discovered during Phase 58 live UAT test_09 (2026-05-13) (completed 2026-05-13)
 - [x] **Phase 57.2: Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6 (INSERTED)** - Replaced docker-network `EnableIPv6` probe with cluster-authoritative `io.x-k8s.kinder.ip-family={ipv4\|ipv6\|dual}` label stamped at create-time on all containers (LB+CP+worker) across docker/podman/nerdctl; added `loadbalancer.ClusterIPFamily(binary, node)` helper as single source of truth on resume; deleted `discoverLBIPv6` entirely; added `ipv4_compat: true` to IPv6/dual listener template branch (completed 2026-05-16; verifier 6/6 PASSED; live UAT on macOS Docker Desktop with IPv6-enabled `kind` network: IPv4 cluster pause/resume listener invariance verified — lds.yaml stays `address: "0.0.0.0"` pre+post resume and host `kubectl get nodes` returns 5/5 Ready, closing the Phase 58 UAT test_09 IPv4 regression of record; IPv6 cluster listener also invariant — lds.yaml stays `"::"` + `ipv4_compat: true` pre+post resume; SC4 macOS DD caveat documented in 57.2-02-UAT.md — Docker Desktop creates only `[::1]:port->6443/tcp` for IPv6 clusters so `ipv4_compat` is architecturally defensive but not exercised by host kubectl on this topology; IPv6 HA cluster cert-regen recovery surfaced as a separate downstream Phase 52 finding → filed as Phase 57.3)
-- [ ] **Phase 57.3: IPv6 HA cluster cert-regen recovery (INSERTED)** - After Phase 52's cert-regen fires on an IPv6 HA cluster, apiservers crash-loop because they cannot TLS-handshake to etcd on `[::1]:2379` (`authentication handshake failed: context deadline exceeded` → `Error creating leases: error creating storage factory: context deadline exceeded` → fatal exit). Likely root cause: regenerated `etcd/server.crt` SAN list lacks IPv6 loopback, OR etcd cluster peer re-coordination fails under regenerated peer certs on IPv6 link-local addresses. Phase 52 was never UAT'd against IPv6 HA — Phase 57.2's UAT script was the first to exercise it (2026-05-16). Does NOT block Phase 58 (which only exercises IPv4 HA per `hack/uat-47-ha-smoke.sh`).
-- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (Phase 57.2 closed 2026-05-16; UNBLOCKED)
+- [ ] **Phase 57.3: HA cluster cert-regen recovery (INSERTED 2026-05-16; SCOPE EXPANDED 2026-05-16)** - After Phase 52's cert-regen fires on ANY HA cluster (IPv4, IPv6, or dual-stack), kube-apiservers crash-loop because they cannot TLS-handshake to etcd on `127.0.0.1:2379` / `[::1]:2379` (`authentication handshake failed: context deadline exceeded` → `Error creating leases: error creating storage factory: context deadline exceeded` → fatal exit). Originally filed as IPv6-only after Phase 57.2 Plan 02 test_11 (2026-05-16 11:00 UTC); scope EXPANDED on 2026-05-16 13:00 UTC after Phase 58 Plan 01 live UAT reproduced byte-identical fatal pattern on a vanilla IPv4 HA cluster (`uat-58-01`). Likely root cause: regenerated `etcd/server.crt` SAN list / regenerated peer-cert trust chain doesn't allow apiserver to re-handshake within its 20s startup budget after cert-regen — on ALL stacks, not just IPv6. Phase 52 was never UAT'd against any HA cluster post-cert-regen because Phase 52 UAT exercised the ip-pin path (IPAM probe succeeded then). **Blocks Phase 58.**
+- [ ] **Phase 57.4: IPAM probe regression — `inspect returned invalid IP` (INSERTED 2026-05-16)** - `pkg/internal/doctor/ipamprobe.go:131` emits `probe runtime error: inspect returned invalid IP "invalid IP"` (literal string, with space — confirmed via `%q` quoting). `docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'` on the alpine probe container is returning the unexpected value `"invalid IP"` on the host running this UAT (macOS Docker Desktop, 2026-05-16). Consequence: every HA cluster on this host routes to cert-regen strategy at create time (`io.x-k8s.kinder.resume-strategy=cert-regen` label) instead of the preferred ip-pin path; `/kind/ipam-state.json` is never written, so resume falls through `IPDriftDetected` to the (broken) cert-regen path. Was NOT seen during Phase 52 UAT — likely a Docker Desktop / kernel update introduced the quirk, OR a latent format-template bug when the probe container ends up on >1 network. **Blocks Phase 58 jointly with 57.3.**
+- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items. (BLOCKED 2026-05-16 on Phase 57.3 + 57.4 after Plan 01 live UAT caught real upstream defects)
 
 ## Phase Details
 
@@ -276,42 +277,85 @@ Forensic state available for the planner:
   - Failed UAT log: `hack/uat-47-ha-smoke.log.pre-57.2` (untracked)
   - Live cluster `uat-58-01` left running on host (3-CP + 2-worker + 1-LB; cert-regen strategy; on dual-stack `kind` network) — exercise candidate fixes against this cluster before committing.
 
-### Phase 57.3: IPv6 HA cluster cert-regen recovery (INSERTED)
+### Phase 57.3: HA cluster cert-regen recovery (INSERTED 2026-05-16; SCOPE EXPANDED 2026-05-16)
 
-**Goal**: After `kinder pause` + `kinder resume` on an IPv6 HA cluster, every `kube-apiserver` process successfully completes its TLS handshake to etcd on `[::1]:2379` within 30s of apiserver start, and all CP nodes report Ready within the `--wait 10m` window.
-**Depends on**: Phase 52 (the cert-regen module being fixed). Independent of Phase 58 (which only exercises IPv4 HA via `hack/uat-47-ha-smoke.sh`).
+**Goal**: After `kinder pause` + `kinder resume` on ANY HA cluster (IPv4, IPv6, or dual-stack), every `kube-apiserver` process successfully completes its TLS handshake to etcd on its loopback within 30s of apiserver start, and all CP nodes report Ready within the `--wait 10m` window.
+**Depends on**: Phase 52 (the cert-regen module being fixed). **Blocks Phase 58.**
 **Requirements**: To be derived during planning (likely a new LIFE-12 requirement, or appended scope to LIFE-09).
-**Why urgent (discovered 2026-05-16 during Phase 57.2 Plan 02 live UAT)**:
-  - Forensic evidence captured live on macOS Docker Desktop with IPv6 enabled (`uat-572-ipv6` cluster, 3-CP + 2-worker + 1-LB):
-    - `kube-apiserver` process on cp1 NOT listening on port 6443 (`curl https://127.0.0.1:6443/healthz` from inside cp1 → connection refused)
-    - `etcd` process IS running on cp1 with `--listen-client-urls=https://[::1]:2379,https://[fc00:4d57:1afd:1f1b::a]:2379`
-    - `crictl logs` of the kube-apiserver container shows repeated `grpc: addrConn.createTransport failed to connect to {Addr: "[::1]:2379"}` + `transport: authentication handshake failed: context canceled` / `context deadline exceeded` → fatal `Error creating leases: error creating storage factory: context deadline exceeded` after ~20s → process exits → crash loop
-    - Pre-resume warning fired: `cluster-resume-readiness: 2/3 etcd members healthy — 1 unhealthy etcd member(s) — quorum at risk`
-  - **Phase 52's cert-regen flow was never UAT'd against an IPv6 HA cluster** — Phase 47's HA UAT exercises only IPv4, and Phase 58 inherits that scope. Phase 57.2's UAT script `hack/uat-57.2-ipv6-listener.sh` was the first artifact to exercise IPv6 HA pause/resume end-to-end.
-  - This is architecturally upstream of Phase 57.2's LB listener fix (LB lds.yaml + cds.yaml + container labels are all correct for the IPv6 cluster per `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-diag.txt`). The failure is INSIDE the CP container.
+**Why urgent**:
+
+The defect was originally filed as IPv6-only after Phase 57.2 Plan 02 test_11 on 2026-05-16 11:00 UTC. **Phase 58 Plan 01 live UAT on 2026-05-16 13:00 UTC then reproduced byte-identical fatal pattern on a vanilla IPv4 HA cluster** (`uat-58-01`, no `ipFamily` in spec), so the scope is NOT IPv6-specific — Phase 52's cert-regen recovery is broken on ALL HA stacks.
+
+**Forensic evidence (IPv4 — discovered 2026-05-16 13:00 UTC on `uat-58-01` cluster, 3-CP + 2-worker + 1-LB)**:
+  - `kube-apiserver` post-cert-regen container on cp1: ATTEMPT=8, state=Exited (crash loop). NOT listening on `:6443` anywhere (`curl -k https://127.0.0.1:6443/healthz` from inside cp1 → `Could not connect to server`).
+  - `etcd` IS listening on `127.0.0.1:2379` + `172.19.0.3:2379` + peer `172.19.0.3:2380` + metrics `127.0.0.1:2381`.
+  - `crictl logs` of the post-cert-regen kube-apiserver container shows: `grpc: addrConn.createTransport failed to connect to {Addr: "127.0.0.1:2379"}` → `transport: authentication handshake failed: context deadline exceeded` → `F instance.go:233] Error creating leases: error creating storage factory: context deadline exceeded` after ~20s → fatal exit → crash loop.
+  - Cluster has labels `io.x-k8s.kinder.ip-family=ipv4` (Phase 57.2 label correct), `io.x-k8s.kinder.resume-strategy=cert-regen` (routed via Phase 57.4 IPAM probe regression).
+  - `/kind/ipam-state.json` does NOT exist on any CP (cert-regen strategy at create time, no ip-pin state written).
+  - Reference: `.planning/phases/58-live-uat-closure-for-phase-47-51/uat-logs/2026-05-16-uat-58-01-cert-regen-failure.txt` (88 lines).
+
+**Forensic evidence (IPv6 — discovered 2026-05-16 11:00 UTC on `uat-572-ipv6` cluster)**: Identical fatal pattern except `Addr: "[::1]:2379"` and ports `[::1]:2379` + `[fc00:...:a]:2379`. Reference: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-diag.txt` + `57.2-02-UAT.md` "Forensic Deep-Dive" section.
+
+This is architecturally upstream of Phase 57.2's LB listener fix (LB lds.yaml + cds.yaml + container labels are correct on both clusters). The failure is INSIDE the CP container in BOTH cases.
+
+**Why never caught before**: Phase 52's UAT exercised the **ip-pin path** (IPAM probe succeeded then). The cert-regen path was implemented as a documented fallback (Phase 52 SC4) but the actual recovery behavior was only ever unit-tested with `FakeNode`/`FakeCmd`, never live. Phase 57.4's IPAM probe regression (also filed 2026-05-16) now routes every HA cluster to cert-regen, exposing this latent defect.
 
 **Likely fix areas** (to be locked during `/gsd:discuss-phase 57.3`):
-  - **Option A — etcd server.crt SAN list**: Phase 52's cert-regen may be regenerating `etcd/server.crt` without `[::1]` in its IP-SAN list, so the apiserver→etcd TLS handshake fails ServerName verification when dialing `https://[::1]:2379`. Verify via `openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -text` on the cp1 container after cert-regen.
-  - **Option B — etcd peer re-coordination**: Phase 52 regenerates peer certs sequentially on all 3 CPs. On IPv6, the cluster may fail to re-elect a leader before the apiserver's 20s startup timeout. Add an etcd-readiness gate AFTER cert-regen on all 3 CPs and BEFORE returning from Resume.
-  - **Option C — IPv6-specific kubeadm CA path**: Some IPv6 deployments need IPv6-aware kubeadm configuration that Phase 52's cert-regen doesn't honor.
+  - **Option A — etcd server.crt SAN list / trust chain**: Phase 52's cert-regen may be regenerating `etcd/server.crt` or `etcd/peer.crt` with a SAN list or trust-chain configuration that doesn't allow apiserver→etcd TLS to re-establish after cert rotation. Verify via `openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -text` on cp1 after cert-regen — compare to pre-pause cert.
+  - **Option B — etcd peer re-coordination timing**: Phase 52 regenerates peer certs sequentially on all 3 CPs. The cluster may fail to re-elect a leader / restore quorum before the apiserver's 20s startup timeout. Add an etcd-readiness gate AFTER cert-regen on all 3 CPs and BEFORE letting the apiserver restart.
+  - **Option C — apiserver static-pod manifest stale-config**: The apiserver static-pod manifest may reference cert paths or fingerprints that no longer match after cert-regen. Verify the manifest is re-rendered (or kubelet re-reads it) between cert-regen and apiserver restart.
 
 **Success Criteria** (what must be TRUE):
-  1. After `kinder pause` + `kinder resume --wait 10m` on an IPv6 HA cluster (`networking.ipFamily: ipv6`), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` (apiserver is bound and serving) within the wait window.
-  2. After resume on an IPv6 HA cluster, host `kubectl --context kind-<cluster> get nodes` returns all 5 nodes (3 CP + 2 worker) in `Ready` state within the `--wait 10m` window.
-  3. New regression test asserts the regenerated `etcd/server.crt` SAN list includes IPv6 loopback (`[::1]` or appropriate alias) for IPv6 clusters (using FakeNode/FakeCmd to avoid live cert generation in the test).
-  4. Phase 57.2's `hack/uat-57.2-ipv6-listener.sh` test_11 (IPv6 host kubectl after resume) passes against the post-57.3 binary on macOS Docker Desktop with IPv6 enabled (the failing pre-57.3 log at `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-kubectl.log` + `ipv6-diag.txt` are the comparison baseline).
+  1. After `kinder pause` + `kinder resume --wait 10m` on a vanilla IPv4 HA cluster (3-CP + 2-worker + 1-LB), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` (apiserver bound and serving) within the wait window. Verified specifically against the cert-regen strategy path (post-57.4 the default may flip back to ip-pin; test must force cert-regen for this SC).
+  2. After resume on a vanilla IPv4 HA cluster, host `kubectl --context kind-<cluster> get nodes` returns all 5 nodes (3 CP + 2 worker) in `Ready` state within the `--wait 10m` window.
+  3. After resume on an explicit IPv6 HA cluster (`networking.ipFamily: ipv6`), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` within the wait window (parity with SC1 on the IPv6 stack).
+  4. New regression test asserts the regenerated etcd cert chain allows apiserver→etcd TLS handshake to succeed (using FakeNode/FakeCmd + a real openssl x509 verify on the regenerated cert) — covers both IPv4 and IPv6 loopback SANs.
+  5. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.3+57.4 binary on macOS Docker Desktop. Phase 57.2 UAT script `hack/uat-57.2-ipv6-listener.sh` test_11 also passes (IPv6 parity).
 
 **Plans**: TBD (1-3 plans expected; `/gsd:discuss-phase 57.3` to lock fix-shape; then `/gsd:plan-phase 57.3`).
 
 **Forensic state available for the planner**:
-  - Failed UAT log: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-resume.log` (resume timeout) + `ipv6-kubectl.log` (TLS EOF polling) + `ipv6-diag.txt` (LB labels + lds.yaml + cds.yaml + crictl pods snapshot)
+  - IPv4 failure (this expansion): `.planning/phases/58-live-uat-closure-for-phase-47-51/uat-logs/2026-05-16-uat-58-01-cert-regen-failure.txt` (full forensic snapshot) + `2026-05-16-uat-58-01-fail.log` (script's tee output)
+  - IPv6 failure (original filing): `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-resume.log` + `ipv6-kubectl.log` + `ipv6-diag.txt`
   - Phase 57.2 verification of the LB-layer correctness: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/57.2-VERIFICATION.md`
-  - The bug-of-record forensic command sequence is captured verbatim in `57.2-02-UAT.md` "Forensic Deep-Dive" section.
+  - Live cluster left up for planner forensic access: `uat-58-01` (IPv4) on the host as of 2026-05-16 13:11 UTC (`./bin/kinder delete cluster --name uat-58-01` when no longer needed)
+
+### Phase 57.4: IPAM probe regression — `inspect returned invalid IP` (INSERTED 2026-05-16)
+
+**Goal**: `kinder doctor ipam-probe` (and the equivalent in-process check at HA cluster create time) returns `VerdictIPPinned` on a macOS Docker Desktop host with a normal docker daemon, NOT `VerdictCertRegen` with the bogus error string `inspect returned invalid IP "invalid IP"`.
+**Depends on**: Phase 52 (the IPAM probe module being fixed). **Blocks Phase 58.** Sibling to Phase 57.3 (also a Phase 52 downstream defect; either can land first; both must land before Phase 58 re-runs).
+**Requirements**: To be derived during planning (likely a new LIFE-13 requirement, or appended scope to LIFE-09).
+**Why urgent (discovered 2026-05-16 13:00 UTC during Phase 58 Plan 01 live UAT)**:
+  - At HA cluster create time, kinder prints the line: `HA cluster will use cert-regen resume strategy: probe runtime error: inspect returned invalid IP "invalid IP"` — the `originalIP` value being passed back is the literal string `"invalid IP"` with a space (confirmed by the `%q` formatter in `pkg/internal/doctor/ipamprobe.go:131` quoting it as `"invalid IP"`).
+  - Consequence: every HA cluster on this host today routes to cert-regen strategy at create time. The downstream Phase 57.3 defect (broken cert-regen recovery) is hit on 100% of HA clusters on this host.
+  - The probe code path: spawn an alpine probe container, connect it to a temporary probe network, run `docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <probe>`, then `net.ParseIP(originalIP)`. The ParseIP rejection is the trigger; the upstream question is why `docker inspect` returned `"invalid IP"`.
+  - Phase 52 UAT didn't see this — the regression is new (Docker Desktop update, kernel update, or a network-namespace state introduced by Phase 57.2's label-injection changes that didn't exist at Phase 52 UAT time).
+  - Reference: `.planning/phases/58-live-uat-closure-for-phase-47-51/uat-logs/2026-05-16-uat-58-01-cert-regen-failure.txt` § "IPAM probe source" + `2026-05-16-uat-58-01-fail.log` line containing `probe runtime error: inspect returned invalid IP`.
+
+**Likely fix areas** (to be locked during `/gsd:discuss-phase 57.4`):
+  - **Option A — investigate WHY `docker inspect` returns `"invalid IP"`**: Run the inspect command manually on a probe container today and see what comes back. Is the probe container ending up on multiple networks (resulting in concatenated IPs)? Is Docker Desktop returning a placeholder for some network state? This is the cheap, high-information-value path.
+  - **Option B — make the probe robust to multi-network inspect**: Change the format template to `'{{(index .NetworkSettings.Networks "<probeNet>").IPAddress}}'` so it asks for the specific probe network's IP, not "all networks concatenated". This avoids the underlying confusion regardless of cause.
+  - **Option C — fall back to ip-pin path heuristically**: If the inspect-based probe is unreliable, replace it with a `docker network connect --ip` dry-run attempt directly. The probe's purpose is feasibility detection, not IP capture; the IP captured here isn't actually USED for anything (the probe container is discarded).
+
+**Success Criteria** (what must be TRUE):
+  1. On a macOS Docker Desktop host (2026-05-16+ versions) with the default `kind` network, `./bin/kinder doctor ipam-probe` reports `VerdictIPPinned` (not `VerdictCertRegen` with `inspect returned invalid IP`).
+  2. `kinder create cluster --config <ha.yaml>` on the same host emits `HA cluster will use ip-pin resume strategy` (NOT `cert-regen ... probe runtime error`); `/kind/ipam-state.json` IS written on every CP after create.
+  3. New regression test fixture captures the failing `docker inspect` output verbatim (whatever it actually returns today — the literal `"invalid IP"` string or a multi-IP concatenation) and asserts the probe code handles it correctly (either repairs the format template, or detects the bad value and returns a clean fallback Verdict).
+  4. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.3+57.4 binary (joint SC with Phase 57.3).
+
+**Plans**: TBD (1-2 plans expected; `/gsd:discuss-phase 57.4` to investigate the docker inspect output first; then `/gsd:plan-phase 57.4`).
+
+**Forensic state available for the planner**:
+  - Failed UAT cluster left up: `uat-58-01` (3-CP + 2-worker + 1-LB, IPv4, on `kind` network, labels `io.x-k8s.kinder.resume-strategy=cert-regen`, `/kind/ipam-state.json` absent on all CPs)
+  - Forensic snapshot: `.planning/phases/58-live-uat-closure-for-phase-47-51/uat-logs/2026-05-16-uat-58-01-cert-regen-failure.txt`
+  - Source code: `pkg/internal/doctor/ipamprobe.go:115-135` (probe + ParseIP rejection at line 131)
+  - Commit history: `bb31049e feat(52-01): implement IPAM probe doctor check` (no later edits — this is the original Phase 52 implementation that's now failing)
 
 ### Phase 58: Live UAT Closure for Phase 47 + 51
 **Goal**: Both carry-forward UAT items from v2.3 are formally closed with live evidence recorded against the final v2.4 binary
-**Depends on**: Phase 57.2 (LB IPv6-detection fix — VERIFIED CLOSED 2026-05-16), then Phase 57.1 (LB reapply fix), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23). Independent of Phase 57.3 (which is IPv6-only; Phase 58 exercises IPv4 HA only).
+**Depends on**: Phase 57.2 (LB IPv6-detection fix — VERIFIED CLOSED 2026-05-16), Phase 57.1 (LB reapply fix), Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23). **NEWLY BLOCKED 2026-05-16 on Phase 57.3 + Phase 57.4** after Plan 01 live UAT caught two upstream Phase 52 defects. Phase 58 IS NOT IPv6-vs-IPv4 specific anymore — the defects affect both stacks.
 **Requirements**: UAT-01, UAT-02
+**Plan 01 status (2026-05-16)**: PAUSED at live-UAT checkpoint. Script (`hack/uat-47-ha-smoke.sh`) committed and clean at HEAD (`5bd9e673`, `74b90199`, `696c2cc3`). Live run on `uat-58-01` cluster: Pitfall-23 freshness gate ✅, test_03 ✅, test_09 ❌ (real upstream defect — see Phase 57.3 + 57.4). 47-UAT.md rows NOT flipped; canonical log NOT committed. Re-run after Phase 57.3 + 57.4 land.
 **Success Criteria** (what must be TRUE):
   1. `./bin/kinder version` confirms the v2.4 build hash before any UAT run begins — smoke never runs against a stale PATH binary
   2. Phase 47 UAT: `scripts/uat-47-ha-smoke.sh` runs against a 3-CP + 2-worker + 1-LB cluster; verifies pause (workers→CP→LB ordering), resume (LB→CP→workers ordering), and `kubectl get nodes` returns all nodes Ready; `.planning/phases/47-cluster-pause-resume/47-UAT.md` status fields updated from `issue` to `pass`
@@ -337,13 +381,16 @@ Phase 52 (etcd peer-TLS / IP pinning)  [highest blast radius; isolated]
       → Phase 57 (doctor cosmetics)     [depends on race-clean baseline]
         → Phase 57.1 (LB reapply fix)   [INSERTED 2026-05-13; UAT test_09 regression]
           → Phase 57.2 (LB IPv6 detect) [INSERTED 2026-05-13; surfaced by Phase 58 UAT; fixes a 57.1 sub-regression]
-            → Phase 58 (live UAT closure) [MUST run against final v2.4 binary; IPv4 HA only]
+            → Phase 57.3 (HA cert-regen recovery) [INSERTED 2026-05-16 as IPv6-only;
+                                                    SCOPE EXPANDED 2026-05-16 to all HA stacks
+                                                    after Phase 58 Plan 01 reproduced on IPv4]
+            → Phase 57.4 (IPAM probe regression) [INSERTED 2026-05-16; surfaced by Phase 58 Plan 01;
+                                                  sibling of 57.3 — either can land first, both block 58]
+              → Phase 58 (live UAT closure) [MUST run against final v2.4 binary;
+                                              blocked on Phase 57.3 + 57.4 as of 2026-05-16 13:00 UTC]
 
 Phase 54 (macOS signing)   — independent of source code; starts after Phase 52
 Phase 55 (Windows CI)      — independent of source code; starts after Phase 52
-Phase 57.3 (IPv6 HA cert-regen recovery) — INSERTED 2026-05-16; surfaced by Phase 57.2 IPv6 UAT;
-                                            downstream Phase 52 fix; does NOT block Phase 58
-                                            (Phase 58 = IPv4 HA only)
 ```
 
 **Why Phase 52 is first:** PITFALLS research item 1 flags cert/network operations on running containers as catastrophic (quorum loss, data corruption). Isolating Phase 52 as the first deliverable gives all subsequent testing a working HA resume path. Any other ordering risks running addon bump integration tests (Phase 53) against a broken HA cluster.
@@ -399,5 +446,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete (regression filed → 57.2) | 2026-05-13 |
 | 57.2. Fix `discoverLBIPv6` (INSERTED) | v2.4 | 2/2 | Complete (IPv6 cert-regen finding filed → 57.3) | 2026-05-16 |
-| 57.3. IPv6 HA cluster cert-regen recovery (INSERTED) | v2.4 | 0/? | Pending `/gsd:discuss-phase 57.3` | - |
-| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Unblocked (Phase 57.2 closed; IPv4 HA only) | - |
+| 57.3. HA cluster cert-regen recovery (INSERTED; SCOPE EXPANDED) | v2.4 | 0/? | Pending `/gsd:discuss-phase 57.3` (now covers IPv4 + IPv6 + dual) | - |
+| 57.4. IPAM probe regression (INSERTED) | v2.4 | 0/? | Pending `/gsd:discuss-phase 57.4` | - |
+| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | BLOCKED on Phase 57.3 + 57.4 (Plan 01 paused at live-UAT) | - |
