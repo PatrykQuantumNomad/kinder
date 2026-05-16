@@ -1,0 +1,48 @@
+ • ✓ uat-572-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-worker2 (role=worker, 0.1s)
+ • ✓ uat-572-ipv4-worker (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv4-control-plane (treating as drift): docker cp uat-572-ipv4-control-plane ipam-state: command "docker cp uat-572-ipv4-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv4-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv4-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane3 (3/3)
+timed out waiting for nodes Ready: deadline exceeded
+Cluster resumed. Total time: 486.4s
+ERROR: timed out waiting for nodes Ready: deadline exceeded
+ • ✓ uat-572-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-worker (role=worker, 0.1s)
+ • ✓ uat-572-ipv4-worker2 (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv4-control-plane (treating as drift): docker cp uat-572-ipv4-control-plane ipam-state: command "docker cp uat-572-ipv4-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv4-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv4-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane3 (3/3)
+Cluster resumed. Total time: 185.8s
+ • ✓ uat-572-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-worker (role=worker, 0.1s)
+ • ✓ uat-572-ipv4-worker2 (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv4-control-plane (treating as drift): docker cp uat-572-ipv4-control-plane ipam-state: command "docker cp uat-572-ipv4-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv4-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv4-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane3 (3/3)
+timed out waiting for nodes Ready: deadline exceeded
+Cluster resumed. Total time: 200.7s
+ERROR: timed out waiting for nodes Ready: deadline exceeded
+ • ✓ uat-572-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv4-worker2 (role=worker, 0.1s)
+ • ✓ uat-572-ipv4-worker (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv4-control-plane (treating as drift): docker cp uat-572-ipv4-control-plane ipam-state: command "docker cp uat-572-ipv4-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv4-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv4-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv4-control-plane3 (3/3)
+Cluster resumed. Total time: 142.6s

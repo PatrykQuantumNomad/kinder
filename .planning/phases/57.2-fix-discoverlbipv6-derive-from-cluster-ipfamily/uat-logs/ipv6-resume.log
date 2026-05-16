@@ -1,0 +1,28 @@
+ • ✓ uat-572-ipv6-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv6-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv6-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv6-control-plane3 (role=control-plane, 0.1s)
+⚠ cluster-resume-readiness: etcd leader changed since pause — leader id rotated; previous=14285351119565967360, current=13807016312373856256
+ • ✓ uat-572-ipv6-worker (role=worker, 0.1s)
+ • ✓ uat-572-ipv6-worker2 (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv6-control-plane (treating as drift): docker cp uat-572-ipv6-control-plane ipam-state: command "docker cp uat-572-ipv6-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv6-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv6-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv6-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv6-control-plane3 (3/3)
+timed out waiting for nodes Ready: deadline exceeded
+Cluster resumed. Total time: 172.6s
+ERROR: timed out waiting for nodes Ready: deadline exceeded
+ • ✓ uat-572-ipv6-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-572-ipv6-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv6-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-572-ipv6-control-plane3 (role=control-plane, 0.1s)
+⚠ cluster-resume-readiness: 2/3 etcd members healthy — 1 unhealthy etcd member(s) — quorum at risk
+ • ✓ uat-572-ipv6-worker (role=worker, 0.1s)
+ • ✓ uat-572-ipv6-worker2 (role=worker, 0.1s)
+IPDriftDetected error on uat-572-ipv6-control-plane (treating as drift): docker cp uat-572-ipv6-control-plane ipam-state: command "docker cp uat-572-ipv6-control-plane:/kind/ipam-state.json /var/folders/yg/57q5_dmd2yvd521_blb8tj_h0000gn/T/uat-572-ipv6-control-plane-ipam.json" failed with error: exit status 1
+Regenerating etcd peer cert on uat-572-ipv6-control-plane (1/3)
+Regenerating etcd peer cert on uat-572-ipv6-control-plane2 (2/3)
+Regenerating etcd peer cert on uat-572-ipv6-control-plane3 (3/3)
+timed out waiting for nodes Ready: deadline exceeded
+Cluster resumed. Total time: 203.5s
+ERROR: timed out waiting for nodes Ready: deadline exceeded

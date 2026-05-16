@@ -1,0 +1,24 @@
+NAME                          STATUS   ROLES           AGE     VERSION
+uat-572-ipv4-control-plane    Ready    control-plane   7m20s   v1.35.1
+uat-572-ipv4-control-plane2   Ready    control-plane   6m53s   v1.35.1
+uat-572-ipv4-control-plane3   Ready    control-plane   6m38s   v1.35.1
+uat-572-ipv4-worker           Ready    <none>          6m37s   v1.35.1
+uat-572-ipv4-worker2          Ready    <none>          6m37s   v1.35.1
+E0516 06:32:26.788016   75518 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:32:36.840347   75518 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:32:46.877205   75518 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:32:56.926386   75518 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:33:06.958606   75518 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 06:33:22.080162   76945 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:33:32.083903   76945 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": net/http: TLS handshake timeout"
+E0516 06:33:42.086533   76945 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": net/http: TLS handshake timeout"
+E0516 06:33:52.329568   76945 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+E0516 06:34:02.371815   76945 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:57378/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+NAME                          STATUS   ROLES           AGE     VERSION
+uat-572-ipv4-control-plane    Ready    control-plane   6m39s   v1.35.1
+uat-572-ipv4-control-plane2   Ready    control-plane   6m12s   v1.35.1
+uat-572-ipv4-control-plane3   Ready    control-plane   5m57s   v1.35.1
+uat-572-ipv4-worker           Ready    <none>          5m56s   v1.35.1
+uat-572-ipv4-worker2          Ready    <none>          5m56s   v1.35.1

@@ -1,0 +1,66 @@
+NAME                          STATUS     ROLES           AGE     VERSION
+uat-572-ipv6-control-plane    Ready      control-plane   7m10s   v1.35.1
+uat-572-ipv6-control-plane2   Ready      control-plane   6m50s   v1.35.1
+uat-572-ipv6-control-plane3   NotReady   control-plane   6m45s   v1.35.1
+uat-572-ipv6-worker           Ready      <none>          6m44s   v1.35.1
+uat-572-ipv6-worker2          Ready      <none>          6m44s   v1.35.1
+E0516 06:56:18.783036   25763 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:56:28.816168   25763 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:56:38.846268   25763 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:56:48.879997   25763 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:56:58.910089   25763 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 06:57:23.983064   27439 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": net/http: TLS handshake timeout"
+E0516 06:57:33.986307   27439 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": net/http: TLS handshake timeout"
+E0516 06:57:44.020712   27439 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:57:54.052782   27439 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:58:04.083581   27439 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 06:58:29.212282   29075 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:58:39.247930   29075 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:58:49.283457   29075 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:58:59.315325   29075 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:59:09.344274   29075 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 06:59:34.464864   30920 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:59:44.495405   30920 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 06:59:54.526073   30920 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:00:04.558728   30920 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:00:22.584689   30920 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": net/http: TLS handshake timeout - error from a previous attempt: EOF"
+error: Get "https://[::1]:64009/api?timeout=32s": net/http: TLS handshake timeout - error from a previous attempt: EOF
+E0516 07:00:48.645646   32683 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:00:58.676321   32683 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:01:08.706081   32683 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:01:18.737366   32683 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:01:28.766662   32683 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 07:01:53.890792   34384 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:02:03.925305   34384 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:02:13.957241   34384 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:02:23.996228   34384 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:02:34.033156   34384 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 07:02:59.167270   36076 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:03:09.201462   36076 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:03:19.232410   36076 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:03:29.267838   36076 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:03:39.298266   36076 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 07:04:04.418517   37780 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:04:14.453591   37780 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:04:24.492641   37780 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:04:34.524027   37780 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:04:44.559197   37780 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 07:05:09.686009   39343 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:05:19.717069   39343 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:05:29.745624   39343 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:05:41.754874   39343 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": net/http: TLS handshake timeout - error from a previous attempt: EOF"
+E0516 07:06:00.811745   39343 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF
+E0516 07:06:35.526677   41176 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:06:45.556098   41176 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:06:55.588986   41176 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:07:05.622843   41176 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+E0516 07:07:15.652905   41176 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://[::1]:64009/api?timeout=32s\": EOF"
+Unable to connect to the server: EOF

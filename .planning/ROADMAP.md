@@ -111,8 +111,9 @@ Phases 47-51: Cluster Pause/Resume, Cluster Snapshot/Restore, Inner-Loop Hot Rel
 - [x] **Phase 56: DEBT-04 Doctor Test Race Fix** - Eliminate `allChecks` global mutation under `t.Parallel()` via scoped `runChecks(checks []Check)` helper (completed 2026-05-12; `runChecks(checks []Check) []Result` helper extracted in `pkg/internal/doctor/check.go` with `RunAllChecks()` now a 1-line delegate; three racing parallel tests in `check_test.go` rewritten to use local `[]Check` slices; `Makefile` `test-race-doctor` target + `.github/workflows/race-check.yml` CI gate added; `CGO_ENABLED=1 go test -race ./pkg/internal/doctor/... -count=100` exits 0 in 2.662s with zero DATA RACE; verifier 3/3 passed)
 - [x] **Phase 57: Doctor Cosmetic Fixes** - Fix cluster-node-skew LB false-positive and cluster-resume-readiness JSON reason text (completed 2026-05-12; inline `external-load-balancer` + `external-etcd` role guard in `realListNodes` at `clusterskew.go:111-126` eliminates the false-positive version-skew warning; tolerant flow in `resumereadiness.go:172-207` calls `parseEtcdHealth` BEFORE the verdict so etcd 3.5+ non-zero exits still surface `"N/M etcd members healthy"` + `"quorum at risk"`; raw `"etcdctl endpoint health returned error: %v"` dump removed; Pitfall 22 fixture matrix covers etcd 3.4 + 3.5 JSON shapes; `make test-race-doctor` over `-count=100` green in 2.661s; verifier 3/3 passed)
 - [x] **Phase 57.1: Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED)** - Fix Phase 47↔51 regression: `lifecycle.Resume` never re-applies the Envoy LB dynamic xDS config after the LB container restarts. The container's hardcoded entrypoint resets `/home/envoy/{cds,lds}.yaml` to `resources: []` on every start, so after pause+resume the LB has zero upstreams and host kubectl gets EOF — discovered during Phase 58 live UAT test_09 (2026-05-13) (completed 2026-05-13)
-- [ ] **Phase 57.2: Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6 (INSERTED)** - Phase 57.1's `discoverLBIPv6` probes `docker network inspect --format '{{.EnableIPv6}}'`, which is `true` on macOS Docker Desktop's kind network by default. Vanilla IPv4 clusters then re-render the resumed LB listener as `address: "::"` (Envoy ipv4_compat:false → IPv6-only listener), so host kubectl on the IPv4 127.0.0.1:port mapping returns TLS EOF after resume — discovered during Phase 58 live UAT test_09 (2026-05-13)
-- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (BLOCKED on Phase 57.2)
+- [x] **Phase 57.2: Fix `discoverLBIPv6` — derive IPv6 mode from cluster IPFamily, not docker network EnableIPv6 (INSERTED)** - Replaced docker-network `EnableIPv6` probe with cluster-authoritative `io.x-k8s.kinder.ip-family={ipv4\|ipv6\|dual}` label stamped at create-time on all containers (LB+CP+worker) across docker/podman/nerdctl; added `loadbalancer.ClusterIPFamily(binary, node)` helper as single source of truth on resume; deleted `discoverLBIPv6` entirely; added `ipv4_compat: true` to IPv6/dual listener template branch (completed 2026-05-16; verifier 6/6 PASSED; live UAT on macOS Docker Desktop with IPv6-enabled `kind` network: IPv4 cluster pause/resume listener invariance verified — lds.yaml stays `address: "0.0.0.0"` pre+post resume and host `kubectl get nodes` returns 5/5 Ready, closing the Phase 58 UAT test_09 IPv4 regression of record; IPv6 cluster listener also invariant — lds.yaml stays `"::"` + `ipv4_compat: true` pre+post resume; SC4 macOS DD caveat documented in 57.2-02-UAT.md — Docker Desktop creates only `[::1]:port->6443/tcp` for IPv6 clusters so `ipv4_compat` is architecturally defensive but not exercised by host kubectl on this topology; IPv6 HA cluster cert-regen recovery surfaced as a separate downstream Phase 52 finding → filed as Phase 57.3)
+- [ ] **Phase 57.3: IPv6 HA cluster cert-regen recovery (INSERTED)** - After Phase 52's cert-regen fires on an IPv6 HA cluster, apiservers crash-loop because they cannot TLS-handshake to etcd on `[::1]:2379` (`authentication handshake failed: context deadline exceeded` → `Error creating leases: error creating storage factory: context deadline exceeded` → fatal exit). Likely root cause: regenerated `etcd/server.crt` SAN list lacks IPv6 loopback, OR etcd cluster peer re-coordination fails under regenerated peer certs on IPv6 link-local addresses. Phase 52 was never UAT'd against IPv6 HA — Phase 57.2's UAT script was the first to exercise it (2026-05-16). Does NOT block Phase 58 (which only exercises IPv4 HA per `hack/uat-47-ha-smoke.sh`).
+- [ ] **Phase 58: Live UAT Closure for Phase 47 + 51** - Run and record live smoke tests against rebuilt v2.4 binary for both deferred UAT items (Phase 57.2 closed 2026-05-16; UNBLOCKED)
 
 ## Phase Details
 
@@ -262,7 +263,7 @@ Plans:
 
 Plans:
 - [x] 57.2-01-PLAN.md — Atomic code fix (autonomous): RED tests + GREEN implementation of ip-family label injection across docker/podman/nerdctl (LB+CP+worker); ClusterIPFamily helper in pkg/cluster/loadbalancer/; ipv4_compat: true on the IPv6/dual listener template branch; resume calls helper; delete discoverLBIPv6 entirely
-- [ ] 57.2-02-PLAN.md — Live IPv6 UAT on macOS Docker Desktop (developer-driven; requires Docker Desktop IPv6 enabled): IPv4 + IPv6 cluster create/pause/resume listener invariance + host kubectl succeeds + ip-family label present on every container
+- [x] 57.2-02-PLAN.md — Live IPv6 UAT on macOS Docker Desktop (developer-driven; requires Docker Desktop IPv6 enabled): IPv4 + IPv6 cluster create/pause/resume listener invariance + host kubectl succeeds + ip-family label present on every container
 
 **Details**:
 The fix-shape options to discuss (each has tradeoffs; the right choice depends on existing labels/state already written during create-time):
@@ -275,9 +276,41 @@ Forensic state available for the planner:
   - Failed UAT log: `hack/uat-47-ha-smoke.log.pre-57.2` (untracked)
   - Live cluster `uat-58-01` left running on host (3-CP + 2-worker + 1-LB; cert-regen strategy; on dual-stack `kind` network) — exercise candidate fixes against this cluster before committing.
 
+### Phase 57.3: IPv6 HA cluster cert-regen recovery (INSERTED)
+
+**Goal**: After `kinder pause` + `kinder resume` on an IPv6 HA cluster, every `kube-apiserver` process successfully completes its TLS handshake to etcd on `[::1]:2379` within 30s of apiserver start, and all CP nodes report Ready within the `--wait 10m` window.
+**Depends on**: Phase 52 (the cert-regen module being fixed). Independent of Phase 58 (which only exercises IPv4 HA via `hack/uat-47-ha-smoke.sh`).
+**Requirements**: To be derived during planning (likely a new LIFE-12 requirement, or appended scope to LIFE-09).
+**Why urgent (discovered 2026-05-16 during Phase 57.2 Plan 02 live UAT)**:
+  - Forensic evidence captured live on macOS Docker Desktop with IPv6 enabled (`uat-572-ipv6` cluster, 3-CP + 2-worker + 1-LB):
+    - `kube-apiserver` process on cp1 NOT listening on port 6443 (`curl https://127.0.0.1:6443/healthz` from inside cp1 → connection refused)
+    - `etcd` process IS running on cp1 with `--listen-client-urls=https://[::1]:2379,https://[fc00:4d57:1afd:1f1b::a]:2379`
+    - `crictl logs` of the kube-apiserver container shows repeated `grpc: addrConn.createTransport failed to connect to {Addr: "[::1]:2379"}` + `transport: authentication handshake failed: context canceled` / `context deadline exceeded` → fatal `Error creating leases: error creating storage factory: context deadline exceeded` after ~20s → process exits → crash loop
+    - Pre-resume warning fired: `cluster-resume-readiness: 2/3 etcd members healthy — 1 unhealthy etcd member(s) — quorum at risk`
+  - **Phase 52's cert-regen flow was never UAT'd against an IPv6 HA cluster** — Phase 47's HA UAT exercises only IPv4, and Phase 58 inherits that scope. Phase 57.2's UAT script `hack/uat-57.2-ipv6-listener.sh` was the first artifact to exercise IPv6 HA pause/resume end-to-end.
+  - This is architecturally upstream of Phase 57.2's LB listener fix (LB lds.yaml + cds.yaml + container labels are all correct for the IPv6 cluster per `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-diag.txt`). The failure is INSIDE the CP container.
+
+**Likely fix areas** (to be locked during `/gsd:discuss-phase 57.3`):
+  - **Option A — etcd server.crt SAN list**: Phase 52's cert-regen may be regenerating `etcd/server.crt` without `[::1]` in its IP-SAN list, so the apiserver→etcd TLS handshake fails ServerName verification when dialing `https://[::1]:2379`. Verify via `openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -text` on the cp1 container after cert-regen.
+  - **Option B — etcd peer re-coordination**: Phase 52 regenerates peer certs sequentially on all 3 CPs. On IPv6, the cluster may fail to re-elect a leader before the apiserver's 20s startup timeout. Add an etcd-readiness gate AFTER cert-regen on all 3 CPs and BEFORE returning from Resume.
+  - **Option C — IPv6-specific kubeadm CA path**: Some IPv6 deployments need IPv6-aware kubeadm configuration that Phase 52's cert-regen doesn't honor.
+
+**Success Criteria** (what must be TRUE):
+  1. After `kinder pause` + `kinder resume --wait 10m` on an IPv6 HA cluster (`networking.ipFamily: ipv6`), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` (apiserver is bound and serving) within the wait window.
+  2. After resume on an IPv6 HA cluster, host `kubectl --context kind-<cluster> get nodes` returns all 5 nodes (3 CP + 2 worker) in `Ready` state within the `--wait 10m` window.
+  3. New regression test asserts the regenerated `etcd/server.crt` SAN list includes IPv6 loopback (`[::1]` or appropriate alias) for IPv6 clusters (using FakeNode/FakeCmd to avoid live cert generation in the test).
+  4. Phase 57.2's `hack/uat-57.2-ipv6-listener.sh` test_11 (IPv6 host kubectl after resume) passes against the post-57.3 binary on macOS Docker Desktop with IPv6 enabled (the failing pre-57.3 log at `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-kubectl.log` + `ipv6-diag.txt` are the comparison baseline).
+
+**Plans**: TBD (1-3 plans expected; `/gsd:discuss-phase 57.3` to lock fix-shape; then `/gsd:plan-phase 57.3`).
+
+**Forensic state available for the planner**:
+  - Failed UAT log: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-resume.log` (resume timeout) + `ipv6-kubectl.log` (TLS EOF polling) + `ipv6-diag.txt` (LB labels + lds.yaml + cds.yaml + crictl pods snapshot)
+  - Phase 57.2 verification of the LB-layer correctness: `.planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/57.2-VERIFICATION.md`
+  - The bug-of-record forensic command sequence is captured verbatim in `57.2-02-UAT.md` "Forensic Deep-Dive" section.
+
 ### Phase 58: Live UAT Closure for Phase 47 + 51
 **Goal**: Both carry-forward UAT items from v2.3 are formally closed with live evidence recorded against the final v2.4 binary
-**Depends on**: Phase 57.2 (LB IPv6-detection fix; otherwise test_09 still fails at TLS EOF on macOS Docker Desktop), then Phase 57.1 (LB reapply fix; otherwise test_09 fails at empty cds/lds), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23)
+**Depends on**: Phase 57.2 (LB IPv6-detection fix — VERIFIED CLOSED 2026-05-16), then Phase 57.1 (LB reapply fix), then Phase 57 (must run against the FINAL v2.4 binary — all bumps + signing + IP-pinning + cosmetics complete; see Pitfall 23). Independent of Phase 57.3 (which is IPv6-only; Phase 58 exercises IPv4 HA only).
 **Requirements**: UAT-01, UAT-02
 **Success Criteria** (what must be TRUE):
   1. `./bin/kinder version` confirms the v2.4 build hash before any UAT run begins — smoke never runs against a stale PATH binary
@@ -304,10 +337,13 @@ Phase 52 (etcd peer-TLS / IP pinning)  [highest blast radius; isolated]
       → Phase 57 (doctor cosmetics)     [depends on race-clean baseline]
         → Phase 57.1 (LB reapply fix)   [INSERTED 2026-05-13; UAT test_09 regression]
           → Phase 57.2 (LB IPv6 detect) [INSERTED 2026-05-13; surfaced by Phase 58 UAT; fixes a 57.1 sub-regression]
-            → Phase 58 (live UAT closure) [MUST run against final v2.4 binary]
+            → Phase 58 (live UAT closure) [MUST run against final v2.4 binary; IPv4 HA only]
 
 Phase 54 (macOS signing)   — independent of source code; starts after Phase 52
 Phase 55 (Windows CI)      — independent of source code; starts after Phase 52
+Phase 57.3 (IPv6 HA cert-regen recovery) — INSERTED 2026-05-16; surfaced by Phase 57.2 IPv6 UAT;
+                                            downstream Phase 52 fix; does NOT block Phase 58
+                                            (Phase 58 = IPv4 HA only)
 ```
 
 **Why Phase 52 is first:** PITFALLS research item 1 flags cert/network operations on running containers as catastrophic (quorum loss, data corruption). Isolating Phase 52 as the first deliverable gives all subsequent testing a working HA resume path. Any other ordering risks running addon bump integration tests (Phase 53) against a broken HA cluster.
@@ -362,5 +398,6 @@ Phases execute in numeric order. Decimal phases (inserted via `/gsd-insert-phase
 | 56. DEBT-04 Doctor Test Race Fix | v2.4 | 1/1 | Complete | 2026-05-12 |
 | 57. Doctor Cosmetic Fixes | v2.4 | 2/2 | Complete | 2026-05-12 |
 | 57.1. Phase 47 Resume re-applies Envoy LB cds/lds config (INSERTED) | v2.4 | 2/2 | Complete (regression filed → 57.2) | 2026-05-13 |
-| 57.2. Fix `discoverLBIPv6` (PROPOSED) | v2.4 | 1/2 | In Progress|  |
-| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Blocked on 57.2 | - |
+| 57.2. Fix `discoverLBIPv6` (INSERTED) | v2.4 | 2/2 | Complete (IPv6 cert-regen finding filed → 57.3) | 2026-05-16 |
+| 57.3. IPv6 HA cluster cert-regen recovery (INSERTED) | v2.4 | 0/? | Pending `/gsd:discuss-phase 57.3` | - |
+| 58. Live UAT Closure for Phase 47 + 51 | v2.4 | 0/2 | Unblocked (Phase 57.2 closed; IPv4 HA only) | - |

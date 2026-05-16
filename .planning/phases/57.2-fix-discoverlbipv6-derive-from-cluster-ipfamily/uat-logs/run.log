@@ -1,0 +1,104 @@
+[16:55:01] uat-57.2-ipv6-listener.sh starting; KINDER=./bin/kinder
+kind v1.5.0 go1.25.7 darwin/arm64
+[16:55:01] test_00: confirm Docker Desktop IPv6 enabled
+[16:55:01] WARN: 'docker info' did not mention IPv6. Continuing — final
+[16:55:01]       assertion is on the kind network's EnableIPv6 flag after
+[16:55:01]       cluster creation in test_01.
+[16:55:01] test_01: create vanilla IPv4 3-CP + 2-worker + 1-LB cluster
+[16:57:15] test_01: kind network EnableIPv6=true (expect 'true' on macOS Docker Desktop)
+[16:57:15] test_02: assert LB lds.yaml has address: "0.0.0.0" pre-resume (IPv4 cluster)
+[16:57:15] test_02: PASS
+[16:57:15] test_03: pause + resume IPv4 cluster
+[16:57:15] cleanup: deleting clusters (best-effort)
+[16:59:48] uat-57.2-ipv6-listener.sh starting; KINDER=./bin/kinder
+kind v1.5.0 go1.25.7 darwin/arm64
+[16:59:48] test_00: confirm Docker Desktop IPv6 enabled
+[16:59:48] WARN: 'docker info' did not mention IPv6. Continuing — final
+[16:59:48]       assertion is on the kind network's EnableIPv6 flag after
+[16:59:48]       cluster creation in test_01.
+[16:59:48] test_01: create vanilla IPv4 3-CP + 2-worker + 1-LB cluster
+[17:01:56] test_01: kind network EnableIPv6=true (expect 'true' on macOS Docker Desktop)
+[17:01:56] test_02: assert LB lds.yaml has address: "0.0.0.0" pre-resume (IPv4 cluster)
+[17:01:56] test_02: PASS
+[17:01:57] test_03: pause + resume IPv4 cluster
+[17:12:10] cleanup: deleting clusters (best-effort)
+[17:16:23] uat-57.2-ipv6-listener.sh starting; KINDER=./bin/kinder
+kind v1.5.0 go1.25.7 darwin/arm64
+[17:16:23] test_00: confirm Docker Desktop IPv6 enabled
+[17:16:23] WARN: 'docker info' did not mention IPv6. Continuing — final
+[17:16:23]       assertion is on the kind network's EnableIPv6 flag after
+[17:16:23]       cluster creation in test_01.
+[17:16:23] test_01: create vanilla IPv4 3-CP + 2-worker + 1-LB cluster
+[17:18:36] test_01: kind network EnableIPv6=true (expect 'true' on macOS Docker Desktop)
+[17:18:36] test_02: assert LB lds.yaml has address: "0.0.0.0" pre-resume (IPv4 cluster)
+[17:18:37] test_02: PASS
+[17:18:37] test_03: pause + resume IPv4 cluster (--wait 10m for cert-regen + addon recovery)
+[17:23:50] test_04: assert LB lds.yaml STILL has address: "0.0.0.0" post-resume (the regression-of-record)
+[17:23:50] test_04: PASS
+[17:23:50] test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster
+[17:23:51] test_05: PASS — Phase 58 UAT test_09 regression CLOSED
+[17:23:51] test_06: assert io.x-k8s.kinder.ip-family=ipv4 on every IPv4 cluster container
+[17:23:51] test_06: PASS — all IPv4 cluster containers labeled
+[17:23:51] test_07: create explicit IPv6 3-CP + 2-worker + 1-LB cluster
+[17:26:03] test_08: assert IPv6 LB lds.yaml has address: "::" AND ipv4_compat: true pre-resume
+[17:26:03] test_08: PASS
+[17:26:03] test_09: pause + resume IPv6 cluster
+[17:31:09] test_09: resume returned non-zero (1); continuing for forensic capture in test_10/test_11
+[17:31:09] test_10: assert IPv6 LB lds.yaml STILL has address: "::" AND ipv4_compat: true post-resume
+[17:31:09] test_10: PASS
+[17:31:09] test_11: host kubectl get nodes (10m deadline) against resumed IPv6 cluster (verifies ipv4_compat)
+[17:31:10] test_11: PASS — ipv4_compat path verified for IPv6 cluster
+[17:31:10] test_12: assert io.x-k8s.kinder.ip-family=ipv6 on every IPv6 cluster container
+[17:31:10] test_12: PASS — all IPv6 cluster containers labeled
+[17:31:10] ALL TESTS PASSED
+[17:31:10] cleanup: deleting clusters (best-effort)
+[06:24:19] uat-57.2-ipv6-listener.sh starting; KINDER=./bin/kinder
+kind v1.5.0 go1.25.7 darwin/arm64
+[06:24:19] test_00: confirm Docker Desktop IPv6 enabled
+[06:24:19] WARN: 'docker info' did not mention IPv6. Continuing — final
+[06:24:19]       assertion is on the kind network's EnableIPv6 flag after
+[06:24:19]       cluster creation in test_01.
+[06:24:19] test_01: create vanilla IPv4 3-CP + 2-worker + 1-LB cluster
+[06:26:42] test_01: kind network EnableIPv6=true (expect 'true' on macOS Docker Desktop)
+[06:26:42] test_02: assert LB lds.yaml has address: "0.0.0.0" pre-resume (IPv4 cluster)
+[06:26:42] test_02: PASS
+[06:26:42] test_03: pause + resume IPv4 cluster (--wait 10m for cert-regen + addon recovery)
+[06:32:11] test_03: resume returned non-zero (1) — likely the internal node-Ready wait timed out.
+[06:32:11]          Continuing so test_04 can capture post-resume lds.yaml and test_05 can poll kubectl with a longer deadline.
+[06:32:11] test_04: assert LB lds.yaml STILL has address: "0.0.0.0" post-resume (the regression-of-record)
+[06:32:11] test_04: PASS
+[06:32:11] test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster
+[06:34:02] cleanup: deleting clusters (best-effort)
+[06:41:18] uat-57.2-ipv6-listener.sh starting; KINDER=./bin/kinder
+kind v1.5.0 go1.25.7 darwin/arm64
+[06:41:18] test_00: confirm Docker Desktop IPv6 enabled
+[06:41:18] WARN: 'docker info' did not mention IPv6. Continuing — final
+[06:41:18]       assertion is on the kind network's EnableIPv6 flag after
+[06:41:18]       cluster creation in test_01.
+[06:41:18] test_01: create vanilla IPv4 3-CP + 2-worker + 1-LB cluster
+[06:43:33] test_01: kind network EnableIPv6=true (expect 'true' on macOS Docker Desktop)
+[06:43:33] test_02: assert LB lds.yaml has address: "0.0.0.0" pre-resume (IPv4 cluster)
+[06:43:34] test_02: PASS
+[06:43:34] test_03: pause + resume IPv4 cluster (--wait 10m for cert-regen + addon recovery)
+[06:48:04] test_04: assert LB lds.yaml STILL has address: "0.0.0.0" post-resume (the regression-of-record)
+[06:48:04] test_04: PASS
+[06:48:04] test_05: host kubectl get nodes (10m deadline) against resumed IPv4 cluster
+[06:48:05] test_05: PASS — Phase 58 UAT test_09 regression CLOSED
+[06:48:05] test_06: assert io.x-k8s.kinder.ip-family=ipv4 on every IPv4 cluster container
+[06:48:05] test_06: PASS — all IPv4 cluster containers labeled
+[06:48:05] test_07: create explicit IPv6 3-CP + 2-worker + 1-LB cluster
+[06:50:25] test_08: assert IPv6 LB lds.yaml has address: "::" AND ipv4_compat: true pre-resume
+[06:50:25] test_08: PASS
+[06:50:25] test_09: pause + resume IPv6 cluster
+[06:56:03] test_09: resume returned non-zero (1); continuing for forensic capture in test_10/test_11
+[06:56:03] test_10: assert IPv6 LB lds.yaml STILL has address: "::" AND ipv4_compat: true post-resume
+[06:56:03] test_10: PASS
+[06:56:03] test_11: host kubectl get nodes (10m deadline) against resumed IPv6 cluster (verifies ipv4_compat)
+[07:06:10] test_11: kubectl polling output (final state):
+[07:07:15] diagnostic dump for uat-572-ipv6 -> .planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-diag.txt
+[07:07:15] FAIL: test_11: not all nodes Ready after 10m on resumed IPv6 cluster — ipv4_compat path may be broken OR slow CP recovery; see .planning/phases/57.2-fix-discoverlbipv6-derive-from-cluster-ipfamily/uat-logs/ipv6-diag.txt
+[07:07:15] cleanup: SKIPPED — script failed or exited abnormally; clusters preserved for forensics
+[07:07:15]          inspect LB:    docker exec uat-572-ipv4-external-load-balancer cat /home/envoy/cds.yaml
+[07:07:15]                         docker exec uat-572-ipv4-external-load-balancer cat /home/envoy/lds.yaml
+[07:07:15]          list nodes:    docker ps --filter label=io.x-k8s.kind.cluster=uat-572-ipv4
+[07:07:15]          clean up later: ./bin/kinder delete cluster --name uat-572-ipv4 ; ./bin/kinder delete cluster --name uat-572-ipv6

@@ -1,0 +1,16 @@
+failed to capture etcd leader id for HA pause snapshot (continuing): etcdctl endpoint status via crictl exec failed: command "docker exec --privileged uat-572-ipv6-control-plane crictl exec fdbbe4f5eb7166771b5444243682632de81454fff7fab04b764531008dde732c etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json" failed with error: exit status 1
+ - uat-572-ipv6-worker stopped (role: worker, 5.3s)
+ - uat-572-ipv6-worker2 stopped (role: worker, 1.3s)
+ - uat-572-ipv6-control-plane stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-control-plane2 stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-control-plane3 stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-external-load-balancer stopped (role: external-load-balancer, 30.2s)
+Cluster paused. Total time: 133.4s
+failed to capture etcd leader id for HA pause snapshot (continuing): etcdctl endpoint status via crictl exec failed: command "docker exec --privileged uat-572-ipv6-control-plane crictl exec 3d134843f4836fb5a036fb42f06c86951f715431b45a953449b005d017cf91ee etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json" failed with error: exit status 1
+ - uat-572-ipv6-worker stopped (role: worker, 1.3s)
+ - uat-572-ipv6-worker2 stopped (role: worker, 5.3s)
+ - uat-572-ipv6-control-plane stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-control-plane2 stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-control-plane3 stopped (role: control-plane, 30.3s)
+ - uat-572-ipv6-external-load-balancer stopped (role: external-load-balancer, 30.2s)
+Cluster paused. Total time: 133.6s
