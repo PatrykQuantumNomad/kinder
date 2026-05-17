@@ -246,26 +246,31 @@ func renewOrRegenOneCert(node nodes.Node, certName, currentIP string) error {
 	return nil
 }
 
-// renewAndCycleOne performs renew + manifest mv-out + sleep + mv-in + active
-// health poll for one cert type on one CP. Hard-fails on any sub-step error.
-// The active health gate replaces the historical 20s staticPodRecreationWait.
-func renewAndCycleOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL string, currentIP string, logger log.Logger) error {
-	// 1. Regenerate cert with current IP (handles IP drift + cert expiry in one step).
-	if err := renewOrRegenOneCert(node, c.certName, currentIP); err != nil {
-		return errors.Wrapf(err, "kubeadm certs renew %s failed on %s", c.certName, node.String())
-	}
-	// 2. mv-out (kubelet will notice within fileCheckFrequency and stop the pod)
+// cycleManifestOne performs manifest mv-out + sleep + mv-in + active health
+// poll for one cert type on one CP. Called only after ALL CPs have had their
+// certs regenerated (see two-phase flow in RegenerateEtcdPeerCertsWholesale).
+// Hard-fails on any sub-step error.
+//
+// Separation from cert regeneration is mandatory for HA clusters: etcd peer
+// TLS requires ALL members to present valid mutual certs. If we cycle CP1's
+// manifest before CP2/CP3 certs are regenerated, CP1's etcd starts with a
+// new cert but CP2/CP3 still present old (possibly expired or wrong-SAN) certs,
+// causing "remote error: tls: bad certificate" and "ID mismatch" on the Raft
+// peer layer. The two-phase approach ensures all peer certs are valid before
+// any etcd process is restarted.
+func cycleManifestOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL string, logger log.Logger) error {
+	// 1. mv-out (kubelet will notice within fileCheckFrequency and stop the pod)
 	if err := node.Command("mv", c.manifestPath, c.backupPath).Run(); err != nil {
 		return errors.Wrapf(err, "mv out %s failed on %s", c.manifestPath, node.String())
 	}
-	// 3. wait for kubelet to notice manifest gone — keep existing sleep
+	// 2. wait for kubelet to notice manifest gone — keep existing sleep
 	//    (no kubelet API for "have you noticed"; see RESEARCH §3 Pitfall 3).
 	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
-	// 4. mv-in
+	// 3. mv-in
 	if err := node.Command("mv", c.backupPath, c.manifestPath).Run(); err != nil {
 		return errors.Wrapf(err, "mv back %s failed on %s", c.manifestPath, node.String())
 	}
-	// 5. active health gate (replaces the old 20s static staticPodRecreationWait)
+	// 4. active health gate (replaces the old 20s static staticPodRecreationWait)
 	switch c.cycleKind {
 	case "etcd":
 		if err := etcdHealthChecker(node, etcdEndpoint); err != nil {
@@ -276,15 +281,39 @@ func renewAndCycleOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL str
 			return errors.Wrapf(err, "apiserver healthz failed on %s after %s renew", node.String(), c.certName)
 		}
 	}
-	logger.V(1).Infof(" ✓ renewed %s on %s, %s pod healthy", c.certName, node.String(), c.cycleKind)
+	logger.V(1).Infof(" ✓ cycled manifest for %s on %s, %s pod healthy", c.certName, node.String(), c.cycleKind)
 	return nil
 }
 
-// RegenerateEtcdPeerCertsWholesale runs kubeadm cert renew for each cert type
-// in the locked set on every CP node and cycles the appropriate static-pod
-// manifest per cert type. All CPs must be started before this call. Failure on
-// any CP halts the operation and returns a structured diagnostic error directing
-// the user to delete and recreate the cluster.
+// nodeRegenState holds per-CP data collected during Phase 1 so Phase 2 can
+// run without re-querying the nodes.
+type nodeRegenState struct {
+	node     nodes.Node
+	preSnap  certExpirationSnapshot // may be nil if snapshot capture failed
+	currentIP string
+}
+
+// RegenerateEtcdPeerCertsWholesale runs cert regeneration in two phases across
+// all CP nodes, then cycles each static-pod manifest. All CPs must be started
+// before this call. Failure on any CP halts the operation and returns a
+// structured diagnostic error directing the user to delete and recreate the
+// cluster.
+//
+// TWO-PHASE DESIGN (HA correctness requirement):
+//
+// etcd uses mutual TLS for peer communication. All members must present a valid
+// peer cert to every other member. If cert regeneration and manifest cycling are
+// interleaved per-CP (e.g. regen+cycle CP1, then regen+cycle CP2), etcd on CP1
+// restarts with its new cert before CP2/CP3 have their certs regenerated. CP1's
+// new etcd then attempts to connect to CP2/CP3 which still present old certs —
+// causing "remote error: tls: bad certificate" and Raft "ID mismatch" errors.
+// The etcd health gate then times out and the entire resume fails.
+//
+// The correct sequence is:
+//   Phase 1: Regenerate cert files on ALL CPs (no pod restart, manifests intact).
+//   Phase 2: Cycle each manifest (mv-out + mv-in) one CP at a time, waiting for
+//            the health gate between each, so all certs are valid before any
+//            etcd process restarts.
 //
 // The function is a no-op when len(cpNodes) <= 1 (defense in depth; callers
 // already gate on HA, but safety is preserved here too).
@@ -321,8 +350,14 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	certTypes := []string{"etcd-peer", "etcd-server", "etcd-healthcheck-client", "apiserver-etcd-client"}
 
 	total := len(cpNodes)
+	states := make([]nodeRegenState, total)
+
+	// ── PHASE 1: Regenerate cert FILES on ALL CPs ──────────────────────────
+	// No manifest cycling yet. All peer certs must be valid before any etcd
+	// process restarts (see two-phase design comment above).
+	logger.V(0).Infof("cert regen phase 1: regenerating cert files on all %d CP nodes", total)
 	for i, node := range cpNodes {
-		logger.V(0).Infof("Regenerating etcd-adjacent certs on %s (%d/%d)", node.String(), i+1, total)
+		logger.V(0).Infof("  [phase 1] regenerating certs on %s (%d/%d)", node.String(), i+1, total)
 
 		// Determine current container IP for cert SAN injection (IP drift fix).
 		currentIP, ipErr := currentNodeIPv4(node)
@@ -332,7 +367,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 				"cert regen: failed to detect current IP on %s. Cluster state is undefined — delete and recreate the cluster",
 				node.String())
 		}
-		logger.V(1).Infof("  current IP on %s: %s", node.String(), currentIP)
+		logger.V(1).Infof("    current IP on %s: %s", node.String(), currentIP)
 
 		// Snapshot pre-renew check-expiration for the post-pass verify.
 		preSnap, preErr := captureCertExpirationSnapshot(node)
@@ -341,28 +376,51 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 		}
 
 		for _, ct := range certTypes {
-			cyc, ok := cycleForCertType[ct]
-			if !ok {
+			if _, ok := cycleForCertType[ct]; !ok {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Errorf("unknown cert type %q (cluster state is undefined — delete and recreate the cluster)", ct)
 			}
-			if err := renewAndCycleOne(node, cyc, etcdEndpoint, healthzURL, currentIP, logger); err != nil {
+			if err := renewOrRegenOneCert(node, ct, currentIP); err != nil {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Wrapf(err,
-					"cert regen failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
+					"cert regen phase 1 failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
 					node.String(), ct)
+			}
+		}
+
+		states[i] = nodeRegenState{node: node, preSnap: preSnap, currentIP: currentIP}
+		logger.V(1).Infof("    [phase 1] cert files regenerated on %s", node.String())
+	}
+	logger.V(0).Infof("cert regen phase 1 complete: all %d CP nodes have fresh cert files", total)
+
+	// ── PHASE 2: Cycle static-pod manifests, one CP at a time ─────────────
+	// All peer certs are now valid. Cycle each CP's manifest and wait for the
+	// health gate before moving to the next CP.
+	logger.V(0).Infof("cert regen phase 2: cycling manifests on all %d CP nodes", total)
+	for i, st := range states {
+		logger.V(0).Infof("  [phase 2] cycling manifests on %s (%d/%d)", st.node.String(), i+1, total)
+
+		for _, ct := range certTypes {
+			cyc := cycleForCertType[ct]
+			if err := cycleManifestOne(st.node, cyc, etcdEndpoint, healthzURL, logger); err != nil {
+				dumpCertRegenDiagnostics(st.node, ct, logger)
+				return errors.Wrapf(err,
+					"cert regen phase 2 (manifest cycle) failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
+					st.node.String(), ct)
 			}
 		}
 
 		// Post-pass verification per CP — kubeadm certs check-expiration.
 		// Hard-fail if any regenerated cert's notAfter did not advance.
-		if err := verifyCheckExpirationAdvanced(node, certTypes, preSnap); err != nil {
-			dumpCertRegenDiagnostics(node, "post-pass-verify", logger)
+		if err := verifyCheckExpirationAdvanced(st.node, certTypes, st.preSnap); err != nil {
+			dumpCertRegenDiagnostics(st.node, "post-pass-verify", logger)
 			return errors.Wrapf(err,
 				"post-pass cert-expiration check failed on %s. Cluster state is undefined — delete and recreate the cluster",
-				node.String())
+				st.node.String())
 		}
+		logger.V(1).Infof("    [phase 2] manifests cycled and verified on %s", st.node.String())
 	}
+	logger.V(0).Infof("cert regen phase 2 complete: all %d CP nodes healthy", total)
 	return nil
 }
 

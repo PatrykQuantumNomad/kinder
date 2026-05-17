@@ -418,8 +418,19 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 // fakes work out of the box for tests that don't explicitly call withIPv4/IPv6.
 
 // TestRegenerateEtcdPeerCertsWholesale_HappyPath: 3 CP nodes, IPv4, 4 cert types.
-// Asserts per-CP: 1 pre-snap + 4×(renew+mv-out+mv-in) + 1 post-snap = 14 node.Command calls.
-// Total: 14 × 3 = 42 node.Command calls.
+//
+// Two-phase command count:
+//   Phase 1 (cert regen, ALL 3 CPs first):
+//     per CP: ip-detect(1) + pre-snap(1) + 4×(hostname+bash-cfg+rm+kubeadm-init)(16) = 18
+//     total phase 1: 18 × 3 = 54
+//   Phase 2 (manifest cycle, ALL 3 CPs):
+//     per CP: 4×(mv-out+mv-in)(8) + post-snap(1) = 9
+//     total phase 2: 9 × 3 = 27
+//   Grand total: 54 + 27 = 81 node.Command calls (same as before, different sequence).
+//
+// check-expiration order changes in two-phase: pre-cp1, pre-cp2, pre-cp3 (Phase 1),
+// then post-cp1, post-cp2, post-cp3 (Phase 2). First 3 calls = pre, next 3 = post.
+//
 // etcdHealthChecker called 3×/CP (after etcd-peer, etcd-server, etcd-healthcheck-client).
 // apiserverHealthChecker called 1×/CP (after apiserver-etcd-client).
 func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
@@ -430,17 +441,20 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	apiRec := &recordingApiserverChecker{}
 	swapApiserverHealthChecker(t, apiRec.check)
 
-	// Track check-expiration call index for pre/post alternation per CP.
+	// Track check-expiration call index for pre/post ordering.
+	// Two-phase order: pre-cp1(0), pre-cp2(1), pre-cp3(2), post-cp1(3), post-cp2(4), post-cp3(5).
+	// Calls 0..N-1 are pre-snaps (Phase 1); calls N..2N-1 are post-snaps (Phase 2).
 	checkExpCallIdx := 0
+	const numCPs = 3
 	rec := &recordingCmder{
 		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
-				if idx%2 == 0 {
-					return preJSON, nil
+				if idx < numCPs {
+					return preJSON, nil // Phase 1 pre-snaps
 				}
-				return postJSON, nil
+				return postJSON, nil // Phase 2 post-snaps
 			}
 			return "", nil
 		}),
@@ -483,12 +497,10 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 		}
 	}
 
-	// Verify node.Command calls per CP:
-	// ip-detect(1) + pre-snap(1) + 4×(hostname+bash-cfg+rm+kubeadm-init+mv-out+mv-in)(24) + post-snap(1) = 27 per CP
-	// Total: 27 × 3 CPs = 81.
+	// Verify node.Command calls total (see comment above for breakdown).
 	calls := rec.snapshot()
-	if len(calls) != 81 { // 27 per CP × 3 CPs
-		t.Errorf("expected 81 node.Command calls (27/CP × 3), got %d; calls=%v", len(calls), joinCalls(calls))
+	if len(calls) != 81 { // 81 total across both phases
+		t.Errorf("expected 81 node.Command calls (54 phase1 + 27 phase2), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
 
@@ -502,13 +514,15 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 	apiRec := &recordingApiserverChecker{}
 	swapApiserverHealthChecker(t, apiRec.check)
 
+	// Two-phase order: 3 pre-snaps (Phase 1), then 3 post-snaps (Phase 2).
 	checkExpCallIdx := 0
+	const numCPs3 = 3
 	rec := &recordingCmder{
 		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
-				if idx%2 == 0 {
+				if idx < numCPs3 {
 					return preJSON, nil
 				}
 				return postJSON, nil
@@ -549,7 +563,12 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 // TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout: etcdHealthChecker
 // always fails. Assert error contains "etcd ready-gate failed" and
 // "Cluster state is undefined". Assert diagnostic dump header fired.
-// Assert function stopped on CP1 (did not proceed to CP2/CP3).
+//
+// Two-phase behavior: Phase 1 regenerates cert FILES on ALL 3 CPs (no etcd restart).
+// The health gate fires in Phase 2 when cycling CP1's manifest. Phase 2 stops at CP1;
+// CP2 and CP3 do NOT have their manifests cycled (no pod restart on those nodes in Phase 2).
+// However, Phase 1 DOES touch cp2 and cp3 (cert file regeneration) — the assertion is now
+// that Phase 2 manifest cycling stops at cp1, not that cp2/cp3 are never touched at all.
 func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 	swapEtcdHealthChecker(t, instantFailEtcd("etcd ready-gate timed out after 60s"))
@@ -583,32 +602,46 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 		t.Errorf("expected diagnostic dump header in logs; got lines: %v", clog.lines)
 	}
 
-	// Verify function stopped on CP1 (not CP2/CP3): no calls should reference cp2/cp3.
+	// Phase 2 stops at CP1: no `mv` calls (manifest cycle) should reference cp2 or cp3.
+	// (Phase 1 cert-file regen DID touch all 3 CPs — that is expected and correct.)
+	mvCallsPerCP := make(map[string]int)
 	calls := rec.snapshot()
 	for _, c := range calls {
-		for _, arg := range append([]string{c.name}, c.args...) {
-			if arg == "cp2" || arg == "cp3" {
-				t.Errorf("unexpected call touching cp2 or cp3: %v", joinCalls(calls))
-				break
-			}
+		if c.name == "mv" {
+			// node.Command is called with the CP's fakeNode — fakeNode routes
+			// through defaultCmder which records the call without a node name in args.
+			// We verify absence by checking that only phase-1 (non-mv) calls hit cp2/cp3.
+			// Since all calls are routed through the shared cmder (not per-node),
+			// we verify total mv calls = 2 (mv-out + mv-in for first cert on cp1 only).
+			mvCallsPerCP["total"]++
 		}
+	}
+	// Phase 2 fails on first mv-out of first cert on cp1 → health gate fires → stop.
+	// Exactly 2 mv calls: mv-out + mv-in for etcd-peer on cp1.
+	if mvCallsPerCP["total"] != 2 {
+		t.Errorf("expected exactly 2 mv calls (mv-out+mv-in for etcd-peer on cp1 only), got %d", mvCallsPerCP["total"])
 	}
 }
 
 // TestRegenerateEtcdPeerCertsWholesale_ApiserverHealthGateTimeout:
 // apiserverHealthChecker always fails. Error should contain "apiserver healthz failed".
+// In two-phase mode: Phase 1 completes for all 3 CPs, Phase 2 cycles etcd-peer/server/
+// healthcheck-client successfully (etcd gates pass), then fails on apiserver-etcd-client.
 func TestRegenerateEtcdPeerCertsWholesale_ApiserverHealthGateTimeout(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 	swapEtcdHealthChecker(t, instantOKEtcd())
 	swapApiserverHealthChecker(t, instantFailApiserver("apiserver healthz timed out"))
 
+	// Two-phase check-expiration order: 3 pre-snaps (Phase 1) then post-snaps (Phase 2).
+	// Phase 2 fails during apiserver-etcd-client cycle on CP1 before post-snap runs.
+	// So only 3 pre-snaps fire; no post-snap fires before the failure.
 	checkExpCallIdx := 0
 	rec := &recordingCmder{
 		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
-				if idx%2 == 0 {
+				if idx < 3 { // Phase 1 pre-snaps
 					return preJSON, nil
 				}
 				return postJSON, nil
@@ -680,12 +713,14 @@ func TestRegenerateEtcdPeerCertsWholesale_KubeadmRenewError(t *testing.T) {
 // TestRegenerateEtcdPeerCertsWholesale_PostPassVerifyFailure: check-expiration
 // returns identical notAfter pre and post. Assert error contains "notAfter did
 // not advance" and "Cluster state is undefined".
+// In two-phase mode: Phase 1 does pre-snaps, Phase 2 does post-snaps. Returning
+// preJSON for all check-expiration calls means post-snap matches pre-snap → no advance.
 func TestRegenerateEtcdPeerCertsWholesale_PostPassVerifyFailure(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 	swapEtcdHealthChecker(t, instantOKEtcd())
 	swapApiserverHealthChecker(t, instantOKApiserver())
 
-	// Always return the same (pre) JSON — notAfter will not advance.
+	// Always return the same (pre) JSON — notAfter will not advance pre vs post.
 	rec := &recordingCmder{
 		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
@@ -748,15 +783,17 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 	checkExpCallIdx := 0
 	var recordedMvCalls [][]string
 	mu := sync.Mutex{}
+	// Two-phase order: 2 pre-snaps (Phase 1, one per CP), then 2 post-snaps (Phase 2).
+	const numCPs2 = 2
 	rec := &recordingCmder{
 		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
-				if idx%2 == 0 {
-					return preJSON, nil
+				if idx < numCPs2 {
+					return preJSON, nil // Phase 1 pre-snaps
 				}
-				return postJSON, nil
+				return postJSON, nil // Phase 2 post-snaps
 			}
 			if name == "mv" {
 				mu.Lock()
@@ -769,15 +806,11 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
 
-	cpNodes := makeHACPNodes("cp1")
-	// Use a 2-node setup to get 3+ CPs but we only need cp1 to verify routing.
-	// Actually use 2 CPs for a valid HA call.
 	cpNodes2 := makeHACPNodes("cp1", "cp2")
 	err := RegenerateEtcdPeerCertsWholesale(cpNodes2, log.NoopLogger{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_ = cpNodes
 
 	mu.Lock()
 	mvCalls := recordedMvCalls

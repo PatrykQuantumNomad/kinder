@@ -895,6 +895,13 @@ type haTestCmder struct {
 
 	// mvErrors: if set, error returned on the first `mv` call.
 	mvErrors map[string]error
+
+	// certRegenCPCount is the number of CP nodes in the cert-regen test. When
+	// set, check-expiration calls are interpreted in two-phase order: the first
+	// certRegenCPCount calls are pre-snaps (Phase 1), subsequent calls are
+	// post-snaps (Phase 2). If zero, the legacy odd=pre / even=post alternation
+	// is used (preserved for non-cert-regen tests that don't invoke cert regen).
+	certRegenCPCount int
 }
 
 func (h *haTestCmder) cmder() Cmder {
@@ -918,21 +925,26 @@ func (h *haTestCmder) cmder() Cmder {
 			// post-pass verify passes (pre=2027, post=2028, advancing notAfter).
 			if len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				h.mu.Lock()
-				// Count check-expiration calls to alternate pre/post.
-				// First call per CP is pre-snap (2027); second is post-snap (2028).
-				// Use the global call count: even=pre, odd=post.
+				// Count check-expiration calls to determine pre vs post.
+				// Two-phase order (when certRegenCPCount > 0): the first certRegenCPCount
+				// calls are pre-snaps (Phase 1); subsequent calls are post-snaps (Phase 2).
+				// Legacy order (certRegenCPCount == 0): odd=pre, even=post (alternating).
 				checkExpIdx := 0
 				for _, c := range h.calls {
 					if c.name == "kubeadm" && len(c.args) >= 3 && c.args[0] == "certs" && c.args[1] == "check-expiration" {
 						checkExpIdx++
 					}
 				}
+				cpCount := h.certRegenCPCount
 				h.mu.Unlock()
-				// checkExpIdx is already incremented (this call was appended before handler).
-				// First call per CP (checkExpIdx odd after this call = first call on a CP): return pre.
-				// Actually: checkExpIdx was 1-based at this point (this call was already appended).
-				// Use 1,3,5,... as pre-snap and 2,4,6,... as post-snap.
-				if checkExpIdx%2 == 1 {
+				// checkExpIdx is 1-based here (this call was already appended above).
+				isPre := false
+				if cpCount > 0 {
+					isPre = checkExpIdx <= cpCount // first cpCount calls are Phase 1 pre-snaps
+				} else {
+					isPre = checkExpIdx%2 == 1 // legacy: 1,3,5,... = pre; 2,4,6,... = post
+				}
+				if isPre {
 					return &fakeCmd{stdout: `{"certificates":[{"name":"etcd-peer","notAfter":"2027-01-01T00:00:00Z"},{"name":"etcd-server","notAfter":"2027-01-01T00:00:00Z"},{"name":"etcd-healthcheck-client","notAfter":"2027-01-01T00:00:00Z"},{"name":"apiserver-etcd-client","notAfter":"2027-01-01T00:00:00Z"}]}`}
 				}
 				return &fakeCmd{stdout: `{"certificates":[{"name":"etcd-peer","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-server","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-healthcheck-client","notAfter":"2028-01-01T00:00:00Z"},{"name":"apiserver-etcd-client","notAfter":"2028-01-01T00:00:00Z"}]}`}
@@ -1350,10 +1362,11 @@ func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
-		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
-		strategyLabel:   map[string]string{"cp1": StrategyCertRegen, "cp2": StrategyCertRegen, "cp3": StrategyCertRegen},
+		containerStates:  pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:    map[string]string{"cp1": StrategyCertRegen, "cp2": StrategyCertRegen, "cp3": StrategyCertRegen},
 		// cp1 reports a DIFFERENT IP → drift detected on first CP → wholesale regen.
-		currentIPs: map[string]string{"cp1": "172.18.0.99", "cp2": "172.18.0.6", "cp3": "172.18.0.7"},
+		currentIPs:       map[string]string{"cp1": "172.18.0.99", "cp2": "172.18.0.6", "cp3": "172.18.0.7"},
+		certRegenCPCount: 3, // two-phase: first 3 check-exp calls = pre, next 3 = post
 	}
 	withCmder(t, tc.cmder())
 
@@ -1376,9 +1389,10 @@ func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Phase 57.3: kubeadm is now called 6 times per CP:
-	// 1×check-expiration (pre) + 4×renew (etcd-peer/server/healthcheck-client/apiserver-etcd-client) + 1×check-expiration (post) = 6 per CP.
-	// 3 CPs × 6 = 18 total kubeadm calls.
+	// Two-phase kubeadm calls per CP:
+	// Phase 1: 1×check-expiration (pre) + 4×init-phase-certs = 5 per CP
+	// Phase 2: 4×mv (no kubeadm) + 1×check-expiration (post) = 1 per CP
+	// Total per CP: 6. Total for 3 CPs: 18.
 	kubeadmCount := 0
 	for _, c := range tc.allCalls() {
 		if c.name == "kubeadm" {
@@ -1413,9 +1427,10 @@ func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
-		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		containerStates:  pausedInspectMap("cp1", "cp2", "cp3"),
 		// No strategy label set (legacy).
-		strategyLabel: map[string]string{},
+		strategyLabel:    map[string]string{},
+		certRegenCPCount: 3, // two-phase: first 3 check-exp calls = pre, next 3 = post
 	}
 	withCmder(t, tc.cmder())
 
@@ -1438,8 +1453,10 @@ func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Phase 57.3: kubeadm is now called 6 times per CP:
-	// 1×check-expiration (pre) + 4×renew + 1×check-expiration (post) = 6/CP × 3 CPs = 18 total.
+	// Two-phase kubeadm calls per CP:
+	// Phase 1: 1×check-expiration (pre) + 4×init-phase-certs = 5/CP
+	// Phase 2: 4×mv (no kubeadm) + 1×check-expiration (post) = 1/CP
+	// Total per CP: 6. For 3 legacy CPs: 18 total.
 	kubeadmCount := 0
 	for _, c := range tc.allCalls() {
 		if c.name == "kubeadm" {
@@ -1657,9 +1674,10 @@ func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
-		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		containerStates:  pausedInspectMap("cp1", "cp2", "cp3"),
 		// Label says ip-pinned but nerdctl should downgrade to cert-regen.
-		strategyLabel: map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+		strategyLabel:    map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+		certRegenCPCount: 3, // two-phase: first 3 check-exp calls = pre, next 3 = post
 	}
 	withCmder(t, tc.cmder())
 
@@ -1784,9 +1802,10 @@ func TestResume_StrategyOverride_CertRegen_SkipsDriftDetection(t *testing.T) {
 	withIPPinCmderFn(t, ippinFk.cmder)
 
 	tc := &haTestCmder{
-		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
-		strategyLabel:   map[string]string{"cp1": StrategyCertRegen},
-		currentIPs:      cpIPs, // no drift
+		containerStates:  pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:    map[string]string{"cp1": StrategyCertRegen},
+		currentIPs:       cpIPs, // no drift
+		certRegenCPCount: 3,     // two-phase: first 3 check-exp calls = pre, next 3 = post
 	}
 	withCmder(t, tc.cmder())
 
