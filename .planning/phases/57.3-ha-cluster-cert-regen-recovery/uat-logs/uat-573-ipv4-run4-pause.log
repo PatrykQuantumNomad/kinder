@@ -1,0 +1,7 @@
+ - uat-573-ipv4-run4-worker stopped (role: worker, 0.5s)
+ - uat-573-ipv4-run4-worker2 stopped (role: worker, 5.3s)
+ - uat-573-ipv4-run4-control-plane stopped (role: control-plane, 30.3s)
+ - uat-573-ipv4-run4-control-plane2 stopped (role: control-plane, 30.3s)
+ - uat-573-ipv4-run4-control-plane3 stopped (role: control-plane, 30.3s)
+ - uat-573-ipv4-run4-external-load-balancer stopped (role: external-load-balancer, 30.3s)
+Cluster paused. Total time: 127.7s

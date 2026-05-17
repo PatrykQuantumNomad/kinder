@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: paused
+status: completed
 stopped_at: "Phase 58 Plan 01 paused at live-UAT checkpoint. Script ran cleanly, test_03 passed, test_09 failed with real upstream defects. Forensic deep-dive on left-up uat-58-01 cluster surfaced (a) IPAM probe regression at ipamprobe.go:131 routing every HA cluster to cert-regen path, (b) cert-regen recovery defect identical to Phase 57.3 IPv6 pattern but on IPv4 HA — meaning Phase 57.3 is NOT IPv6-specific. ROADMAP.md updated: Phase 57.3 scope expanded; Phase 57.4 inserted for IPAM probe. STATE.md updated. Forensic artifacts archived under `.planning/phases/58-.../uat-logs/`. uat-58-01 cluster left up. Next: `/gsd:discuss-phase 57.3` and `/gsd:discuss-phase 57.4` (independent flows) → plan → execute → THEN re-run `bash hack/uat-47-ha-smoke.sh` against the post-fix binary to close Phase 58."
-last_updated: "2026-05-17T12:00:00Z"
-last_activity: "2026-05-17 — Phase 57.3 Plan 01 complete (5 commits: 9fb9693b/7257a365/0a5741c8/590d1a0e/1ce42d52). Cert-regen widened to 4-cert set; active health-gates; IPv6 loopback; --strategy flag; all tests pass."
+last_updated: "2026-05-17T23:37:05.828Z"
+last_activity: 2026-05-17 — Phase 57.3 Plan 02 COMPLETE. All 3 UAT fixtures PASS (IPv4, IPv6, dual-stack). SC1+SC2+SC3 CLOSED. 3 dual-stack bugs fixed (kube-apiserver manifest corruption, IPv6 WAL peer URLs, ClusterIPFamilyIsDual endpoint). 57.3-02-UAT.md + 57.3-02-SUMMARY.md committed. ROADMAP Phase 57.3 marked Complete.
 progress:
   total_phases: 11
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 27
-  completed_plans: 24
-  percent: 73
+  completed_plans: 25
+  percent: 82
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 57.3 Plan 01 COMPLETE (2026-05-17). Phase 57.3 Plan 02 (live UAT) is next. Phase 58 remains paused until both Phase 57.3 + 57.4 land.
+**Current focus:** v2.4 Hardening — Phase 57.3 COMPLETE (both plans). Phase 57.4 (IPAM probe regression) is next. Phase 58 remains paused until both 57.3 + 57.4 land.
 
 ## Current Position
 
-Phase: 57.3 (HA cluster cert-regen recovery) — Plan 01 COMPLETE; Plan 02 (live UAT) pending.
-Plan: 57.3-01 complete (5 task commits: 9fb9693b/7257a365/0a5741c8/590d1a0e/1ce42d52). Cert-set locked to 4 types; RegenerateEtcdPeerCertsWholesale widened; active health-gates; --strategy flag; all tests pass. Phase 57.4 (IPAM probe regression) runs in parallel.
-Status: Phase 57.3 Plan 01 COMPLETE. Next: (a) Phase 57.3 Plan 02 (live UAT script + run); (b) Phase 57.4 Plan 01 (IPAM probe regression fix); (c) re-run Phase 58 UAT after both 57.3 + 57.4 land.
-Last activity: 2026-05-17 — Phase 57.3 Plan 01 complete; SUMMARY.md written; STATE.md + ROADMAP.md + REQUIREMENTS.md updated.
+Phase: 57.3 (HA cluster cert-regen recovery) — COMPLETE (both plans done, SC1+SC2+SC3 closed).
+Plan: 57.3-02 COMPLETE. All 3 UAT fixtures PASS (IPv4/IPv6/dual-stack). Commit 601ecb4f fixes 3 dual-stack bugs.
+Status: Phase 57.3 COMPLETE. Next: (a) Phase 57.4 Plan 01 (IPAM probe regression fix); (b) re-run Phase 58 UAT after both 57.3 + 57.4 land.
+Last activity: 2026-05-17 — Phase 57.3 Plan 02 complete; 57.3-02-SUMMARY.md + 57.3-02-UAT.md written; STATE.md + ROADMAP.md updated. SC1+SC2+SC3 closed.
 
-Progress: [████████░░] 88%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -151,6 +151,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-16T13:11:00Z
+Last session: 2026-05-17T23:37:05.819Z
 Stopped at: Phase 58 Plan 01 paused at live-UAT checkpoint. Script ran cleanly, test_03 passed, test_09 failed with real upstream defects. Forensic deep-dive on left-up uat-58-01 cluster surfaced (a) IPAM probe regression at ipamprobe.go:131 routing every HA cluster to cert-regen path, (b) cert-regen recovery defect identical to Phase 57.3 IPv6 pattern but on IPv4 HA — meaning Phase 57.3 is NOT IPv6-specific. ROADMAP.md updated: Phase 57.3 scope expanded; Phase 57.4 inserted for IPAM probe. STATE.md updated. Forensic artifacts archived under `.planning/phases/58-.../uat-logs/`. uat-58-01 cluster left up. Next: `/gsd:discuss-phase 57.3` and `/gsd:discuss-phase 57.4` (independent flows) → plan → execute → THEN re-run `bash hack/uat-47-ha-smoke.sh` against the post-fix binary to close Phase 58.
 Resume file: None

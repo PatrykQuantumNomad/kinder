@@ -1,0 +1,149 @@
+[08:01:34] uat-57.3-cert-regen.sh starting; KINDER_BIN=/Users/patrykattc/work/git/kinder/bin/kinder
+[08:01:34] === Phase 57.3 cert-regen live UAT ===
+[08:01:34] HEAD: 97042764db093f686896f130791a7310a01edca6
+[08:01:34] macOS: 26.3.1
+[08:01:35] Docker: 29.4.3
+[08:01:35] make build (rebuild against current HEAD)
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=97042764db093f686896f130791a7310a01edca6 -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=127"
+sigs.k8s.io/kind
+[08:01:35]   ok binary marker present: kubeadm certs renew %s failed on %s
+[08:01:36]   ok binary marker present: apiserver-etcd-client
+[08:01:36]   ok binary marker present: --strategy=
+[08:01:36]   ok binary marker present: Cluster state is undefined
+[08:01:36]   ok binary marker present: etcd ready-gate timed out
+[08:01:36]   ok binary marker present: apiserver healthz timed out
+kind v1.5.0 go1.25.7 darwin/arm64
+[08:01:36] === fixture: uat-573-ipv4 (loopback=127.0.0.1, expected_nodes=5) ===
+[08:01:36] uat-573-ipv4: kinder create cluster
+Creating cluster "uat-573-ipv4" ...
+
+NOTE: The following addon images will be pulled during cluster creation.
+      Pre-load them and use --air-gapped to skip pulls:
+        docker.io/envoyproxy/envoy:v1.36.2
+        docker.io/envoyproxy/ratelimit:05c08d03
+        docker.io/library/busybox:1.37.0
+        docker.io/rancher/local-path-provisioner:v0.0.36
+        envoyproxy/gateway:v1.7.2
+        ghcr.io/headlamp-k8s/headlamp:v0.42.0
+        quay.io/jetstack/cert-manager-cainjector:v1.20.2
+        quay.io/jetstack/cert-manager-controller:v1.20.2
+        quay.io/jetstack/cert-manager-webhook:v1.20.2
+        quay.io/metallb/controller:v0.15.3
+        quay.io/metallb/speaker:v0.15.3
+        registry.k8s.io/metrics-server/metrics-server:v0.8.1
+        registry:2
+
+ • Ensuring node image (kindest/node:v1.35.1) 🖼  ...
+HA cluster will use cert-regen resume strategy: probe runtime error: inspect returned invalid IP "invalid IP"
+ ✓ Ensuring node image (kindest/node:v1.35.1) 🖼
+ • Preparing nodes 📦 📦 📦 📦 📦   ...
+ ✓ Preparing nodes 📦 📦 📦 📦 📦 
+ • Configuring the external load balancer ⚖️  ...
+ ✓ Configuring the external load balancer ⚖️
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Joining more control-plane nodes 🎮  ...
+ ✓ Joining more control-plane nodes 🎮
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+
+Local Registry:
+  Push:        docker push localhost:5001/myimage:latest
+  Pull in pods: image: localhost:5001/myimage:latest
+
+ * Skipping NVIDIA GPU (disabled in config)
+
+Dashboard:
+  Get token: kubectl -n kube-system get secret kinder-dashboard-token -o jsonpath='{.data.token}' | base64 -d
+  Port-forward: kubectl port-forward -n kube-system service/headlamp 8080:80
+  Then open: http://localhost:8080
+
+ • Installing Envoy Gateway  ...
+ ✓ Installing Envoy Gateway
+On darwin, MetalLB LoadBalancer IPs are not directly reachable from the host.
+   Use kubectl port-forward to access LoadBalancer services:
+   kubectl port-forward svc/<service-name> <local-port>:<service-port>
+
+Addons:
+ * Local Registry       installed (1.1s)
+ * MetalLB              installed (34.6s)
+ * Metrics Server       installed (37.4s)
+ * CoreDNS Tuning       installed (1.5s)
+ * Dashboard            installed (49.9s)
+ * Cert Manager         installed (77.1s)
+ * Local Path Provisioner installed (7.0s)
+ * NVIDIA GPU           skipped (disabled)
+ * Envoy Gateway        installed (26.2s)
+Set kubectl context to "kind-uat-573-ipv4"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-uat-573-ipv4
+
+Not sure what to do next? 😅  Check out https://kind.sigs.k8s.io/docs/user/quick-start/
+[08:04:43] uat-573-ipv4: capture pre-resume cert serials
+[08:04:43] uat-573-ipv4: kinder pause
+ - uat-573-ipv4-worker2 stopped (role: worker, 0.5s)
+ - uat-573-ipv4-worker stopped (role: worker, 5.4s)
+ - uat-573-ipv4-control-plane stopped (role: control-plane, 30.4s)
+ - uat-573-ipv4-control-plane2 stopped (role: control-plane, 30.3s)
+ - uat-573-ipv4-control-plane3 stopped (role: control-plane, 30.3s)
+ - uat-573-ipv4-external-load-balancer stopped (role: external-load-balancer, 30.3s)
+Cluster paused. Total time: 127.9s
+[08:06:51] uat-573-ipv4: kinder resume --strategy=cert-regen --wait 15m
+ • ✓ uat-573-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-573-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-worker2 (role=worker, 0.1s)
+ • ✓ uat-573-ipv4-worker (role=worker, 0.1s)
+cert regen phase 1: regenerating cert files on all 3 CP nodes
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane (1/3)
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane2 (2/3)
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane3 (3/3)
+cert regen phase 1 complete: all 3 CP nodes have fresh cert files
+cert regen phase 2: cycling manifests on all 3 CP nodes
+  [phase 2] cycling manifests on uat-573-ipv4-control-plane (1/3)
+=== cert-regen diagnostic dump (failed at: etcd-server on uat-573-ipv4-control-plane) ===
+etcdctl member list:
+kubeadm certs check-expiration:
+[check-expiration] Reading configuration from the "kubeadm-config" ConfigMap in namespace "kube-system"...
+[check-expiration] Use 'kubeadm init phase upload-config kubeadm --config your-config-file' to re-upload it.
+
+CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED
+admin.conf                 May 17, 2027 12:01 UTC   364d            ca                      no      
+apiserver                  May 17, 2027 12:06 UTC   364d            ca                      no      
+apiserver-etcd-client      May 17, 2027 12:06 UTC   364d            etcd-ca                 no      
+apiserver-kubelet-client   May 17, 2027 12:01 UTC   364d            ca                      no      
+controller-manager.conf    May 17, 2027 12:01 UTC   364d            ca                      no      
+etcd-healthcheck-client    May 17, 2027 12:06 UTC   364d            etcd-ca                 no      
+etcd-peer                  May 17, 2027 12:06 UTC   364d            etcd-ca                 no      
+etcd-server                May 17, 2027 12:06 UTC   364d            etcd-ca                 no      
+front-proxy-client         May 17, 2027 12:01 UTC   364d            front-proxy-ca          no      
+scheduler.conf             May 17, 2027 12:01 UTC   364d            ca                      no      
+super-admin.conf           May 17, 2027 12:01 UTC   364d            ca                      no      
+
+CERTIFICATE AUTHORITY   EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED
+ca                      May 14, 2036 12:01 UTC   9y              no      
+etcd-ca                 May 14, 2036 12:01 UTC   9y              no      
+front-proxy-ca          May 14, 2036 12:01 UTC   9y              no      
+kube-apiserver last 20 lines:
+cert serials:
+/etc/kubernetes/pki/etcd/peer.crt: serial=1CEE89A4F9223315
+/etc/kubernetes/pki/etcd/server.crt: serial=5A22134A989DF7D5
+/etc/kubernetes/pki/etcd/healthcheck-client.crt: serial=536B6A96F7171FF1
+/etc/kubernetes/pki/apiserver-etcd-client.crt: serial=6A69224112DC20D2
+Cluster resumed. Total time: 148.6s
+ERROR: HA resume cert-regen failed: delete and recreate the cluster: cert regen phase 2 (manifest cycle) failed on uat-573-ipv4-control-plane for etcd-server. Cluster state is undefined — delete and recreate the cluster: etcd ready-gate failed on uat-573-ipv4-control-plane after etcd-server renew: etcd ready-gate timed out after 1m0s at https://127.0.0.1:2379: etcdctl exec failed: command "docker exec --privileged uat-573-ipv4-control-plane crictl exec f62a2c497f03da02fb5a55d5716ff8c85690a36437e3e14b49ca0a79ec8b2766 etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint health --write-out=json" failed with error: exit status 1
+
+Command Output: {"level":"warn","ts":"2026-05-17T12:09:13.345002Z","logger":"client","caller":"v3@v3.6.6/retry_interceptor.go:65","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x40003be780/127.0.0.1:2379","method":"/etcdserverpb.KV/Range","attempt":0,"error":"rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready"}
+Error: unhealthy cluster
+[{"endpoint":"https://127.0.0.1:2379","health":false,"took":"5.001751669s","error":"context deadline exceeded"}]
+execing command in container f62a2c497f03da02fb5a55d5716ff8c85690a36437e3e14b49ca0a79ec8b2766: command terminated with exit code 1
+[08:09:20] FAIL: uat-573-ipv4: kinder resume --strategy=cert-regen exited 1 (see /Users/patrykattc/work/git/kinder/.planning/phases/57.3-ha-cluster-cert-regen-recovery/uat-logs/uat-573-ipv4-resume.log)
+[08:09:20] cleanup: SKIPPED — clusters preserved for forensics
+[08:09:20]   inspect with: docker ps --filter label=io.x-k8s.kind.cluster
+[08:09:20]   manual delete: /Users/patrykattc/work/git/kinder/bin/kinder delete cluster --name <name>

@@ -1,0 +1,27 @@
+ • ✓ uat-573-ipv4-external-load-balancer (role=external-load-balancer, 0.1s)
+ • ✓ uat-573-ipv4-control-plane (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-control-plane2 (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-control-plane3 (role=control-plane, 0.1s)
+ • ✓ uat-573-ipv4-worker (role=worker, 0.1s)
+ • ✓ uat-573-ipv4-worker2 (role=worker, 0.1s)
+cert regen phase 1: regenerating cert files on all 3 CP nodes
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane (1/3)
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane2 (2/3)
+  [phase 1] regenerating certs on uat-573-ipv4-control-plane3 (3/3)
+cert regen phase 1 complete: all 3 CP nodes have fresh cert files
+cert regen phase 1.5: waiting for etcd quorum on bootstrap CP (uat-573-ipv4-control-plane)
+cert regen phase 1.5 complete: etcd quorum confirmed on uat-573-ipv4-control-plane
+cert regen phase 1.6: verifying and updating etcd member peer URLs
+  [phase 1.6] updating etcd member uat-573-ipv4-control-plane2 (3904a78efe0060e5) peer URL: https://172.19.0.3:2380 → https://172.19.0.4:2380
+  [phase 1.6] updating etcd member uat-573-ipv4-control-plane (6f1e1de96aea0868) peer URL: https://172.19.0.6:2380 → https://172.19.0.3:2380
+  [phase 1.6] updated 2 etcd member peer URLs
+cert regen phase 1.6 complete: etcd member peer URLs verified
+cert regen phase 2: cycling manifests on all 3 CP nodes
+cert regen phase 2a: simultaneous etcd restart (all 3 CPs)
+  [phase 2 etcd] simultaneous etcd restart across 3 CPs
+  [phase 2 etcd] simultaneous etcd restart complete: all 3 CPs healthy
+cert regen phase 2a complete: etcd cluster restarted simultaneously
+cert regen phase 2b: cycling kube-apiserver manifests on all 3 CPs
+cert regen phase 2b complete: all 3 kube-apiserver pods healthy
+cert regen phase 2 complete: all 3 CP nodes healthy
+Cluster resumed. Total time: 230.2s
