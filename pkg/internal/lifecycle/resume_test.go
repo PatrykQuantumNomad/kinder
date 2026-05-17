@@ -960,8 +960,10 @@ func (h *haTestCmder) cmder() Cmder {
 		case "mv":
 			return &fakeCmd{}
 
-		// Phase 57.3 IP-drift fix: currentNodeIPv4 runs `ip -4 addr show eth0`
-		// and renewOrRegenOneCert runs `hostname`, `bash -c cat >`, `rm -f`.
+		// Phase 57.3 IP-drift fix: currentNodeIPv4 runs `ip -4 addr show eth0`,
+		// renewOrRegenOneCert runs `hostname`, `bash -c cat >`, `rm -f`,
+		// extractEtcdManifestIP runs `grep -E initial-advertise-peer-urls= etcd.yaml`,
+		// patchEtcdManifestIPs runs `grep -c <oldIP> <manifest>` and `sed -i ...`.
 		case "ip":
 			return &fakeCmd{stdout: "    inet 172.18.0.5/16 brd 172.18.255.255 scope global eth0\n"}
 		case "hostname":
@@ -969,6 +971,20 @@ func (h *haTestCmder) cmder() Cmder {
 		case "bash":
 			return &fakeCmd{}
 		case "rm":
+			return &fakeCmd{}
+		case "grep":
+			// extractEtcdManifestIP: grep -E initial-advertise-peer-urls= etcd.yaml
+			// Return a manifest line with the same IP as currentNodeIPv4 → no drift.
+			if len(args) >= 2 && args[0] == "-E" {
+				return &fakeCmd{stdout: "    - --initial-advertise-peer-urls=https://172.18.0.5:2380\n"}
+			}
+			// patchEtcdManifestIPs: grep -c <oldIP> <manifest> → "0" (no occurrences to patch)
+			if len(args) >= 1 && args[0] == "-c" {
+				return &fakeCmd{stdout: "0\n"}
+			}
+			return &fakeCmd{}
+		case "sed":
+			// patchEtcdManifestIPs: sed -i <expr> <manifest>
 			return &fakeCmd{}
 		}
 

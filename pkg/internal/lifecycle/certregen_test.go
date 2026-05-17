@@ -212,12 +212,16 @@ func joinCalls(calls []recordedCall) []string {
 }
 
 // wrapWithIPRegen wraps an inner lookup function to additionally handle
-// the new commands introduced by renewOrRegenOneCert + currentNodeIPv4:
-//   - `ip -4 addr show eth0`  → fake inet line (172.18.0.5)
-//   - `hostname`              → fake hostname ("cp-test")
-//   - `bash -c cat > ...`     → success (empty)
-//   - `rm -f <paths>`         → success (empty)
-//   - `kubeadm init phase certs <name> --config <path>` → success (empty) if inner doesn't override
+// the new commands introduced by renewOrRegenOneCert + currentNodeIPv4 +
+// extractEtcdManifestIP + patchEtcdManifestIPs:
+//   - `ip -4 addr show eth0`         → fake inet line (172.18.0.5)
+//   - `hostname`                     → fake hostname ("cp-test")
+//   - `bash -c cat > ...`            → success (empty)
+//   - `rm -f <paths>`                → success (empty)
+//   - `kubeadm init phase certs ...` → success (empty) if inner doesn't override
+//   - `grep -E initial-advertise-peer-urls= etcd.yaml` → fake manifest line with same IP (no drift)
+//   - `grep -c <oldIP> <manifest>`   → "0" (nothing to patch, no drift)
+//   - `sed -i <expr> <manifest>`     → success (empty)
 //
 // Inner is called first for all commands. If inner returns a non-empty stdout
 // or a non-nil error, that result is used. Otherwise the default for the new
@@ -240,6 +244,21 @@ func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, 
 		case "bash":
 			return "", nil
 		case "rm":
+			return "", nil
+		case "grep":
+			// extractEtcdManifestIP: grep -E initial-advertise-peer-urls= etcd.yaml
+			// Return a manifest line with the SAME IP as currentNodeIPv4 → no drift.
+			if len(args) >= 2 && args[0] == "-E" && strings.Contains(args[1], "initial-advertise-peer-urls") {
+				return "    - --initial-advertise-peer-urls=https://172.18.0.5:2380\n", nil
+			}
+			// patchEtcdManifestIPs: grep -c <oldIP> <manifest>
+			// Return "0" → oldIP not found → sed is skipped (no drift to patch).
+			if len(args) >= 1 && args[0] == "-c" {
+				return "0\n", nil
+			}
+			return "", nil
+		case "sed":
+			// patchEtcdManifestIPs: sed -i <expr> <manifest>
 			return "", nil
 		case "kubeadm":
 			if len(args) >= 4 && args[0] == "init" && args[1] == "phase" && args[2] == "certs" {
@@ -421,12 +440,15 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 //
 // Two-phase command count:
 //   Phase 1 (cert regen, ALL 3 CPs first):
-//     per CP: ip-detect(1) + pre-snap(1) + 4×(hostname+bash-cfg+rm+kubeadm-init)(16) = 18
-//     total phase 1: 18 × 3 = 54
+//     per CP: ip-detect(1) + grep-manifest-ip(1) + pre-snap(1) +
+//             4×(hostname+bash-cfg+rm+kubeadm-init)(16) = 19
+//     total phase 1: 19 × 3 = 57
+//   Phase 1.5 (manifest IP patch): no-op in tests (old IP == current IP, ipMap empty)
+//     total phase 1.5: 0
 //   Phase 2 (manifest cycle, ALL 3 CPs):
 //     per CP: 4×(mv-out+mv-in)(8) + post-snap(1) = 9
 //     total phase 2: 9 × 3 = 27
-//   Grand total: 54 + 27 = 81 node.Command calls (same as before, different sequence).
+//   Grand total: 57 + 0 + 27 = 84 node.Command calls.
 //
 // check-expiration order changes in two-phase: pre-cp1, pre-cp2, pre-cp3 (Phase 1),
 // then post-cp1, post-cp2, post-cp3 (Phase 2). First 3 calls = pre, next 3 = post.
@@ -499,8 +521,8 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 
 	// Verify node.Command calls total (see comment above for breakdown).
 	calls := rec.snapshot()
-	if len(calls) != 81 { // 81 total across both phases
-		t.Errorf("expected 81 node.Command calls (54 phase1 + 27 phase2), got %d; calls=%v", len(calls), joinCalls(calls))
+	if len(calls) != 84 { // 84 total: 57 phase1 + 0 phase1.5 + 27 phase2
+		t.Errorf("expected 84 node.Command calls (57 phase1 + 27 phase2), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
 

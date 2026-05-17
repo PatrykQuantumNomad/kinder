@@ -183,6 +183,90 @@ func currentNodeIPv4(node nodes.Node) (string, error) {
 	return "", errors.Errorf("no IPv4 inet line for eth0 on %s; lines: %v", node.String(), lines)
 }
 
+// extractEtcdManifestIP reads the node's own IP from its etcd static-pod
+// manifest by parsing the `--initial-advertise-peer-urls` flag. This is the
+// IP the node had at cluster creation time (or last kubeadm join/init). After
+// a Docker IPAM reassignment on pause/resume, this IP is stale — it no longer
+// matches the container's actual eth0 IP.
+//
+// Format: --initial-advertise-peer-urls=https://<IP>:2380
+// Returns the IP string (no port, no scheme), or an error if not found.
+func extractEtcdManifestIP(node nodes.Node) (string, error) {
+	lines, err := exec.OutputLines(node.Command(
+		"grep", "-E", `--initial-advertise-peer-urls=`, etcdManifestPath,
+	))
+	if err != nil {
+		return "", errors.Wrapf(err, "grep initial-advertise-peer-urls in etcd manifest on %s", node.String())
+	}
+	// Each line is like: "    - --initial-advertise-peer-urls=https://172.19.0.6:2380"
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		// Strip YAML list marker and flag name.
+		for _, prefix := range []string{"- --initial-advertise-peer-urls=", "--initial-advertise-peer-urls="} {
+			if idx := strings.Index(ln, prefix); idx >= 0 {
+				val := ln[idx+len(prefix):]
+				// val = "https://172.19.0.6:2380"
+				// Strip scheme.
+				val = strings.TrimPrefix(val, "https://")
+				val = strings.TrimPrefix(val, "http://")
+				// Strip port.
+				if colon := strings.LastIndex(val, ":"); colon >= 0 {
+					val = val[:colon]
+				}
+				// IPv6 bracket cleanup: "::1" comes in as "[::1]" in URLs.
+				val = strings.Trim(val, "[]")
+				if net.ParseIP(val) != nil {
+					return val, nil
+				}
+			}
+		}
+	}
+	return "", errors.Errorf("extractEtcdManifestIP: initial-advertise-peer-urls not found or unparseable on %s; lines: %v", node.String(), lines)
+}
+
+// patchEtcdManifestIPs rewrites the etcd static-pod manifest on node,
+// replacing every occurrence of each key in ipMap (stale IP) with the
+// corresponding value (current IP). This updates --initial-cluster,
+// --initial-advertise-peer-urls, --listen-peer-urls, --advertise-client-urls,
+// --listen-client-urls, and the kubeadm annotation in one pass.
+//
+// Uses `sed -i` because the manifest is a static file on the node filesystem;
+// no Go YAML round-trip is needed (round-tripping would require parsing the
+// full Pod spec and risks losing formatting/comments).
+//
+// ipMap must be non-empty; it is the caller's responsibility to populate it
+// with at least the local node's entry.
+func patchEtcdManifestIPs(node nodes.Node, ipMap map[string]string) error {
+	if len(ipMap) == 0 {
+		return nil // no-op: no IP drift detected
+	}
+	// Build a sed script with one substitution per stale IP.
+	// We patch both the etcd manifest and the kube-apiserver manifest
+	// because the apiserver advertise-address and etcd server URLs
+	// also reference per-node IPs.
+	for oldIP, newIP := range ipMap {
+		if oldIP == newIP {
+			continue // nothing to replace
+		}
+		// sed -i to replace all occurrences of oldIP with newIP in both manifests.
+		// We do each manifest separately to avoid masking errors.
+		sedExpr := "s|" + oldIP + "|" + newIP + "|g"
+		for _, manifestPath := range []string{etcdManifestPath, kubeAPIServerManifestPath} {
+			// Check if the manifest contains this IP at all before running sed.
+			checkLines, _ := exec.OutputLines(node.Command(
+				"grep", "-c", oldIP, manifestPath,
+			))
+			if len(checkLines) == 0 || strings.TrimSpace(checkLines[0]) == "0" {
+				continue // oldIP not in this manifest; skip sed
+			}
+			if err := node.Command("sed", "-i", sedExpr, manifestPath).Run(); err != nil {
+				return errors.Wrapf(err, "sed patch %s on %s (replacing %s→%s)", manifestPath, node.String(), oldIP, newIP)
+			}
+		}
+	}
+	return nil
+}
+
 // renewOrRegenOneCert issues a cert renewal for certName on node.
 //
 // Because `kubeadm certs renew` copies SANs verbatim from the existing cert,
@@ -288,9 +372,10 @@ func cycleManifestOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL str
 // nodeRegenState holds per-CP data collected during Phase 1 so Phase 2 can
 // run without re-querying the nodes.
 type nodeRegenState struct {
-	node     nodes.Node
-	preSnap  certExpirationSnapshot // may be nil if snapshot capture failed
+	node      nodes.Node
+	preSnap   certExpirationSnapshot // may be nil if snapshot capture failed
 	currentIP string
+	oldIP     string // IP read from the etcd manifest before cert regen; may equal currentIP
 }
 
 // RegenerateEtcdPeerCertsWholesale runs cert regeneration in two phases across
@@ -359,6 +444,15 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	for i, node := range cpNodes {
 		logger.V(0).Infof("  [phase 1] regenerating certs on %s (%d/%d)", node.String(), i+1, total)
 
+		// Extract the IP recorded in the etcd manifest BEFORE cert regen. This
+		// is the node's pre-pause IP. We'll use it to build a cluster-wide
+		// oldIP→currentIP map so etcd manifests can be patched with correct IPs.
+		oldIP, oldIPErr := extractEtcdManifestIP(node)
+		if oldIPErr != nil {
+			logger.Warnf("cert regen: could not read manifest IP on %s: %v (continuing; manifest patch will be skipped for this node)", node.String(), oldIPErr)
+			oldIP = "" // empty → will not be added to ipMap
+		}
+
 		// Determine current container IP for cert SAN injection (IP drift fix).
 		currentIP, ipErr := currentNodeIPv4(node)
 		if ipErr != nil {
@@ -367,7 +461,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 				"cert regen: failed to detect current IP on %s. Cluster state is undefined — delete and recreate the cluster",
 				node.String())
 		}
-		logger.V(1).Infof("    current IP on %s: %s", node.String(), currentIP)
+		logger.V(1).Infof("    current IP on %s: %s (old manifest IP: %s)", node.String(), currentIP, oldIP)
 
 		// Snapshot pre-renew check-expiration for the post-pass verify.
 		preSnap, preErr := captureCertExpirationSnapshot(node)
@@ -388,10 +482,42 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 			}
 		}
 
-		states[i] = nodeRegenState{node: node, preSnap: preSnap, currentIP: currentIP}
+		states[i] = nodeRegenState{node: node, preSnap: preSnap, currentIP: currentIP, oldIP: oldIP}
 		logger.V(1).Infof("    [phase 1] cert files regenerated on %s", node.String())
 	}
 	logger.V(0).Infof("cert regen phase 1 complete: all %d CP nodes have fresh cert files", total)
+
+	// ── PHASE 1.5: Patch etcd (and kube-apiserver) manifests with current IPs ─
+	// After IP drift, the etcd manifests on each CP still contain the old
+	// container IPs in --initial-cluster, --initial-advertise-peer-urls, etc.
+	// Build a global oldIP→currentIP map from all CPs, then update each
+	// CP's manifests so etcd starts with correct peer URLs.
+	//
+	// This must happen BEFORE manifest cycling (Phase 2) — cycling the manifest
+	// restarts etcd, which uses the flags at startup time. If the IPs are still
+	// stale at that point, etcd either fails TLS peer auth or Raft ID mismatch.
+	ipMap := make(map[string]string)
+	for _, st := range states {
+		if st.oldIP != "" && st.oldIP != st.currentIP {
+			ipMap[st.oldIP] = st.currentIP
+			logger.V(1).Infof("  IP drift map: %s → %s (on %s)", st.oldIP, st.currentIP, st.node.String())
+		}
+	}
+	if len(ipMap) > 0 {
+		logger.V(0).Infof("cert regen phase 1.5: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
+		for _, st := range states {
+			logger.V(1).Infof("    patching manifests on %s", st.node.String())
+			if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
+				dumpCertRegenDiagnostics(st.node, "manifest-patch", logger)
+				return errors.Wrapf(err,
+					"cert regen phase 1.5 (manifest IP patch) failed on %s. Cluster state is undefined — delete and recreate the cluster",
+					st.node.String())
+			}
+		}
+		logger.V(0).Infof("cert regen phase 1.5 complete: manifests patched")
+	} else {
+		logger.V(1).Infof("cert regen phase 1.5: no IP drift detected, manifests unchanged")
+	}
 
 	// ── PHASE 2: Cycle static-pod manifests, one CP at a time ─────────────
 	// All peer certs are now valid. Cycle each CP's manifest and wait for the
