@@ -371,6 +371,59 @@ func cycleManifestOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL str
 	return nil
 }
 
+// cycleEtcdClusterSimultaneous performs a cluster-wide simultaneous etcd restart
+// across all CP nodes. This is required to prevent etcd WAL stale peer URL failures.
+//
+// BACKGROUND: etcd --initial-cluster-state=existing reads peer membership from
+// the WAL on every startup, NOT from the --initial-cluster flag. After a Docker
+// IPAM reassignment, the WAL contains stale peer URLs (pre-pause container IPs).
+// If etcd members are restarted sequentially, the first member to restart connects
+// to WAL-stored stale URLs for its peers — which are down or have different IPs —
+// causing "dial tcp <stale-IP>:2380: connection refused" and cluster degradation.
+//
+// SOLUTION: mv-out etcd.yaml from ALL CPs simultaneously, sleep once, then
+// mv-in ALL simultaneously. All 3 etcd instances start at approximately the same
+// time with the fresh cert files. When they all come up together, each member can
+// immediately reach its peers (which have new IPs in the updated manifests from
+// Phase 1.5), form quorum, and update its own WAL entry for its current peer URL.
+//
+// The health gate fires sequentially (one CP at a time) to avoid parallel health
+// checker state corruption, starting with cpNodes[0].
+func cycleEtcdClusterSimultaneous(cpNodes []nodes.Node, etcdEndpoint string, logger log.Logger) error {
+	total := len(cpNodes)
+	logger.V(0).Infof("  [phase 2 etcd] simultaneous etcd restart across %d CPs", total)
+
+	// Step 1: mv-out etcd.yaml from ALL CPs.
+	logger.V(1).Infof("    [etcd simultaneous] mv-out etcd.yaml from all %d CPs", total)
+	for i, node := range cpNodes {
+		if err := node.Command("mv", etcdManifestPath, etcdManifestBackup).Run(); err != nil {
+			return errors.Wrapf(err, "etcd simultaneous mv-out failed on %s (%d/%d)", node.String(), i+1, total)
+		}
+	}
+
+	// Step 2: sleep once — kubelet must notice the manifest is gone on ALL CPs.
+	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
+
+	// Step 3: mv-in etcd.yaml to ALL CPs simultaneously.
+	logger.V(1).Infof("    [etcd simultaneous] mv-in etcd.yaml to all %d CPs", total)
+	for i, node := range cpNodes {
+		if err := node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
+			return errors.Wrapf(err, "etcd simultaneous mv-in failed on %s (%d/%d)", node.String(), i+1, total)
+		}
+	}
+
+	// Step 4: health gate — wait for etcd on each CP (sequentially, starting with CP0).
+	for i, node := range cpNodes {
+		if err := etcdHealthChecker(node, etcdEndpoint); err != nil {
+			return errors.Wrapf(err, "etcd ready-gate failed on %s (%d/%d) after simultaneous restart", node.String(), i+1, total)
+		}
+		logger.V(1).Infof("    [etcd simultaneous] etcd healthy on %s (%d/%d)", node.String(), i+1, total)
+	}
+
+	logger.V(0).Infof("  [phase 2 etcd] simultaneous etcd restart complete: all %d CPs healthy", total)
+	return nil
+}
+
 // nodeRegenState holds per-CP data collected during Phase 1 so Phase 2 can
 // run without re-querying the nodes.
 type nodeRegenState struct {
@@ -521,32 +574,65 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 		logger.V(1).Infof("cert regen phase 1.5: no IP drift detected, manifests unchanged")
 	}
 
-	// ── PHASE 2: Cycle static-pod manifests, one CP at a time ─────────────
-	// All peer certs are now valid. Cycle each CP's manifest and wait for the
-	// health gate before moving to the next CP.
+	// ── PHASE 2: Cycle static-pod manifests ───────────────────────────────
+	// All peer certs are now valid. Restart etcd cluster-wide simultaneously
+	// (all CPs at once) so every etcd instance starts with fresh certs and can
+	// form quorum without hitting WAL stale peer URL failures. Then cycle
+	// kube-apiserver.yaml per CP sequentially.
+	//
+	// WHY SIMULTANEOUS for etcd:
+	// etcd --initial-cluster-state=existing reads peer membership from the WAL
+	// on every restart, NOT from the --initial-cluster manifest flag. After a
+	// Docker IPAM reassignment, the WAL contains stale peer URLs (pre-pause IPs).
+	// Sequential per-cert cycling (etcd-peer, etcd-server, etcd-healthcheck-client)
+	// causes 3 separate etcd restarts. On the 2nd restart, etcd reads the WAL
+	// with stale peer URLs → can't reach peers → health gate times out.
+	// A cluster-wide simultaneous restart avoids this: all 3 etcd instances start
+	// together, can find each other at the new IPs (from Phase 1.5 manifest patch),
+	// form quorum, and each overwrites its own WAL peer URL entry.
 	logger.V(0).Infof("cert regen phase 2: cycling manifests on all %d CP nodes", total)
+
+	// ── PHASE 2a: Simultaneous etcd restart (all CPs at once) ─────────────
+	// etcd-peer, etcd-server, etcd-healthcheck-client all share etcd.yaml.
+	// We do a single mv-out-ALL / sleep / mv-in-ALL / health-gate cycle.
+	logger.V(0).Infof("cert regen phase 2a: simultaneous etcd restart (all %d CPs)", total)
+	cpNodesList := make([]nodes.Node, total)
 	for i, st := range states {
-		logger.V(0).Infof("  [phase 2] cycling manifests on %s (%d/%d)", st.node.String(), i+1, total)
+		cpNodesList[i] = st.node
+	}
+	if err := cycleEtcdClusterSimultaneous(cpNodesList, etcdEndpoint, logger); err != nil {
+		// Report the failure on the first CP for diagnostics.
+		dumpCertRegenDiagnostics(states[0].node, "etcd-simultaneous", logger)
+		return errors.Wrapf(err,
+			"cert regen phase 2a (simultaneous etcd restart) failed. Cluster state is undefined — delete and recreate the cluster")
+	}
+	logger.V(0).Infof("cert regen phase 2a complete: etcd cluster restarted simultaneously")
 
-		for _, ct := range certTypes {
-			cyc := cycleForCertType[ct]
-			if err := cycleManifestOne(st.node, cyc, etcdEndpoint, healthzURL, logger); err != nil {
-				dumpCertRegenDiagnostics(st.node, ct, logger)
-				return errors.Wrapf(err,
-					"cert regen phase 2 (manifest cycle) failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
-					st.node.String(), ct)
-			}
+	// ── PHASE 2b: Per-CP kube-apiserver manifest cycle ────────────────────
+	// apiserver-etcd-client uses kube-apiserver.yaml. Each apiserver connects
+	// to its local etcd only, so sequential per-CP cycling is safe here.
+	logger.V(0).Infof("cert regen phase 2b: cycling kube-apiserver manifests on all %d CPs", total)
+	apiserverCyc := cycleForCertType["apiserver-etcd-client"]
+	for i, st := range states {
+		logger.V(1).Infof("    [phase 2b] cycling kube-apiserver on %s (%d/%d)", st.node.String(), i+1, total)
+		if err := cycleManifestOne(st.node, apiserverCyc, etcdEndpoint, healthzURL, logger); err != nil {
+			dumpCertRegenDiagnostics(st.node, "apiserver-etcd-client", logger)
+			return errors.Wrapf(err,
+				"cert regen phase 2b (apiserver manifest cycle) failed on %s. Cluster state is undefined — delete and recreate the cluster",
+				st.node.String())
 		}
+	}
+	logger.V(0).Infof("cert regen phase 2b complete: all %d kube-apiserver pods healthy", total)
 
-		// Post-pass verification per CP — kubeadm certs check-expiration.
-		// Hard-fail if any regenerated cert's notAfter did not advance.
+	// ── POST-PASS VERIFICATION: kubeadm certs check-expiration per CP ─────
+	for i, st := range states {
 		if err := verifyCheckExpirationAdvanced(st.node, certTypes, st.preSnap); err != nil {
 			dumpCertRegenDiagnostics(st.node, "post-pass-verify", logger)
 			return errors.Wrapf(err,
 				"post-pass cert-expiration check failed on %s. Cluster state is undefined — delete and recreate the cluster",
 				st.node.String())
 		}
-		logger.V(1).Infof("    [phase 2] manifests cycled and verified on %s", st.node.String())
+		logger.V(1).Infof("    [post-pass] certs verified on %s (%d/%d)", st.node.String(), i+1, total)
 	}
 	logger.V(0).Infof("cert regen phase 2 complete: all %d CP nodes healthy", total)
 	return nil

@@ -442,23 +442,30 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 
 // TestRegenerateEtcdPeerCertsWholesale_HappyPath: 3 CP nodes, IPv4, 4 cert types.
 //
-// Two-phase command count:
+// Command count breakdown:
 //   Phase 1 (cert regen, ALL 3 CPs first):
 //     per CP: ip-detect(1) + grep-manifest-ip(1) + pre-snap(1) +
 //             4×(hostname+bash-cfg+rm+kubeadm-init)(16) = 19
 //     total phase 1: 19 × 3 = 57
 //   Phase 1.5 (manifest IP patch): no-op in tests (old IP == current IP, ipMap empty)
 //     total phase 1.5: 0
-//   Phase 2 (manifest cycle, ALL 3 CPs):
-//     per CP: 4×(mv-out+mv-in)(8) + post-snap(1) = 9
-//     total phase 2: 9 × 3 = 27
-//   Grand total: 57 + 0 + 27 = 84 node.Command calls.
+//   Phase 2a (simultaneous etcd restart):
+//     3×mv-out(etcd.yaml) + 3×mv-in(etcd.yaml) = 6 total
+//     (etcdHealthChecker is mocked — no node.Command calls from health gate)
+//   Phase 2b (per-CP apiserver manifest cycle):
+//     per CP: mv-out(kube-apiserver.yaml) + mv-in(kube-apiserver.yaml) = 2
+//     total phase 2b: 2 × 3 = 6
+//     (apiserverHealthChecker is mocked — no node.Command calls from health gate)
+//   Post-pass verify (per CP):
+//     kubeadm certs check-expiration = 1 per CP × 3 CPs = 3
+//   Grand total: 57 + 0 + 6 + 6 + 3 = 72 node.Command calls.
 //
-// check-expiration order changes in two-phase: pre-cp1, pre-cp2, pre-cp3 (Phase 1),
-// then post-cp1, post-cp2, post-cp3 (Phase 2). First 3 calls = pre, next 3 = post.
+// check-expiration order: pre-cp1(0), pre-cp2(1), pre-cp3(2) from Phase 1,
+// then post-cp1(3), post-cp2(4), post-cp3(5) from post-pass verify.
+// First 3 calls = pre, next 3 = post.
 //
-// etcdHealthChecker called 3×/CP (after etcd-peer, etcd-server, etcd-healthcheck-client).
-// apiserverHealthChecker called 1×/CP (after apiserver-etcd-client).
+// etcdHealthChecker called 1×/CP in Phase 2a = 3 total.
+// apiserverHealthChecker called 1×/CP in Phase 2b = 3 total.
 func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 
@@ -496,12 +503,12 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify etcd health checker was called 3×/CP (etcd-peer, etcd-server, etcd-healthcheck-client).
+	// Verify etcd health checker was called once per CP in Phase 2a simultaneous restart.
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
-	if len(etcdCalls) != 9 { // 3 CPs × 3 etcd-cert-type cycles
-		t.Errorf("expected 9 etcdHealthChecker calls (3 CPs × 3 etcd certs), got %d", len(etcdCalls))
+	if len(etcdCalls) != 3 { // 3 CPs × 1 simultaneous etcd restart health gate
+		t.Errorf("expected 3 etcdHealthChecker calls (1 per CP in simultaneous restart), got %d", len(etcdCalls))
 	}
 	// All etcd endpoints should be IPv4 loopback.
 	for i, c := range etcdCalls {
@@ -525,8 +532,8 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 
 	// Verify node.Command calls total (see comment above for breakdown).
 	calls := rec.snapshot()
-	if len(calls) != 84 { // 84 total: 57 phase1 + 0 phase1.5 + 27 phase2
-		t.Errorf("expected 84 node.Command calls (57 phase1 + 27 phase2), got %d; calls=%v", len(calls), joinCalls(calls))
+	if len(calls) != 72 { // 72 total: 57 phase1 + 0 phase1.5 + 6 phase2a + 6 phase2b + 3 post-pass
+		t.Errorf("expected 72 node.Command calls (57 phase1 + 6 phase2a + 6 phase2b + 3 post-pass), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
 
@@ -565,10 +572,13 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// All etcd endpoints should be IPv6 loopback.
+	// All etcd endpoints should be IPv6 loopback (1 call per CP in Phase 2a).
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
+	if len(etcdCalls) != 3 { // 1 per CP in Phase 2a simultaneous restart
+		t.Errorf("expected 3 etcdHealthChecker calls (1 per CP), got %d", len(etcdCalls))
+	}
 	for i, c := range etcdCalls {
 		if c.endpoint != "https://[::1]:2379" {
 			t.Errorf("etcdHealthChecker call %d: endpoint=%q, want https://[::1]:2379", i, c.endpoint)
@@ -590,11 +600,10 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 // always fails. Assert error contains "etcd ready-gate failed" and
 // "Cluster state is undefined". Assert diagnostic dump header fired.
 //
-// Two-phase behavior: Phase 1 regenerates cert FILES on ALL 3 CPs (no etcd restart).
-// The health gate fires in Phase 2 when cycling CP1's manifest. Phase 2 stops at CP1;
-// CP2 and CP3 do NOT have their manifests cycled (no pod restart on those nodes in Phase 2).
-// However, Phase 1 DOES touch cp2 and cp3 (cert file regeneration) — the assertion is now
-// that Phase 2 manifest cycling stops at cp1, not that cp2/cp3 are never touched at all.
+// With simultaneous etcd restart (Phase 2a): ALL 3 CPs do mv-out + mv-in before
+// the health gate fires. The health gate fires on CP0 (first CP in the list).
+// Since health gate fails on CP0, Phase 2b (apiserver cycling) is never reached.
+// Total mv calls: 3 mv-out (Phase 2a) + 3 mv-in (Phase 2a) = 6.
 func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 	swapEtcdHealthChecker(t, instantFailEtcd("etcd ready-gate timed out after 60s"))
@@ -628,24 +637,18 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 		t.Errorf("expected diagnostic dump header in logs; got lines: %v", clog.lines)
 	}
 
-	// Phase 2 stops at CP1: no `mv` calls (manifest cycle) should reference cp2 or cp3.
-	// (Phase 1 cert-file regen DID touch all 3 CPs — that is expected and correct.)
-	mvCallsPerCP := make(map[string]int)
+	// Phase 2a simultaneous etcd restart: ALL 3 CPs do mv-out then mv-in before
+	// the health gate fires and fails. Phase 2b is never reached.
+	// Total mv calls: 3 mv-out (etcd.yaml) + 3 mv-in (etcd.yaml) = 6.
+	mvTotal := 0
 	calls := rec.snapshot()
 	for _, c := range calls {
 		if c.name == "mv" {
-			// node.Command is called with the CP's fakeNode — fakeNode routes
-			// through defaultCmder which records the call without a node name in args.
-			// We verify absence by checking that only phase-1 (non-mv) calls hit cp2/cp3.
-			// Since all calls are routed through the shared cmder (not per-node),
-			// we verify total mv calls = 2 (mv-out + mv-in for first cert on cp1 only).
-			mvCallsPerCP["total"]++
+			mvTotal++
 		}
 	}
-	// Phase 2 fails on first mv-out of first cert on cp1 → health gate fires → stop.
-	// Exactly 2 mv calls: mv-out + mv-in for etcd-peer on cp1.
-	if mvCallsPerCP["total"] != 2 {
-		t.Errorf("expected exactly 2 mv calls (mv-out+mv-in for etcd-peer on cp1 only), got %d", mvCallsPerCP["total"])
+	if mvTotal != 6 {
+		t.Errorf("expected exactly 6 mv calls (3 mv-out + 3 mv-in for simultaneous etcd restart), got %d", mvTotal)
 	}
 }
 
@@ -842,33 +845,43 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 	mvCalls := recordedMvCalls
 	mu.Unlock()
 
-	// For 2 CPs × 4 cert types × 2 mv calls each = 16 mv calls.
-	if len(mvCalls) != 16 {
-		t.Fatalf("expected 16 mv calls (2 CPs × 4 cert types × 2 mv), got %d", len(mvCalls))
+	// With simultaneous etcd restart + per-CP apiserver cycling (2 CPs):
+	// Phase 2a (simultaneous etcd): 2×mv-out(etcd.yaml) + 2×mv-in(etcd.yaml) = 4 mv calls
+	// Phase 2b (per-CP apiserver):  2×(mv-out(kube-apiserver.yaml)+mv-in(kube-apiserver.yaml)) = 4 mv calls
+	// Total: 8 mv calls.
+	if len(mvCalls) != 8 {
+		t.Fatalf("expected 8 mv calls (4 etcd simultaneous + 4 apiserver per-CP), got %d: %v", len(mvCalls), mvCalls)
 	}
 
-	// Check CP1 mv calls (indices 0-7):
-	// etcd-peer:               0→etcd.yaml→etcd-bak, 1→etcd-bak→etcd.yaml
-	// etcd-server:             2→etcd.yaml→etcd-bak, 3→etcd-bak→etcd.yaml
-	// etcd-healthcheck-client: 4→etcd.yaml→etcd-bak, 5→etcd-bak→etcd.yaml
-	// apiserver-etcd-client:   6→kube-apiserver.yaml→kube-apiserver-bak, 7→kube-apiserver-bak→kube-apiserver.yaml
-	for _, mvIdx := range []int{0, 2, 4} { // mv-out for etcd certs
+	// Phase 2a: indices 0-3
+	// mv-out[0]: etcd.yaml→etcd-bak (cp1)
+	// mv-out[1]: etcd.yaml→etcd-bak (cp2)
+	// mv-in[2]:  etcd-bak→etcd.yaml (cp1)
+	// mv-in[3]:  etcd-bak→etcd.yaml (cp2)
+	for _, mvIdx := range []int{0, 1} { // mv-out for etcd (both CPs)
 		if len(mvCalls[mvIdx]) < 2 || mvCalls[mvIdx][0] != etcdManifestPath {
-			t.Errorf("mv-out[%d]: expected first arg %q, got %v", mvIdx, etcdManifestPath, mvCalls[mvIdx])
+			t.Errorf("etcd mv-out[%d]: expected first arg %q, got %v", mvIdx, etcdManifestPath, mvCalls[mvIdx])
 		}
 	}
-	for _, mvIdx := range []int{1, 3, 5} { // mv-in for etcd certs
+	for _, mvIdx := range []int{2, 3} { // mv-in for etcd (both CPs)
 		if len(mvCalls[mvIdx]) < 2 || mvCalls[mvIdx][0] != etcdManifestBackup {
-			t.Errorf("mv-in[%d]: expected first arg %q, got %v", mvIdx, etcdManifestBackup, mvCalls[mvIdx])
+			t.Errorf("etcd mv-in[%d]: expected first arg %q, got %v", mvIdx, etcdManifestBackup, mvCalls[mvIdx])
 		}
 	}
-	// apiserver-etcd-client mv-out
-	if len(mvCalls[6]) < 2 || mvCalls[6][0] != kubeAPIServerManifestPath {
-		t.Errorf("mv-out[6]: expected first arg %q, got %v", kubeAPIServerManifestPath, mvCalls[6])
+	// Phase 2b: indices 4-7
+	// mv-out[4]: kube-apiserver.yaml→kube-apiserver-bak (cp1)
+	// mv-in[5]:  kube-apiserver-bak→kube-apiserver.yaml (cp1)
+	// mv-out[6]: kube-apiserver.yaml→kube-apiserver-bak (cp2)
+	// mv-in[7]:  kube-apiserver-bak→kube-apiserver.yaml (cp2)
+	for _, mvIdx := range []int{4, 6} { // mv-out for apiserver (both CPs)
+		if len(mvCalls[mvIdx]) < 2 || mvCalls[mvIdx][0] != kubeAPIServerManifestPath {
+			t.Errorf("apiserver mv-out[%d]: expected first arg %q, got %v", mvIdx, kubeAPIServerManifestPath, mvCalls[mvIdx])
+		}
 	}
-	// apiserver-etcd-client mv-in
-	if len(mvCalls[7]) < 2 || mvCalls[7][0] != kubeAPIServerManifestBackup {
-		t.Errorf("mv-in[7]: expected first arg %q, got %v", kubeAPIServerManifestBackup, mvCalls[7])
+	for _, mvIdx := range []int{5, 7} { // mv-in for apiserver (both CPs)
+		if len(mvCalls[mvIdx]) < 2 || mvCalls[mvIdx][0] != kubeAPIServerManifestBackup {
+			t.Errorf("apiserver mv-in[%d]: expected first arg %q, got %v", mvIdx, kubeAPIServerManifestBackup, mvCalls[mvIdx])
+		}
 	}
 }
 
