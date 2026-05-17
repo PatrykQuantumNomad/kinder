@@ -845,6 +845,22 @@ func waitForEtcdContainerGone(node nodes.Node, deadline, tick time.Duration) err
 	return errors.Errorf("etcd container on %s still running after %v", node.String(), deadline)
 }
 
+// buildInitialCluster builds the etcd --initial-cluster flag value from
+// the current node states. For each node, it uses peerURLForState to get the
+// current peer URL (correct after any IP rotation and step 5.1 WAL update).
+// Returns an empty string if any node has no available IP.
+func buildInitialCluster(states []nodeRegenState) string {
+	var parts []string
+	for i := range states {
+		url := peerURLForState(&states[i])
+		if url == "" {
+			return "" // cannot build -- skip patching for this node
+		}
+		parts = append(parts, states[i].node.String()+"="+url)
+	}
+	return strings.Join(parts, ",")
+}
+
 // waitForMemberStarted polls `etcdctl member list` via cp1's container until
 // memberName appears with a non-empty name in the list (indicating it has
 // connected to cp1 and the membership change is committed in the Raft log).
@@ -1241,6 +1257,33 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		logger.V(1).Infof("    [force-new-cluster] step 7 (%d/%d): clearing /var/lib/etcd/member on %s", i, total-1, memberName)
 		if err := st.node.Command("rm", "-rf", "/var/lib/etcd/member").Run(); err != nil {
 			return errors.Wrapf(err, "force-new-cluster: rm -rf /var/lib/etcd/member on %s", memberName)
+		}
+
+		// Step 7.5: Patch --initial-cluster in this member's backup manifest.
+		//
+		// cp2/cp3 manifests may contain stale peer URLs for other nodes (from before
+		// the IP rotation on pause/resume). When --force-new-cluster is used to
+		// bootstrap cp1, the WAL peer URLs are reset to match the current IPs (step
+		// 5.1 ensures cp1's WAL uses currentIP). But cp2/cp3's manifests still have
+		// the OLD --initial-cluster entries for OTHER nodes.
+		//
+		// When cp2 starts with --initial-cluster-state=existing and a cleared WAL,
+		// it uses --initial-cluster to FIND the existing cluster. If cp1's entry in
+		// cp2's manifest has the old IP (now belonging to another node), cp2 connects
+		// to the wrong host and can never join cp1's cluster.
+		//
+		// Fix: rebuild --initial-cluster using current IPs from all states. Use sed
+		// to replace the entire --initial-cluster=... line in the backup manifest with
+		// the correct value before mv-in.
+		newInitialCluster := buildInitialCluster(states)
+		if newInitialCluster != "" {
+			logger.V(1).Infof("    [force-new-cluster] step 7.5 (%d/%d): patching --initial-cluster in %s backup: %s", i, total-1, memberName, newInitialCluster)
+			// Use sed to replace the --initial-cluster=... line. The manifest lives
+			// at etcdManifestBackup on this node (not yet mv-in'd to the live path).
+			sedExpr := "s|--initial-cluster=.*|--initial-cluster=" + newInitialCluster + "|"
+			if sedErr := st.node.Command("sed", "-i", sedExpr, etcdManifestBackup).Run(); sedErr != nil {
+				return errors.Wrapf(sedErr, "force-new-cluster: patch --initial-cluster in %s on %s", etcdManifestBackup, memberName)
+			}
 		}
 
 		// Step 8: Start this member — mv-in manifest + restart kubelet.
