@@ -211,6 +211,45 @@ func joinCalls(calls []recordedCall) []string {
 	return out
 }
 
+// wrapWithIPRegen wraps an inner lookup function to additionally handle
+// the new commands introduced by renewOrRegenOneCert + currentNodeIPv4:
+//   - `ip -4 addr show eth0`  → fake inet line (172.18.0.5)
+//   - `hostname`              → fake hostname ("cp-test")
+//   - `bash -c cat > ...`     → success (empty)
+//   - `rm -f <paths>`         → success (empty)
+//   - `kubeadm init phase certs <name> --config <path>` → success (empty) if inner doesn't override
+//
+// Inner is called first for all commands. If inner returns a non-empty stdout
+// or a non-nil error, that result is used. Otherwise the default for the new
+// commands above is applied. If inner is nil, defaults apply directly.
+func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, []string) (string, error) {
+	return func(name string, args []string) (string, error) {
+		// Call inner first — it takes precedence (lets tests override specific commands).
+		if inner != nil {
+			stdout, err := inner(name, args)
+			if err != nil || stdout != "" {
+				return stdout, err
+			}
+		}
+		// Defaults for commands introduced by the IP-drift cert regeneration fix.
+		switch name {
+		case "ip":
+			return "    inet 172.18.0.5/16 brd 172.18.255.255 scope global eth0\n", nil
+		case "hostname":
+			return "cp-test\n", nil
+		case "bash":
+			return "", nil
+		case "rm":
+			return "", nil
+		case "kubeadm":
+			if len(args) >= 4 && args[0] == "init" && args[1] == "phase" && args[2] == "certs" {
+				return "", nil
+			}
+		}
+		return "", nil
+	}
+}
+
 // ---- preJSON / postJSON for check-expiration fakes -------------------------
 
 const (
@@ -394,7 +433,7 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	// Track check-expiration call index for pre/post alternation per CP.
 	checkExpCallIdx := 0
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
@@ -404,7 +443,7 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 				return postJSON, nil
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
@@ -444,10 +483,12 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 		}
 	}
 
-	// Verify node.Command calls per CP: pre-snap(1) + 4×(renew+mv-out+mv-in)(12) + post-snap(1) = 14.
+	// Verify node.Command calls per CP:
+	// ip-detect(1) + pre-snap(1) + 4×(hostname+bash-cfg+rm+kubeadm-init+mv-out+mv-in)(24) + post-snap(1) = 27 per CP
+	// Total: 27 × 3 CPs = 81.
 	calls := rec.snapshot()
-	if len(calls) != 42 { // 14 per CP × 3 CPs
-		t.Errorf("expected 42 node.Command calls (14/CP × 3), got %d; calls=%v", len(calls), joinCalls(calls))
+	if len(calls) != 81 { // 27 per CP × 3 CPs
+		t.Errorf("expected 81 node.Command calls (27/CP × 3), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
 
@@ -463,7 +504,7 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 
 	checkExpCallIdx := 0
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
@@ -473,7 +514,7 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 				return postJSON, nil
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv6ClusterIPFamily(t)
@@ -515,9 +556,7 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 	swapApiserverHealthChecker(t, instantOKApiserver())
 
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
-			return "", nil
-		},
+		lookup: wrapWithIPRegen(nil),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
@@ -544,9 +583,7 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 		t.Errorf("expected diagnostic dump header in logs; got lines: %v", clog.lines)
 	}
 
-	// Verify function stopped on CP1 (not CP2/CP3): check-expiration (1 pre-snap) +
-	// kubeadm renew etcd-peer (1) + mv-out (1) + mv-in (1) = 4 calls max on CP1.
-	// No calls for cp2/cp3.
+	// Verify function stopped on CP1 (not CP2/CP3): no calls should reference cp2/cp3.
 	calls := rec.snapshot()
 	for _, c := range calls {
 		for _, arg := range append([]string{c.name}, c.args...) {
@@ -567,7 +604,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ApiserverHealthGateTimeout(t *testing.
 
 	checkExpCallIdx := 0
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
@@ -577,7 +614,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ApiserverHealthGateTimeout(t *testing.
 				return postJSON, nil
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
@@ -605,20 +642,17 @@ func TestRegenerateEtcdPeerCertsWholesale_KubeadmRenewError(t *testing.T) {
 	swapEtcdHealthChecker(t, instantOKEtcd())
 	swapApiserverHealthChecker(t, instantOKApiserver())
 
-	callIdx := 0
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
-			idx := callIdx
-			callIdx++
-			// Call 0 is pre-snap (check-expiration), call 1 is kubeadm certs renew etcd-peer
-			if idx == 1 && name == "kubeadm" && len(args) >= 2 && args[0] == "certs" && args[1] == "renew" {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
+			// Fail on `kubeadm init phase certs etcd-peer` (the first cert renewal).
+			if name == "kubeadm" && len(args) >= 4 && args[0] == "init" && args[1] == "phase" && args[2] == "certs" && args[3] == "etcd-peer" {
 				return "", fmt.Errorf("kubeadm: cert renew failed")
 			}
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				return preJSON, nil
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
@@ -653,12 +687,12 @@ func TestRegenerateEtcdPeerCertsWholesale_PostPassVerifyFailure(t *testing.T) {
 
 	// Always return the same (pre) JSON — notAfter will not advance.
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				return preJSON, nil // same value pre and post → will not advance
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)
@@ -715,7 +749,7 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 	var recordedMvCalls [][]string
 	mu := sync.Mutex{}
 	rec := &recordingCmder{
-		lookup: func(name string, args []string) (string, error) {
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
 			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
 				idx := checkExpCallIdx
 				checkExpCallIdx++
@@ -730,7 +764,7 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 				mu.Unlock()
 			}
 			return "", nil
-		},
+		}),
 	}
 	withCmder(t, rec.cmder())
 	withIPv4ClusterIPFamily(t)

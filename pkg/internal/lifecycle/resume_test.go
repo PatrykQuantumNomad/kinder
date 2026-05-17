@@ -912,7 +912,8 @@ func (h *haTestCmder) cmder() Cmder {
 		switch name {
 		case "kubeadm":
 			// node.Command("kubeadm", "certs", "renew", <ct>) or
-			// node.Command("kubeadm", "certs", "check-expiration", "-o", "json").
+			// node.Command("kubeadm", "certs", "check-expiration", "-o", "json") or
+			// node.Command("kubeadm", "init", "phase", "certs", <ct>, "--config", <path>).
 			// Phase 57.3: return alternating pre/post check-expiration JSON so
 			// post-pass verify passes (pre=2027, post=2028, advancing notAfter).
 			if len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
@@ -936,10 +937,26 @@ func (h *haTestCmder) cmder() Cmder {
 				}
 				return &fakeCmd{stdout: `{"certificates":[{"name":"etcd-peer","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-server","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-healthcheck-client","notAfter":"2028-01-01T00:00:00Z"},{"name":"apiserver-etcd-client","notAfter":"2028-01-01T00:00:00Z"}]}`}
 			}
+			// kubeadm init phase certs <name> --config <path> — cert regeneration with IP fix.
+			// All cert types succeed silently.
+			if len(args) >= 3 && args[0] == "init" && args[1] == "phase" && args[2] == "certs" {
+				return &fakeCmd{}
+			}
 			// certs renew and other kubeadm calls succeed silently.
 			return &fakeCmd{}
 
 		case "mv":
+			return &fakeCmd{}
+
+		// Phase 57.3 IP-drift fix: currentNodeIPv4 runs `ip -4 addr show eth0`
+		// and renewOrRegenOneCert runs `hostname`, `bash -c cat >`, `rm -f`.
+		case "ip":
+			return &fakeCmd{stdout: "    inet 172.18.0.5/16 brd 172.18.255.255 scope global eth0\n"}
+		case "hostname":
+			return &fakeCmd{stdout: "cp-test\n"}
+		case "bash":
+			return &fakeCmd{}
+		case "rm":
 			return &fakeCmd{}
 		}
 

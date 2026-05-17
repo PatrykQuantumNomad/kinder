@@ -154,12 +154,104 @@ func IPDriftDetected(binaryName, container, tmpDir string) (drifted bool, curren
 	return drifted, currentIP, recordedIP, nil
 }
 
+// currentNodeIPv4 returns the IPv4 address of eth0 inside the given CP node.
+// Used by renewAndCycleOne to detect IP drift and patch kubeadm config accordingly.
+func currentNodeIPv4(node nodes.Node) (string, error) {
+	lines, err := exec.OutputLines(node.Command(
+		"ip", "-4", "addr", "show", "eth0",
+	))
+	if err != nil {
+		return "", errors.Wrapf(err, "ip addr show eth0 on %s", node.String())
+	}
+	// Parse the first "inet <IP>/prefix" line.
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if !strings.HasPrefix(ln, "inet ") {
+			continue
+		}
+		// "inet 172.19.0.3/16 brd ..." → "172.19.0.3"
+		fields := strings.Fields(ln)
+		if len(fields) < 2 {
+			continue
+		}
+		ipCIDR := fields[1]
+		ip := strings.Split(ipCIDR, "/")[0]
+		if net.ParseIP(ip) != nil {
+			return ip, nil
+		}
+	}
+	return "", errors.Errorf("no IPv4 inet line for eth0 on %s; lines: %v", node.String(), lines)
+}
+
+// renewOrRegenOneCert issues a cert renewal for certName on node.
+//
+// Because `kubeadm certs renew` copies SANs verbatim from the existing cert,
+// it produces a new cert with STALE IPs when the container has been re-IPed
+// by Docker IPAM after a pause/resume (the exact scenario Phase 57.3 fixes).
+// We therefore always use `kubeadm init phase certs <name>` with the CURRENT
+// node IP injected via localAPIEndpoint.advertiseAddress:
+//   - Delete the existing cert+key so kubeadm does not skip generation.
+//   - Write a minimal kubeadm config with the correct IP to /tmp/kinder-regen-<certName>.yaml.
+//   - Run `kubeadm init phase certs <name> --config <file>`.
+//
+// For client-only certs (etcd-healthcheck-client, apiserver-etcd-client) there
+// are no IP SANs, so the regeneration is still correct (and idempotent).
+func renewOrRegenOneCert(node nodes.Node, certName, currentIP string) error {
+	// Cert-path table (kubeadm subcommand → pki path).
+	certPaths := map[string][2]string{
+		"etcd-peer":               {"/etc/kubernetes/pki/etcd/peer.crt", "/etc/kubernetes/pki/etcd/peer.key"},
+		"etcd-server":             {"/etc/kubernetes/pki/etcd/server.crt", "/etc/kubernetes/pki/etcd/server.key"},
+		"etcd-healthcheck-client": {"/etc/kubernetes/pki/etcd/healthcheck-client.crt", "/etc/kubernetes/pki/etcd/healthcheck-client.key"},
+		"apiserver-etcd-client":   {"/etc/kubernetes/pki/apiserver-etcd-client.crt", "/etc/kubernetes/pki/apiserver-etcd-client.key"},
+	}
+	paths, ok := certPaths[certName]
+	if !ok {
+		return errors.Errorf("renewOrRegenOneCert: unknown cert name %q", certName)
+	}
+	crtPath, keyPath := paths[0], paths[1]
+
+	hostname, err := exec.OutputLines(node.Command("hostname"))
+	if err != nil || len(hostname) == 0 {
+		return errors.Wrapf(err, "hostname on %s", node.String())
+	}
+	hostnameStr := strings.TrimSpace(hostname[0])
+
+	// Write a minimal kubeadm config with the CURRENT IP.
+	cfgPath := "/tmp/kinder-regen-" + certName + ".yaml"
+	cfgContent := "apiVersion: kubeadm.k8s.io/v1beta4\nkind: InitConfiguration\n" +
+		"localAPIEndpoint:\n  advertiseAddress: " + currentIP + "\n  bindPort: 6443\n" +
+		"nodeRegistration:\n  name: " + hostnameStr + "\n" +
+		"---\n" +
+		"apiVersion: kubeadm.k8s.io/v1beta4\nkind: ClusterConfiguration\n" +
+		"etcd:\n  local:\n    dataDir: /var/lib/etcd\n"
+
+	// Write config via echo -e into the container.
+	if err := node.Command("bash", "-c",
+		"cat > "+cfgPath+" << 'KUBEADM_CFG_EOF'\n"+cfgContent+"\nKUBEADM_CFG_EOF",
+	).Run(); err != nil {
+		return errors.Wrapf(err, "write kubeadm regen config on %s", node.String())
+	}
+
+	// Delete existing cert+key so `kubeadm init phase certs` does not skip.
+	if err := node.Command("rm", "-f", crtPath, keyPath).Run(); err != nil {
+		return errors.Wrapf(err, "rm existing cert %s on %s", certName, node.String())
+	}
+
+	// Regenerate with correct IP.
+	if err := node.Command("kubeadm", "init", "phase", "certs", certName,
+		"--config", cfgPath,
+	).Run(); err != nil {
+		return errors.Wrapf(err, "kubeadm certs renew %s failed on %s", certName, node.String())
+	}
+	return nil
+}
+
 // renewAndCycleOne performs renew + manifest mv-out + sleep + mv-in + active
 // health poll for one cert type on one CP. Hard-fails on any sub-step error.
 // The active health gate replaces the historical 20s staticPodRecreationWait.
-func renewAndCycleOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL string, logger log.Logger) error {
-	// 1. kubeadm certs renew <type>
-	if err := node.Command("kubeadm", "certs", "renew", c.certName).Run(); err != nil {
+func renewAndCycleOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL string, currentIP string, logger log.Logger) error {
+	// 1. Regenerate cert with current IP (handles IP drift + cert expiry in one step).
+	if err := renewOrRegenOneCert(node, c.certName, currentIP); err != nil {
 		return errors.Wrapf(err, "kubeadm certs renew %s failed on %s", c.certName, node.String())
 	}
 	// 2. mv-out (kubelet will notice within fileCheckFrequency and stop the pod)
@@ -232,6 +324,16 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	for i, node := range cpNodes {
 		logger.V(0).Infof("Regenerating etcd-adjacent certs on %s (%d/%d)", node.String(), i+1, total)
 
+		// Determine current container IP for cert SAN injection (IP drift fix).
+		currentIP, ipErr := currentNodeIPv4(node)
+		if ipErr != nil {
+			dumpCertRegenDiagnostics(node, "ip-detect", logger)
+			return errors.Wrapf(ipErr,
+				"cert regen: failed to detect current IP on %s. Cluster state is undefined — delete and recreate the cluster",
+				node.String())
+		}
+		logger.V(1).Infof("  current IP on %s: %s", node.String(), currentIP)
+
 		// Snapshot pre-renew check-expiration for the post-pass verify.
 		preSnap, preErr := captureCertExpirationSnapshot(node)
 		if preErr != nil {
@@ -244,7 +346,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Errorf("unknown cert type %q (cluster state is undefined — delete and recreate the cluster)", ct)
 			}
-			if err := renewAndCycleOne(node, cyc, etcdEndpoint, healthzURL, logger); err != nil {
+			if err := renewAndCycleOne(node, cyc, etcdEndpoint, healthzURL, currentIP, logger); err != nil {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Wrapf(err,
 					"cert regen failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
