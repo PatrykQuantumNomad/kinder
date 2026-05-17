@@ -1712,8 +1712,8 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 	//   sub-step 2a: getEtcdContainerID x3 (one per CP) → calls 0,1,2 → "fakeid123" (running)
 	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
 	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
-	//   rolling step 6 setup: getEtcdContainerID x1 (cp1 only, before loop) → call 6+ → "fakeid123"
-	//   (rolling loop body for cp2/cp3 does NOT call getEtcdContainerID again)
+	//   rolling step 6 (i=1): getEtcdContainerID cp1 → call 6 → "fakeid123" (restarted by mv-in)
+	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 7+ → "fakeid123" (may have rotated)
 	crictlPsCallCount := 0
 	var crictlMu sync.Mutex
 

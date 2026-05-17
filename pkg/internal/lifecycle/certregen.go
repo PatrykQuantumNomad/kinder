@@ -1065,15 +1065,21 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	//      Only after this do we move to the next member.
 	//
 	// This guarantees quorum is maintained at every config-change boundary.
-	cp1EtcdID, err := getEtcdContainerID(states[0].node)
-	if err != nil {
-		return errors.Wrapf(err, "force-new-cluster: get cp1 etcd container ID on %s", states[0].node.String())
-	}
+	//
+	// NOTE: cp1's etcd container ID is re-fetched before each member add because
+	// kubelet may restart the container between iterations (e.g., after cp2 joins
+	// the cluster and background reconciliation runs on cp1). Using a stale
+	// container ID causes "crictl exec" to fail with "container not found".
 	for i := 1; i < total; i++ {
 		st := states[i]
 		memberName := st.node.String()
 
 		// Step 6: Register this member in the Raft log.
+		// Re-fetch cp1's etcd container ID fresh for this iteration.
+		cp1EtcdID, err := getEtcdContainerID(states[0].node)
+		if err != nil {
+			return errors.Wrapf(err, "force-new-cluster: get cp1 etcd container ID on %s (iteration %d)", states[0].node.String(), i)
+		}
 		peerURL := peerURLForState(&st)
 		if peerURL == "" {
 			return errors.Errorf("force-new-cluster: could not build peer URL for %s (currentIP=%q)", memberName, st.currentIP)
