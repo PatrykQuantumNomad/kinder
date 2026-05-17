@@ -192,8 +192,10 @@ func currentNodeIPv4(node nodes.Node) (string, error) {
 // Format: --initial-advertise-peer-urls=https://<IP>:2380
 // Returns the IP string (no port, no scheme), or an error if not found.
 func extractEtcdManifestIP(node nodes.Node) (string, error) {
+	// Use -- to separate flags from the pattern, preventing grep from treating
+	// the -- prefix in --initial-advertise-peer-urls= as an option flag.
 	lines, err := exec.OutputLines(node.Command(
-		"grep", "-E", `--initial-advertise-peer-urls=`, etcdManifestPath,
+		"grep", "-E", "--", `initial-advertise-peer-urls=https?://`, etcdManifestPath,
 	))
 	if err != nil {
 		return "", errors.Wrapf(err, "grep initial-advertise-peer-urls in etcd manifest on %s", node.String())

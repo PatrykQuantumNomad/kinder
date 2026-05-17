@@ -246,10 +246,14 @@ func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, 
 		case "rm":
 			return "", nil
 		case "grep":
-			// extractEtcdManifestIP: grep -E initial-advertise-peer-urls= etcd.yaml
+			// extractEtcdManifestIP: grep -E -- initial-advertise-peer-urls=https?:// etcd.yaml
 			// Return a manifest line with the SAME IP as currentNodeIPv4 → no drift.
-			if len(args) >= 2 && args[0] == "-E" && strings.Contains(args[1], "initial-advertise-peer-urls") {
-				return "    - --initial-advertise-peer-urls=https://172.18.0.5:2380\n", nil
+			if len(args) >= 1 && args[0] == "-E" {
+				for _, a := range args {
+					if strings.Contains(a, "initial-advertise-peer-urls") {
+						return "    - --initial-advertise-peer-urls=https://172.18.0.5:2380\n", nil
+					}
+				}
 			}
 			// patchEtcdManifestIPs: grep -c <oldIP> <manifest>
 			// Return "0" → oldIP not found → sed is skipped (no drift to patch).
