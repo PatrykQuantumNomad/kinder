@@ -381,17 +381,18 @@ func captureCertExpirationSnapshot(node nodes.Node) (certExpirationSnapshot, err
 }
 
 // parseCheckExpiration parses `kubeadm certs check-expiration -o json` output.
-// The schema (Kubernetes 1.30+) is:
-//
-//	{ "certificates": [ {"name": "etcd-peer", "notAfter": "2027-...", ...}, ... ] }
+// Kubernetes 1.30+ uses the output.kubeadm.k8s.io/v1alpha3 schema where the
+// expiration field is "expirationDate" (not "notAfter" which was the v1alpha2
+// name). We try both field names for compatibility.
 func parseCheckExpiration(raw string) (certExpirationSnapshot, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, errors.New("empty check-expiration output")
 	}
 	var doc struct {
 		Certificates []struct {
-			Name     string `json:"name"`
-			NotAfter string `json:"notAfter"`
+			Name           string `json:"name"`
+			ExpirationDate string `json:"expirationDate"` // v1alpha3 (K8s 1.30+)
+			NotAfter       string `json:"notAfter"`       // v1alpha2 (legacy)
 		} `json:"certificates"`
 	}
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
@@ -399,7 +400,12 @@ func parseCheckExpiration(raw string) (certExpirationSnapshot, error) {
 	}
 	snap := make(certExpirationSnapshot, len(doc.Certificates))
 	for _, c := range doc.Certificates {
-		snap[c.Name] = c.NotAfter
+		// Prefer expirationDate (v1alpha3); fall back to notAfter (v1alpha2).
+		exp := c.ExpirationDate
+		if exp == "" {
+			exp = c.NotAfter
+		}
+		snap[c.Name] = exp
 	}
 	return snap, nil
 }
