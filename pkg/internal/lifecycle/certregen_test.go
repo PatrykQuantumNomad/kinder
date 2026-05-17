@@ -1703,16 +1703,17 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 			// Phase 1.5: all-isolated, triggers force-new-cluster fallback.
 			return errors.New("etcd ready-gate timed out: all-isolated")
 		}
-		return nil // steps 5, 8 (cp2, cp3), 10 (cp1 after flag removal), Phase 2b
+		return nil // steps 5, 9x2 (cp2, cp3 rolling), 11 (cp1 after flag removal), Phase 2b
 	})
 
 	// Track crictl ps call index to distinguish "container running" vs "container gone".
 	//
-	// New step 2 call sequence:
+	// Step 2 / rolling-join crictl ps call sequence:
 	//   sub-step 2a: getEtcdContainerID x3 (one per CP) → calls 0,1,2 → "fakeid123" (running)
 	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
 	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
-	//   step 6: getEtcdContainerID x1 (cp1 only) → call 6+ → "fakeid123" (restarted by mv-in)
+	//   rolling step 6 setup: getEtcdContainerID x1 (cp1 only, before loop) → call 6+ → "fakeid123"
+	//   (rolling loop body for cp2/cp3 does NOT call getEtcdContainerID again)
 	crictlPsCallCount := 0
 	var crictlMu sync.Mutex
 

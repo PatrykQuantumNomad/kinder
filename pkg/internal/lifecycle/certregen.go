@@ -1045,23 +1045,40 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	}
 	logger.V(0).Infof("  [force-new-cluster] step 5 complete: cp1 etcd healthy (single-member)")
 
-	// Step 6: Register cp2 and cp3 as new etcd members.
-	// etcdctl member add registers the member and writes the new peer URL into
-	// the Raft log. cp2/cp3 will use --initial-cluster-state=existing when they
-	// start (already set in their manifests by kubeadm), so they expect to find
-	// themselves already registered in the cluster — which we do here.
+	// Steps 6-9: Rolling join for each remaining CP (cp2, cp3, ...).
+	//
+	// ROLLING (not batch) because etcd3.6 enforces quorum for every Raft
+	// reconfiguration.  After step 5, cp1 is a 1-member cluster (quorum=1).
+	// Adding cp2 changes cluster size to 2 (quorum=2).  At that point cp1
+	// is the only running member — below quorum — so etcd rejects the
+	// "add cp3" request with "re-configuration failed due to not enough
+	// started members".  We must wait for cp2 to be running and healthy
+	// before registering cp3.
+	//
+	// Per-member sequence:
+	//   6. etcdctl member add <cpN>  — register in Raft log via cp1.
+	//   7. rm -rf /var/lib/etcd/member — clear stale WAL on cpN.
+	//      (WAL holds the old 3-member config; etcd ignores the manifest
+	//      --initial-cluster flag when a data dir exists, causing re-isolation.)
+	//   8. mv-in manifest + restartKubelet — start cpN.
+	//   9. etcdHealthChecker — wait until cpN is healthy.
+	//      Only after this do we move to the next member.
+	//
+	// This guarantees quorum is maintained at every config-change boundary.
 	cp1EtcdID, err := getEtcdContainerID(states[0].node)
 	if err != nil {
 		return errors.Wrapf(err, "force-new-cluster: get cp1 etcd container ID on %s", states[0].node.String())
 	}
 	for i := 1; i < total; i++ {
 		st := states[i]
+		memberName := st.node.String()
+
+		// Step 6: Register this member in the Raft log.
 		peerURL := peerURLForState(&st)
 		if peerURL == "" {
-			return errors.Errorf("force-new-cluster: could not build peer URL for %s (currentIP=%q)", st.node.String(), st.currentIP)
+			return errors.Errorf("force-new-cluster: could not build peer URL for %s (currentIP=%q)", memberName, st.currentIP)
 		}
-		memberName := st.node.String()
-		logger.V(0).Infof("  [force-new-cluster] step 6: adding member %s with peer URL %s", memberName, peerURL)
+		logger.V(0).Infof("  [force-new-cluster] step 6 (%d/%d): adding member %s with peer URL %s", i, total-1, memberName, peerURL)
 		addArgs := []string{
 			"crictl", "exec", cp1EtcdID, "etcdctl",
 			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
@@ -1074,65 +1091,28 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 			return errors.Wrapf(err, "force-new-cluster: etcdctl member add %s failed", memberName)
 		}
 		logger.V(1).Infof("    [force-new-cluster] member %s registered", memberName)
-	}
-	logger.V(0).Infof("  [force-new-cluster] step 6 complete: %d member(s) registered", total-1)
 
-	// Step 7: Clear cp2/cp3 etcd data directories.
-	//
-	// CRITICAL: cp2/cp3 cannot restart with their existing WAL data when joining
-	// the force-new-cluster bootstrap. Their WAL contains the old 3-member cluster
-	// configuration with stale peer URLs. When etcd starts with
-	// --initial-cluster-state=existing and an existing data directory, it reads
-	// peer membership from the WAL — ignoring the --initial-cluster manifest flag.
-	// This would cause cp2/cp3 to try to connect to their old (stale) peer URLs,
-	// re-isolating them.
-	//
-	// Solution: clear the WAL + snapshot data for cp2/cp3 (/var/lib/etcd/member)
-	// before starting them. With no WAL, etcd treats this as a fresh join of an
-	// existing cluster: it reads --initial-cluster from the manifest to find
-	// cp1's new peer URL, connects, and syncs the full cluster state via Raft
-	// replication. ALL data is preserved — cp1's data dir (preserved by
-	// --force-new-cluster) is Raft-replicated to the newly-joined members.
-	//
-	// Only the WAL+snapshot subdirectory (/var/lib/etcd/member) is removed.
-	// The bind-mount point (/var/lib/etcd) itself is kept as an empty directory.
-	logger.V(0).Infof("  [force-new-cluster] step 7: clearing etcd WAL for remaining CPs (member join path)")
-	for i := 1; i < total; i++ {
-		st := states[i]
-		logger.V(1).Infof("    clearing /var/lib/etcd/member on %s (%d/%d)", st.node.String(), i, total-1)
+		// Step 7: Clear stale WAL on this member before starting it.
+		logger.V(1).Infof("    [force-new-cluster] step 7 (%d/%d): clearing /var/lib/etcd/member on %s", i, total-1, memberName)
 		if err := st.node.Command("rm", "-rf", "/var/lib/etcd/member").Run(); err != nil {
-			return errors.Wrapf(err, "force-new-cluster: rm -rf /var/lib/etcd/member on %s", st.node.String())
+			return errors.Wrapf(err, "force-new-cluster: rm -rf /var/lib/etcd/member on %s", memberName)
 		}
-	}
-	logger.V(0).Infof("  [force-new-cluster] step 7 complete: WAL cleared for %d CPs", total-1)
 
-	// Step 8: Start cp2/cp3 — mv-in their manifests + restart kubelet.
-	// With empty data dirs and --initial-cluster-state=existing, they connect
-	// to cp1 at the new peer URL (from the manifest --initial-cluster patched in
-	// step 1) and sync the full Raft log from cp1.
-	// Restart kubelet on each node after mv-in so it immediately starts the etcd
-	// container (same degraded-kubelet workaround as step 4).
-	logger.V(0).Infof("  [force-new-cluster] step 8: starting remaining CPs (%d) via mv-in + kubelet restart", total-1)
-	for i := 1; i < total; i++ {
-		st := states[i]
-		logger.V(1).Infof("    mv-in etcd.yaml on %s (%d/%d)", st.node.String(), i, total-1)
+		// Step 8: Start this member — mv-in manifest + restart kubelet.
+		logger.V(1).Infof("    [force-new-cluster] step 8 (%d/%d): mv-in etcd.yaml + kubelet restart on %s", i, total-1, memberName)
 		if err := st.node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
-			return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", st.node.String())
+			return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", memberName)
 		}
 		restartKubelet(st.node, logger)
-	}
 
-	// Step 9: Wait for cp2 and cp3 healthy.
-	// cp2/cp3 need to download and replay the full Raft log from cp1. This may
-	// take longer than a regular etcd restart — use the full etcdHealthGateDeadline.
-	logger.V(0).Infof("  [force-new-cluster] step 9: waiting for remaining CPs to become healthy")
-	for i := 1; i < total; i++ {
-		if err := etcdHealthChecker(states[i].node, etcdEndpoint); err != nil {
-			return errors.Wrapf(err, "force-new-cluster: etcd health gate failed on %s after member join", states[i].node.String())
+		// Step 9: Wait for this member to become healthy before adding the next.
+		logger.V(0).Infof("  [force-new-cluster] step 9 (%d/%d): waiting for %s etcd to be healthy", i, total-1, memberName)
+		if err := etcdHealthChecker(st.node, etcdEndpoint); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: etcd health gate failed on %s after member join", memberName)
 		}
-		logger.V(1).Infof("    [force-new-cluster] %s etcd healthy", states[i].node.String())
+		logger.V(0).Infof("  [force-new-cluster] step 9 (%d/%d): %s etcd healthy", i, total-1, memberName)
 	}
-	logger.V(0).Infof("  [force-new-cluster] step 9 complete: all %d CPs healthy", total)
+	logger.V(0).Infof("  [force-new-cluster] steps 6-9 complete: all %d remaining CPs registered and healthy", total-1)
 
 	// Step 10: Remove --force-new-cluster from cp1's manifest.
 	// kubelet will detect the manifest change and restart cp1's etcd. At this
