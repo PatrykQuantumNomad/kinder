@@ -411,14 +411,19 @@ func pollEtcdHealthRealImpl(node nodes.Node, deadline, tick time.Duration, endpo
 			continue
 		}
 		etcdID := strings.TrimSpace(etcdIDLines[0])
-		// Cert pair mirrors CONTEXT.md Diagnostic 2 — apiserver-etcd-client.{crt,key}
-		// is the pair whose handshake failure cert-regen recovers; the gate
-		// exercises the same handshake explicitly.
+		// Use peer.crt/peer.key for etcdctl inside the etcd container.
+		// The etcd container's filesystem only mounts /etc/kubernetes/pki/etcd/;
+		// apiserver-etcd-client.crt lives at /etc/kubernetes/pki/ (not /etcd/)
+		// and is NOT bind-mounted into the etcd container. peer.crt IS mounted
+		// and is sufficient to prove the etcd server is alive and accepting TLS
+		// connections post cert-regen. The apiserver-etcd-client handshake is
+		// validated indirectly by the subsequent apiserverHealthChecker gate which
+		// confirms kube-apiserver came up (requires a working etcd TLS session).
 		args := []string{
 			"crictl", "exec", etcdID, "etcdctl",
 			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
-			"--cert=/etc/kubernetes/pki/apiserver-etcd-client.crt",
-			"--key=/etc/kubernetes/pki/apiserver-etcd-client.key",
+			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+			"--key=/etc/kubernetes/pki/etcd/peer.key",
 			"--endpoints=" + endpoint,
 			"endpoint", "health", "--write-out=json",
 		}
