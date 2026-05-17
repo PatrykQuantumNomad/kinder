@@ -56,8 +56,8 @@ preamble() {
     binary_strings="$(strings "${KINDER_BIN}")"
 
     local positive=(
-        "kubeadm certs renew etcd-server"
-        "kubeadm certs renew apiserver-etcd-client"
+        "kubeadm certs renew %s failed on %s"
+        "apiserver-etcd-client"
         "--strategy="
         "Cluster state is undefined"
         "etcd ready-gate timed out"
