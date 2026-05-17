@@ -931,22 +931,70 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		logger.V(1).Infof("  [force-new-cluster] step 1: no IP drift, manifests unchanged")
 	}
 
-	// Step 2: Stop ALL etcd instances — mv-out etcd.yaml from all CPs.
-	logger.V(0).Infof("  [force-new-cluster] step 2: stopping all etcd instances (mv-out manifests)")
+	// Step 2: Stop ALL etcd instances.
+	//
+	// APPROACH: mv-out etcd.yaml (prevents kubelet from restarting the pod), then
+	// explicitly run `crictl stop <id>` to stop the etcd container immediately.
+	//
+	// WHY NOT rely on kubelet static pod file watching alone:
+	// On macOS Docker Desktop with kindest/node v1.35.x, kubelet's static pod
+	// file watcher does NOT stop the etcd container when the manifest is removed
+	// while kube-apiserver is down/in CrashLoopBackOff. Kubelet enters a degraded
+	// state where it only processes status_manager updates (trying to contact the
+	// API server) and does not run static pod reconciliation. Waiting 120s produces
+	// "etcd container still running after 2m0s" — see UAT run 5 forensics.
+	//
+	// SOLUTION: After mv-out (to prevent kubelet from restarting), explicitly stop
+	// the container via `crictl stop <id>`. This bypasses kubelet entirely and
+	// directly instructs the container runtime. crictl stop sends SIGTERM and waits
+	// up to --timeout seconds (default 10s) before SIGKILL.
+	logger.V(0).Infof("  [force-new-cluster] step 2: stopping all etcd instances (mv-out + crictl stop)")
+
+	// Sub-step 2a: Get etcd container IDs before mv-out (while containers are running).
+	etcdContainerIDs := make([]string, total)
 	for i, st := range states {
-		logger.V(1).Infof("    mv-out etcd.yaml on %s (%d/%d)", st.node.String(), i+1, total)
+		id, err := getEtcdContainerID(st.node)
+		if err != nil {
+			// Container may already be stopped — that's fine, record empty ID.
+			logger.V(1).Infof("    [step 2a] no etcd container on %s (already stopped?): %v", st.node.String(), err)
+			etcdContainerIDs[i] = ""
+		} else {
+			etcdContainerIDs[i] = id
+			logger.V(1).Infof("    [step 2a] etcd container on %s: %s", st.node.String(), id)
+		}
+	}
+
+	// Sub-step 2b: mv-out etcd.yaml from all CPs (prevents kubelet restart).
+	for i, st := range states {
+		logger.V(1).Infof("    [step 2b] mv-out etcd.yaml on %s (%d/%d)", st.node.String(), i+1, total)
 		if err := st.node.Command("mv", etcdManifestPath, etcdManifestBackup).Run(); err != nil {
 			return errors.Wrapf(err, "force-new-cluster: mv-out etcd.yaml on %s", st.node.String())
 		}
 	}
-	// Wait for all etcd containers to stop (kubelet detects missing manifest and
-	// stops the static pod). Use the standard kubelet file check window.
-	logger.V(1).Infof("  [force-new-cluster] waiting for all etcd containers to stop")
-	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
-	stopDeadline := 30 * time.Second
+
+	// Sub-step 2c: Explicitly stop each etcd container via crictl stop.
+	// crictl stop <id> sends SIGTERM; after --timeout (default 10s) sends SIGKILL.
+	// This is immediate and does not depend on kubelet's static pod reconciliation.
+	for i, st := range states {
+		id := etcdContainerIDs[i]
+		if id == "" {
+			logger.V(1).Infof("    [step 2c] no container ID for %s, skipping crictl stop", st.node.String())
+			continue
+		}
+		logger.V(1).Infof("    [step 2c] crictl stop %s on %s (%d/%d)", id, st.node.String(), i+1, total)
+		if err := st.node.Command("crictl", "stop", id).Run(); err != nil {
+			// Non-fatal: container may have already stopped between get and stop.
+			logger.V(1).Infof("    [step 2c] crictl stop %s on %s returned error (may be already stopped): %v", id, st.node.String(), err)
+		}
+	}
+
+	// Sub-step 2d: Confirm all etcd containers are gone (short deadline — crictl stop
+	// is synchronous so containers should be gone immediately, this is a safety check).
+	confirmDeadline := 15 * time.Second
+	logger.V(1).Infof("  [force-new-cluster] step 2d: confirming etcd containers stopped (deadline %v)", confirmDeadline)
 	for _, st := range states {
-		if err := waitForEtcdContainerGone(st.node, stopDeadline, healthGateTick); err != nil {
-			return errors.Wrapf(err, "force-new-cluster: etcd container on %s did not stop within %v", st.node.String(), stopDeadline)
+		if err := waitForEtcdContainerGone(st.node, confirmDeadline, healthGateTick); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: etcd container on %s did not stop within %v", st.node.String(), confirmDeadline)
 		}
 	}
 	logger.V(0).Infof("  [force-new-cluster] step 2 complete: all etcd containers stopped")

@@ -1610,18 +1610,15 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap(t *testing.T)
 			return "0\n", nil
 		case "crictl":
 			// crictl ps --name etcd -q: return empty (no running container).
-			// Both waitForEtcdContainerGone and getEtcdContainerID use this.
-			// getEtcdContainerID needs a non-empty container ID, so we distinguish:
-			//   - waitForEtcdContainerGone (called with 4 args: ps, --name, etcd, -q)
-			//     → we want empty to signal "gone".
-			//   - getEtcdContainerID (same call signature crictl ps --name etcd -q)
-			//     → we need non-empty.
-			// After step 2 stops etcd and step 4 starts cp1, step 5 runs
-			// getEtcdContainerID. We use a call counter to differentiate:
-			//   calls 0..2 (one per CP in step 2 container-gone poll) → empty
-			//   call 3+ (getEtcdContainerID for etcdctl commands) → "fakeid123"
+			//
+			// With the new step 2 (sub-step 2a: getEtcdContainerID, 2c: crictl stop,
+			// 2d: waitForEtcdContainerGone), the call sequence is:
+			//   sub-step 2a: 3x crictl ps → empty (non-fatal, etcdContainerIDs[i]="")
+			//   sub-step 2c: no crictl stop (IDs are empty, skipped)
+			//   sub-step 2d: 3x crictl ps → empty → waitForEtcdContainerGone passes
+			//   step 6: crictl ps → empty → getEtcdContainerID fails (expected in this test)
 			if len(args) >= 3 && args[0] == "ps" && args[1] == "--name" && args[2] == "etcd" {
-				return "", nil // always empty → waitForEtcdContainerGone passes, getEtcdContainerID fails
+				return "", nil // always empty → step 2a gets empty IDs (non-fatal), step 2d passes, step 6 getEtcdContainerID fails
 			}
 			if len(args) >= 2 && args[0] == "exec" {
 				// crictl exec <id> etcdctl ... member add <name> --peer-urls=...
@@ -1635,6 +1632,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap(t *testing.T)
 					}
 				}
 			}
+			// crictl stop <id>: never reached (IDs are empty from step 2a).
 			return "", nil
 		case "kubeadm":
 			// Phase 1 cert regen + post-pass verify.
@@ -1708,9 +1706,13 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 		return nil // steps 5, 8 (cp2, cp3), 10 (cp1 after flag removal), Phase 2b
 	})
 
-	// Track crictl ps call index to distinguish "container gone" vs "container present".
-	// Step 2 polls each of 3 CPs → crictl ps calls 0,1,2 → return empty (gone).
-	// Step 5 getEtcdContainerID → call 3+ → return "fakeid123".
+	// Track crictl ps call index to distinguish "container running" vs "container gone".
+	//
+	// New step 2 call sequence:
+	//   sub-step 2a: getEtcdContainerID x3 (one per CP) → calls 0,1,2 → "fakeid123" (running)
+	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
+	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
+	//   step 6: getEtcdContainerID x1 (cp1 only) → call 6+ → "fakeid123" (restarted by mv-in)
 	crictlPsCallCount := 0
 	var crictlMu sync.Mutex
 
@@ -1754,12 +1756,20 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 				idx := crictlPsCallCount
 				crictlPsCallCount++
 				crictlMu.Unlock()
-				// First 3 calls from waitForEtcdContainerGone (one per CP): return empty.
+				// Calls 0-2: sub-step 2a (getEtcdContainerID per CP) → running → return ID.
 				if idx < 3 {
+					return "fakeid123\n", nil
+				}
+				// Calls 3-5: sub-step 2d (waitForEtcdContainerGone per CP) → stopped → empty.
+				if idx < 6 {
 					return "", nil
 				}
-				// Subsequent calls (getEtcdContainerID for step 6 member add): return ID.
+				// Calls 6+: step 6 getEtcdContainerID (cp1 restarted) → return ID.
 				return "fakeid123\n", nil
+			}
+			if len(args) >= 2 && args[0] == "stop" {
+				// crictl stop <id>: explicit container stop (step 2c). Always succeed.
+				return "", nil
 			}
 			if len(args) >= 2 && args[0] == "exec" {
 				// crictl exec fakeid123 etcdctl ... member add <name> --peer-urls=...
