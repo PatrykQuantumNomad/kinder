@@ -804,6 +804,280 @@ func cycleEtcdClusterSimultaneous(cpNodes []nodes.Node, etcdEndpoint string, log
 	return nil
 }
 
+// waitForEtcdContainerGone polls `crictl ps --name etcd -q` until no container
+// ID is returned (etcd has stopped) or deadline expires.
+func waitForEtcdContainerGone(node nodes.Node, deadline, tick time.Duration) error {
+	end := time.Now().Add(deadline)
+	for time.Now().Before(end) {
+		lines, err := exec.OutputLines(node.Command("crictl", "ps", "--name", "etcd", "-q"))
+		if err != nil {
+			// crictl error may mean the container runtime is busy; treat as "not gone yet"
+			certRegenSleeper(tick)
+			continue
+		}
+		running := false
+		for _, ln := range lines {
+			if strings.TrimSpace(ln) != "" {
+				running = true
+				break
+			}
+		}
+		if !running {
+			return nil
+		}
+		certRegenSleeper(tick)
+	}
+	return errors.Errorf("etcd container on %s still running after %v", node.String(), deadline)
+}
+
+// peerURLForState builds the etcd peer URL for a node state.
+// For IPv6/dual-stack clusters where currentIP is an IPv6 address, the URL
+// uses the bracketed IPv6 form: https://[<ip>]:2380.
+// For IPv4 clusters it uses: https://<ip>:2380.
+func peerURLForState(st *nodeRegenState) string {
+	ip := st.currentIP
+	if ip == "" {
+		return ""
+	}
+	// Wrap IPv6 in brackets.
+	if strings.Contains(ip, ":") {
+		ip = "[" + ip + "]"
+	}
+	return "https://" + ip + ":2380"
+}
+
+// addForceNewClusterFlag injects `    - --force-new-cluster` into the etcd
+// static-pod manifest on node, immediately after the `    - etcd` command line.
+// Uses sed append-after to avoid double-injection and to survive manifest
+// reformatting (the YAML indentation is always 4 spaces in kubeadm output).
+func addForceNewClusterFlag(node nodes.Node) error {
+	// Idempotency guard: skip if already present.
+	// Use `grep -c -- pattern file` with `--` to prevent grep from treating
+	// --force-new-cluster as a flag. The `-F` flag treats the pattern as a
+	// fixed string (not a regex), which is correct here.
+	lines, _ := exec.OutputLines(node.Command("grep", "-cF", "--", "--force-new-cluster", etcdManifestPath))
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) != "0" {
+		return nil // already present
+	}
+	// Insert after the `    - etcd` line (the container command entrypoint).
+	// The sed `a` command appends a line after the matched line.
+	if err := node.Command("sed", "-i",
+		`/^    - etcd$/a\    - --force-new-cluster`,
+		etcdManifestPath,
+	).Run(); err != nil {
+		return errors.Wrapf(err, "sed inject --force-new-cluster into %s on %s", etcdManifestPath, node.String())
+	}
+	return nil
+}
+
+// removeForceNewClusterFlag deletes the `--force-new-cluster` line from the
+// etcd static-pod manifest on node using sed -i delete.
+func removeForceNewClusterFlag(node nodes.Node) error {
+	if err := node.Command("sed", "-i", "/--force-new-cluster/d", etcdManifestPath).Run(); err != nil {
+		return errors.Wrapf(err, "sed remove --force-new-cluster from %s on %s", etcdManifestPath, node.String())
+	}
+	return nil
+}
+
+// forceNewClusterBootstrap recovers an etcd cluster where ALL members have
+// stale WAL peer URLs (the "all-isolated" scenario on macOS Docker Desktop,
+// where Docker IPAM assigns new IPs to ALL containers on every pause/resume).
+//
+// BACKGROUND: Normally, Phase 1.5 waits for the bootstrap CP's etcd to reach
+// quorum, then Phase 1.6 uses `etcdctl member update` to fix stale WAL peer
+// URLs. But `etcdctl member update` requires etcd quorum — which is impossible
+// when ALL 3 etcd nodes are isolated (each has the other members' stale IPs in
+// its WAL). This is a chicken-and-egg deadlock.
+//
+// SOLUTION: Use etcd's --force-new-cluster flag to bootstrap a single-member
+// cluster on cp1, bypassing the quorum requirement. Then re-add cp2/cp3 as
+// members via etcdctl member add (which only needs cp1's quorum, i.e. 1/1).
+//
+// PROCEDURE:
+//  1. Patch ALL etcd+apiserver manifests with corrected IPs (ipMap).
+//     This must happen before stopping etcd so that when etcd restarts it
+//     reads the correct --initial-cluster IPs from the updated manifest.
+//  2. Stop ALL etcd: mv-out etcd.yaml from all CPs, wait for containers to stop.
+//  3. Add --force-new-cluster to cp1's manifest.
+//  4. Start cp1: mv-in cp1's manifest (--force-new-cluster + corrected IPs).
+//     cp1 bootstraps as a 1-member cluster from its existing WAL snapshot.
+//  5. Wait for cp1 healthy.
+//  6. Register cp2 and cp3 as new etcd members via `etcdctl member add`.
+//  7. Start cp2/cp3: mv-in their manifests (--initial-cluster-state=existing).
+//     They join the cluster using the new peer URLs registered in step 6.
+//  8. Wait for cp2 and cp3 healthy.
+//  9. Remove --force-new-cluster from cp1's manifest.
+// 10. Wait for cp1 to be healthy again after kubelet-triggered restart.
+//
+// After this function returns, etcd is healthy on all CPs with correct WAL
+// peer URLs and manifest IPs. The caller must still run Phase 2b (apiserver).
+func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, etcdEndpoint string, logger log.Logger) error {
+	total := len(states)
+	logger.V(0).Infof("  [force-new-cluster] starting recovery bootstrap for %d CP nodes", total)
+
+	// Step 1: Patch ALL manifests with corrected IPs.
+	// Must happen before step 2 (stop etcd) so that when etcd restarts it reads
+	// correct --initial-cluster values from the manifest.
+	if len(ipMap) > 0 {
+		logger.V(0).Infof("  [force-new-cluster] step 1: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
+		for _, st := range states {
+			logger.V(1).Infof("    patching manifests on %s", st.node.String())
+			if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
+				return errors.Wrapf(err, "force-new-cluster: manifest patch failed on %s", st.node.String())
+			}
+		}
+		logger.V(0).Infof("  [force-new-cluster] step 1 complete: manifests patched")
+	} else {
+		logger.V(1).Infof("  [force-new-cluster] step 1: no IP drift, manifests unchanged")
+	}
+
+	// Step 2: Stop ALL etcd instances — mv-out etcd.yaml from all CPs.
+	logger.V(0).Infof("  [force-new-cluster] step 2: stopping all etcd instances (mv-out manifests)")
+	for i, st := range states {
+		logger.V(1).Infof("    mv-out etcd.yaml on %s (%d/%d)", st.node.String(), i+1, total)
+		if err := st.node.Command("mv", etcdManifestPath, etcdManifestBackup).Run(); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: mv-out etcd.yaml on %s", st.node.String())
+		}
+	}
+	// Wait for all etcd containers to stop (kubelet detects missing manifest and
+	// stops the static pod). Use the standard kubelet file check window.
+	logger.V(1).Infof("  [force-new-cluster] waiting for all etcd containers to stop")
+	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
+	stopDeadline := 30 * time.Second
+	for _, st := range states {
+		if err := waitForEtcdContainerGone(st.node, stopDeadline, healthGateTick); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: etcd container on %s did not stop within %v", st.node.String(), stopDeadline)
+		}
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 2 complete: all etcd containers stopped")
+
+	// Step 3: Add --force-new-cluster to cp1's manifest.
+	logger.V(0).Infof("  [force-new-cluster] step 3: injecting --force-new-cluster into %s manifest", states[0].node.String())
+	if err := addForceNewClusterFlag(states[0].node); err != nil {
+		return err
+	}
+
+	// Step 4: Start cp1: mv-in cp1's manifest.
+	logger.V(0).Infof("  [force-new-cluster] step 4: starting cp1 (%s) with --force-new-cluster", states[0].node.String())
+	if err := states[0].node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
+		return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", states[0].node.String())
+	}
+
+	// Step 5: Wait for cp1 healthy (1/1 quorum as single-member cluster).
+	logger.V(0).Infof("  [force-new-cluster] step 5: waiting for cp1 etcd to be healthy")
+	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
+		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster start", states[0].node.String())
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 5 complete: cp1 etcd healthy (single-member)")
+
+	// Step 6: Register cp2 and cp3 as new etcd members.
+	// etcdctl member add registers the member and writes the new peer URL into
+	// the Raft log. cp2/cp3 will use --initial-cluster-state=existing when they
+	// start (already set in their manifests by kubeadm), so they expect to find
+	// themselves already registered in the cluster — which we do here.
+	cp1EtcdID, err := getEtcdContainerID(states[0].node)
+	if err != nil {
+		return errors.Wrapf(err, "force-new-cluster: get cp1 etcd container ID on %s", states[0].node.String())
+	}
+	for i := 1; i < total; i++ {
+		st := states[i]
+		peerURL := peerURLForState(&st)
+		if peerURL == "" {
+			return errors.Errorf("force-new-cluster: could not build peer URL for %s (currentIP=%q)", st.node.String(), st.currentIP)
+		}
+		memberName := st.node.String()
+		logger.V(0).Infof("  [force-new-cluster] step 6: adding member %s with peer URL %s", memberName, peerURL)
+		addArgs := []string{
+			"crictl", "exec", cp1EtcdID, "etcdctl",
+			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+			"--key=/etc/kubernetes/pki/etcd/peer.key",
+			"--endpoints=" + etcdEndpoint,
+			"member", "add", memberName, "--peer-urls=" + peerURL,
+		}
+		if err := states[0].node.Command(addArgs[0], addArgs[1:]...).Run(); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: etcdctl member add %s failed", memberName)
+		}
+		logger.V(1).Infof("    [force-new-cluster] member %s registered", memberName)
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 6 complete: %d member(s) registered", total-1)
+
+	// Step 7: Clear cp2/cp3 etcd data directories.
+	//
+	// CRITICAL: cp2/cp3 cannot restart with their existing WAL data when joining
+	// the force-new-cluster bootstrap. Their WAL contains the old 3-member cluster
+	// configuration with stale peer URLs. When etcd starts with
+	// --initial-cluster-state=existing and an existing data directory, it reads
+	// peer membership from the WAL — ignoring the --initial-cluster manifest flag.
+	// This would cause cp2/cp3 to try to connect to their old (stale) peer URLs,
+	// re-isolating them.
+	//
+	// Solution: clear the WAL + snapshot data for cp2/cp3 (/var/lib/etcd/member)
+	// before starting them. With no WAL, etcd treats this as a fresh join of an
+	// existing cluster: it reads --initial-cluster from the manifest to find
+	// cp1's new peer URL, connects, and syncs the full cluster state via Raft
+	// replication. ALL data is preserved — cp1's data dir (preserved by
+	// --force-new-cluster) is Raft-replicated to the newly-joined members.
+	//
+	// Only the WAL+snapshot subdirectory (/var/lib/etcd/member) is removed.
+	// The bind-mount point (/var/lib/etcd) itself is kept as an empty directory.
+	logger.V(0).Infof("  [force-new-cluster] step 7: clearing etcd WAL for remaining CPs (member join path)")
+	for i := 1; i < total; i++ {
+		st := states[i]
+		logger.V(1).Infof("    clearing /var/lib/etcd/member on %s (%d/%d)", st.node.String(), i, total-1)
+		if err := st.node.Command("rm", "-rf", "/var/lib/etcd/member").Run(); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: rm -rf /var/lib/etcd/member on %s", st.node.String())
+		}
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 7 complete: WAL cleared for %d CPs", total-1)
+
+	// Step 8: Start cp2/cp3 — mv-in their manifests.
+	// With empty data dirs and --initial-cluster-state=existing, they connect
+	// to cp1 at the new peer URL (from the manifest --initial-cluster patched in
+	// step 1) and sync the full Raft log from cp1.
+	logger.V(0).Infof("  [force-new-cluster] step 8: starting remaining CPs (%d)", total-1)
+	for i := 1; i < total; i++ {
+		st := states[i]
+		logger.V(1).Infof("    mv-in etcd.yaml on %s (%d/%d)", st.node.String(), i, total-1)
+		if err := st.node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", st.node.String())
+		}
+	}
+
+	// Step 9: Wait for cp2 and cp3 healthy.
+	// cp2/cp3 need to download and replay the full Raft log from cp1. This may
+	// take longer than a regular etcd restart — use the full etcdHealthGateDeadline.
+	logger.V(0).Infof("  [force-new-cluster] step 9: waiting for remaining CPs to become healthy")
+	for i := 1; i < total; i++ {
+		if err := etcdHealthChecker(states[i].node, etcdEndpoint); err != nil {
+			return errors.Wrapf(err, "force-new-cluster: etcd health gate failed on %s after member join", states[i].node.String())
+		}
+		logger.V(1).Infof("    [force-new-cluster] %s etcd healthy", states[i].node.String())
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 9 complete: all %d CPs healthy", total)
+
+	// Step 10: Remove --force-new-cluster from cp1's manifest.
+	// kubelet will detect the manifest change and restart cp1's etcd. At this
+	// point the WAL has the correct 3-member configuration (from the member add
+	// commands in step 6), so the restart is clean with --initial-cluster-state.
+	// cp1's data dir was never cleared so all cluster data is preserved.
+	logger.V(0).Infof("  [force-new-cluster] step 10: removing --force-new-cluster from %s manifest", states[0].node.String())
+	if err := removeForceNewClusterFlag(states[0].node); err != nil {
+		return err
+	}
+
+	// Step 11: Wait for cp1 healthy after kubelet-triggered restart.
+	logger.V(0).Infof("  [force-new-cluster] step 11: waiting for cp1 (%s) to re-join after --force-new-cluster removal", states[0].node.String())
+	// Give kubelet time to notice the manifest change and restart the pod.
+	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
+	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
+		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster removal", states[0].node.String())
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 11 complete: cp1 healthy, all %d etcd members healthy", total)
+	logger.V(0).Infof("  [force-new-cluster] bootstrap recovery complete")
+	return nil
+}
+
 // nodeRegenState holds per-CP data collected during Phase 1 so Phase 2 can
 // run without re-querying the nodes.
 type nodeRegenState struct {
@@ -955,6 +1229,16 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	}
 	logger.V(0).Infof("cert regen phase 1 complete: all %d CP nodes have fresh cert files", total)
 
+	// Build ipMap for Phase 1.7 (manifest patch) and forceNewClusterBootstrap.
+	// Must be computed before Phase 1.5 so it is available for both code paths.
+	ipMap := make(map[string]string)
+	for _, st := range states {
+		if st.oldIP != "" && st.oldIP != st.currentIP {
+			ipMap[st.oldIP] = st.currentIP
+			logger.V(1).Infof("  IP drift map: %s → %s (on %s)", st.oldIP, st.currentIP, st.node.String())
+		}
+	}
+
 	// ── PHASE 1.5: Wait for etcd quorum on the bootstrap CP ─────────────────
 	// ORDERING NOTE: Phase 1.5 (WAL peer URL update via live etcd API) MUST run
 	// before Phase 1.7 (manifest IP patch). Reason:
@@ -969,17 +1253,33 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	// and `member update` in Phase 1.6. Waiting for ALL CPs fails in the IP-drift
 	// scenario: after IPAM reassignment, isolated CPs (those whose old peer URL is
 	// stale in the WAL) cannot form quorum and will never become healthy on their
-	// own local endpoint — they need Phase 1.6's WAL update first. The bootstrap
-	// CP, however, is part of the existing quorum (it started first and can reach
-	// the majority), so it will become healthy after the initial election settles.
+	// own local endpoint — they need Phase 1.6's WAL update first.
+	//
+	// FALLBACK: On macOS with Docker Desktop, every pause/resume randomises all
+	// container MAC addresses → Docker DHCP assigns new IPs to ALL containers.
+	// This means ALL 3 etcd nodes always have stale WAL peer URLs — even the
+	// bootstrap CP cannot form quorum. In this "all-isolated" scenario,
+	// etcdHealthChecker will time out. We detect this and fall back to
+	// forceNewClusterBootstrap, which uses etcd's --force-new-cluster flag to
+	// bootstrap a single-member cluster on cp1, then re-adds cp2/cp3.
+	forceBootstrapped := false
 	logger.V(0).Infof("cert regen phase 1.5: waiting for etcd quorum on bootstrap CP (%s)", states[0].node.String())
-	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
-		dumpCertRegenDiagnostics(states[0].node, "etcd-wait", logger)
-		return errors.Wrapf(err,
-			"cert regen phase 1.5 (etcd health wait) failed on %s. Cluster state is undefined — delete and recreate the cluster",
-			states[0].node.String())
+	if healthErr := etcdHealthChecker(states[0].node, etcdEndpoint); healthErr != nil {
+		// Phase 1.5 health wait failed — attempt the force-new-cluster fallback
+		// to recover the all-isolated scenario.
+		logger.V(0).Infof("cert regen phase 1.5: etcd quorum wait failed on %s, attempting force-new-cluster bootstrap: %v",
+			states[0].node.String(), healthErr)
+		if fErr := forceNewClusterBootstrap(states, ipMap, etcdEndpoint, logger); fErr != nil {
+			dumpCertRegenDiagnostics(states[0].node, "force-new-cluster", logger)
+			return errors.Wrapf(fErr,
+				"cert regen phase 1.5 (force-new-cluster bootstrap) failed on %s. Cluster state is undefined — delete and recreate the cluster",
+				states[0].node.String())
+		}
+		forceBootstrapped = true
+		logger.V(0).Infof("cert regen phase 1.5 complete: force-new-cluster bootstrap succeeded, etcd cluster reformed")
+	} else {
+		logger.V(0).Infof("cert regen phase 1.5 complete: etcd quorum confirmed on %s", states[0].node.String())
 	}
-	logger.V(0).Infof("cert regen phase 1.5 complete: etcd quorum confirmed on %s", states[0].node.String())
 
 	// ── PHASE 1.6: Update etcd WAL peer URLs via live cluster API ───────────
 	// With etcd running, update the cluster membership record for any member
@@ -995,22 +1295,20 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	// no drift. The function compares WAL peer URL IPs directly against node
 	// current IPs, handling all IP family cases.
 	//
-	// Build ipMap here for Phase 1.7 (manifest patch); also passed to
-	// updateEtcdMemberPeerURLs for diagnostic context.
-	ipMap := make(map[string]string)
-	for _, st := range states {
-		if st.oldIP != "" && st.oldIP != st.currentIP {
-			ipMap[st.oldIP] = st.currentIP
-			logger.V(1).Infof("  IP drift map: %s → %s (on %s)", st.oldIP, st.currentIP, st.node.String())
+	// SKIP if forceNewClusterBootstrap already reformed the cluster: that path
+	// re-registers cp2/cp3 via etcdctl member add with correct peer URLs, so
+	// there are no stale WAL entries left to fix.
+	if !forceBootstrapped {
+		logger.V(0).Infof("cert regen phase 1.6: verifying and updating etcd member peer URLs")
+		if err := updateEtcdMemberPeerURLs(states, ipMap, etcdEndpoint, logger); err != nil {
+			dumpCertRegenDiagnostics(states[0].node, "member-update", logger)
+			return errors.Wrapf(err,
+				"cert regen phase 1.6 (etcd member peer URL update) failed. Cluster state is undefined — delete and recreate the cluster")
 		}
+		logger.V(0).Infof("cert regen phase 1.6 complete: etcd member peer URLs verified")
+	} else {
+		logger.V(1).Infof("cert regen phase 1.6: skipped (force-new-cluster bootstrap handled WAL peer URL registration)")
 	}
-	logger.V(0).Infof("cert regen phase 1.6: verifying and updating etcd member peer URLs")
-	if err := updateEtcdMemberPeerURLs(states, ipMap, etcdEndpoint, logger); err != nil {
-		dumpCertRegenDiagnostics(states[0].node, "member-update", logger)
-		return errors.Wrapf(err,
-			"cert regen phase 1.6 (etcd member peer URL update) failed. Cluster state is undefined — delete and recreate the cluster")
-	}
-	logger.V(0).Infof("cert regen phase 1.6 complete: etcd member peer URLs verified")
 
 	// ── PHASE 1.7: Patch etcd (and kube-apiserver) manifests with current IPs ─
 	// Now that WAL peer URLs are updated (Phase 1.6), patch the static-pod
@@ -1023,20 +1321,28 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	// This must happen BEFORE Phase 2 (manifest cycling) — cycling the manifest
 	// again before Phase 2 would be a no-op but the IPs must be correct for
 	// etcd to form quorum when Phase 2a restarts it simultaneously.
-	if len(ipMap) > 0 {
-		logger.V(0).Infof("cert regen phase 1.7: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
-		for _, st := range states {
-			logger.V(1).Infof("    patching manifests on %s", st.node.String())
-			if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
-				dumpCertRegenDiagnostics(st.node, "manifest-patch", logger)
-				return errors.Wrapf(err,
-					"cert regen phase 1.7 (manifest IP patch) failed on %s. Cluster state is undefined — delete and recreate the cluster",
-					st.node.String())
+	//
+	// SKIP if forceNewClusterBootstrap already patched manifests: that path
+	// patches manifests before starting cp1 with --force-new-cluster, and also
+	// patches cp2/cp3 manifests before starting them as rejoining members.
+	if !forceBootstrapped {
+		if len(ipMap) > 0 {
+			logger.V(0).Infof("cert regen phase 1.7: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
+			for _, st := range states {
+				logger.V(1).Infof("    patching manifests on %s", st.node.String())
+				if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
+					dumpCertRegenDiagnostics(st.node, "manifest-patch", logger)
+					return errors.Wrapf(err,
+						"cert regen phase 1.7 (manifest IP patch) failed on %s. Cluster state is undefined — delete and recreate the cluster",
+						st.node.String())
+				}
 			}
+			logger.V(0).Infof("cert regen phase 1.7 complete: manifests patched")
+		} else {
+			logger.V(1).Infof("cert regen phase 1.7: no IP drift detected, manifests unchanged")
 		}
-		logger.V(0).Infof("cert regen phase 1.7 complete: manifests patched")
 	} else {
-		logger.V(1).Infof("cert regen phase 1.7: no IP drift detected, manifests unchanged")
+		logger.V(1).Infof("cert regen phase 1.7: skipped (force-new-cluster bootstrap patched manifests)")
 	}
 
 	// ── PHASE 2: Cycle static-pod manifests ───────────────────────────────
@@ -1060,18 +1366,27 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	// ── PHASE 2a: Simultaneous etcd restart (all CPs at once) ─────────────
 	// etcd-peer, etcd-server, etcd-healthcheck-client all share etcd.yaml.
 	// We do a single mv-out-ALL / sleep / mv-in-ALL / health-gate cycle.
-	logger.V(0).Infof("cert regen phase 2a: simultaneous etcd restart (all %d CPs)", total)
-	cpNodesList := make([]nodes.Node, total)
-	for i, st := range states {
-		cpNodesList[i] = st.node
+	//
+	// SKIP if forceNewClusterBootstrap already performed the etcd restart:
+	// that path stops all etcd, patches manifests, starts cp1 with --force-new-cluster,
+	// adds cp2/cp3 as members, starts them, and removes --force-new-cluster.
+	// The etcd cluster is already healthy on all CPs at this point.
+	if !forceBootstrapped {
+		logger.V(0).Infof("cert regen phase 2a: simultaneous etcd restart (all %d CPs)", total)
+		cpNodesList := make([]nodes.Node, total)
+		for i, st := range states {
+			cpNodesList[i] = st.node
+		}
+		if err := cycleEtcdClusterSimultaneous(cpNodesList, etcdEndpoint, logger); err != nil {
+			// Report the failure on the first CP for diagnostics.
+			dumpCertRegenDiagnostics(states[0].node, "etcd-simultaneous", logger)
+			return errors.Wrapf(err,
+				"cert regen phase 2a (simultaneous etcd restart) failed. Cluster state is undefined — delete and recreate the cluster")
+		}
+		logger.V(0).Infof("cert regen phase 2a complete: etcd cluster restarted simultaneously")
+	} else {
+		logger.V(0).Infof("cert regen phase 2a: skipped (force-new-cluster bootstrap already restarted etcd cluster)")
 	}
-	if err := cycleEtcdClusterSimultaneous(cpNodesList, etcdEndpoint, logger); err != nil {
-		// Report the failure on the first CP for diagnostics.
-		dumpCertRegenDiagnostics(states[0].node, "etcd-simultaneous", logger)
-		return errors.Wrapf(err,
-			"cert regen phase 2a (simultaneous etcd restart) failed. Cluster state is undefined — delete and recreate the cluster")
-	}
-	logger.V(0).Infof("cert regen phase 2a complete: etcd cluster restarted simultaneously")
 
 	// ── PHASE 2b: Per-CP kube-apiserver manifest cycle ────────────────────
 	// apiserver-etcd-client uses kube-apiserver.yaml. Each apiserver connects
