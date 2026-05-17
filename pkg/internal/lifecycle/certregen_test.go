@@ -1616,6 +1616,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap(t *testing.T)
 			//   sub-step 2a: 3x crictl ps → empty (non-fatal, etcdContainerIDs[i]="")
 			//   sub-step 2c: no crictl stop (IDs are empty, skipped)
 			//   sub-step 2d: 3x crictl ps → empty → waitForEtcdContainerGone passes
+			//   step 5.5: sed (removeForceNewClusterFlag) + systemctl (restartKubelet) — no crictl ps
 			//   step 6: crictl ps → empty → getEtcdContainerID fails (expected in this test)
 			if len(args) >= 3 && args[0] == "ps" && args[1] == "--name" && args[2] == "etcd" {
 				return "", nil // always empty → step 2a gets empty IDs (non-fatal), step 2d passes, step 6 getEtcdContainerID fails
@@ -1703,7 +1704,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 			// Phase 1.5: all-isolated, triggers force-new-cluster fallback.
 			return errors.New("etcd ready-gate timed out: all-isolated")
 		}
-		return nil // steps 5, 9x2 (cp2, cp3 rolling), 11 (cp1 after flag removal), Phase 2b
+		return nil // steps 5, 5.5 (cp1 after flag removal), 9x2 (cp2, cp3 rolling), Phase 2b
 	})
 
 	// Track crictl ps call index to distinguish "container running" vs "container gone".
@@ -1713,7 +1714,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
 	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
 	//   rolling step 6 (i=1): getEtcdContainerID cp1 → call 6 → "fakeid123" (restarted by mv-in)
-	//   rolling step 9b (i=1): getEtcdContainerID cp1 → call 7 → "fakeid123" (member-list wait)
+	//   rolling step 9b (i=1): waitForMemberStarted internal getEtcdContainerID cp1 → call 7
 	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 8+ → "fakeid123" (may have rotated)
 	//   (no step 9b for i=2 — last member, no next add pending)
 	crictlPsCallCount := 0

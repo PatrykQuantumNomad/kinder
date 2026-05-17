@@ -856,9 +856,20 @@ func waitForEtcdContainerGone(node nodes.Node, deadline, tick time.Duration) err
 //   etcdserver: re-configuration failed due to not enough started members
 //
 // Polling member list from cp1 ensures the commit is durable before we proceed.
-func waitForMemberStarted(cp1Node nodes.Node, cp1EtcdID, memberName, etcdEndpoint string, deadline, tick time.Duration) error {
+//
+// cp1's container ID is re-fetched on every poll iteration because cp1's etcd
+// process may restart during the wait (kubelet background reconciliation),
+// invalidating any previously captured container ID.
+func waitForMemberStarted(cp1Node nodes.Node, memberName, etcdEndpoint string, deadline, tick time.Duration) error {
 	end := time.Now().Add(deadline)
 	for time.Now().Before(end) {
+		// Re-fetch cp1's container ID on every iteration — it may have rotated.
+		cp1EtcdID, idErr := getEtcdContainerID(cp1Node)
+		if idErr != nil {
+			// Container not yet running; wait and retry.
+			certRegenSleeper(tick)
+			continue
+		}
 		out, err := exec.OutputLines(cp1Node.Command(
 			"crictl", "exec", cp1EtcdID, "etcdctl",
 			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
@@ -1082,6 +1093,31 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	}
 	logger.V(0).Infof("  [force-new-cluster] step 5 complete: cp1 etcd healthy (single-member)")
 
+	// Step 5.5: Remove --force-new-cluster from cp1's manifest NOW, before member joins.
+	//
+	// CRITICAL: --force-new-cluster must be removed immediately after cp1 is healthy,
+	// not after all members join (old step 10). Leaving it in the manifest means that
+	// any kubelet-triggered restart of cp1's etcd (background reconciliation, OOM,
+	// CrashLoopBackOff, etc.) would re-execute --force-new-cluster and reset the
+	// cluster to single-member, silently dropping cp2/cp3 from the Raft membership.
+	// This caused step 9b (waitForMemberStarted) to time out because cp2 could never
+	// appear in cp1's member list — cp1 kept resetting to a 1-member cluster on restart.
+	//
+	// After removal, kubelet restarts cp1's etcd without the flag. The WAL already
+	// has the correct single-member state from the --force-new-cluster run, so
+	// etcd comes back clean as a stable single-member cluster. The Raft log is
+	// preserved — this restart is safe and necessary before member adds.
+	logger.V(0).Infof("  [force-new-cluster] step 5.5: removing --force-new-cluster from %s manifest before member joins", states[0].node.String())
+	if err := removeForceNewClusterFlag(states[0].node); err != nil {
+		return err
+	}
+	restartKubelet(states[0].node, logger)
+	logger.V(0).Infof("  [force-new-cluster] step 5.5: waiting for cp1 etcd healthy after --force-new-cluster removal")
+	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
+		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster removal (step 5.5)", states[0].node.String())
+	}
+	logger.V(0).Infof("  [force-new-cluster] step 5.5 complete: cp1 stable as single-member cluster (no --force-new-cluster)")
+
 	// Steps 6-9: Rolling join for each remaining CP (cp2, cp3, ...).
 	//
 	// ROLLING (not batch) because etcd3.6 enforces quorum for every Raft
@@ -1160,42 +1196,16 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		// before we proceed to register the next member. Without this, cp1 may still
 		// be in joint-consensus transition and reject the next member add with:
 		//   "re-configuration failed due to not enough started members"
+		// Only needed before the next member add (not after the last member).
 		if i < total-1 {
-			// Only needed before the next member add (not after the last member).
-			cp1EtcdIDForWait, waitIDErr := getEtcdContainerID(states[0].node)
-			if waitIDErr != nil {
-				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): could not get cp1 container ID for member-list wait (non-fatal): %v", i, total-1, waitIDErr)
-			} else {
-				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): waiting for %s to appear as started in cp1 member list", i, total-1, memberName)
-				if waitErr := waitForMemberStarted(states[0].node, cp1EtcdIDForWait, memberName, etcdEndpoint, 2*time.Minute, healthGateTick); waitErr != nil {
-					return errors.Wrapf(waitErr, "force-new-cluster: member %s did not become started on cp1 after joining", memberName)
-				}
-				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): %s confirmed started in cp1 member list", i, total-1, memberName)
+			logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): waiting for %s to appear as started in cp1 member list", i, total-1, memberName)
+			if waitErr := waitForMemberStarted(states[0].node, memberName, etcdEndpoint, 2*time.Minute, healthGateTick); waitErr != nil {
+				return errors.Wrapf(waitErr, "force-new-cluster: member %s did not become started on cp1 after joining", memberName)
 			}
+			logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): %s confirmed started in cp1 member list", i, total-1, memberName)
 		}
 	}
 	logger.V(0).Infof("  [force-new-cluster] steps 6-9 complete: all %d remaining CPs registered and healthy", total-1)
-
-	// Step 10: Remove --force-new-cluster from cp1's manifest.
-	// kubelet will detect the manifest change and restart cp1's etcd. At this
-	// point the WAL has the correct 3-member configuration (from the member add
-	// commands in step 6), so the restart is clean with --initial-cluster-state.
-	// cp1's data dir was never cleared so all cluster data is preserved.
-	logger.V(0).Infof("  [force-new-cluster] step 10: removing --force-new-cluster from %s manifest", states[0].node.String())
-	if err := removeForceNewClusterFlag(states[0].node); err != nil {
-		return err
-	}
-
-	// Step 11: Wait for cp1 healthy after --force-new-cluster removal restart.
-	// Restart kubelet to trigger immediate re-scan of the updated manifest (now
-	// without --force-new-cluster). Kubelet will stop the running container and
-	// start a new one with the clean spec.
-	logger.V(0).Infof("  [force-new-cluster] step 11: restarting cp1 (%s) without --force-new-cluster flag", states[0].node.String())
-	restartKubelet(states[0].node, logger)
-	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
-		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster removal", states[0].node.String())
-	}
-	logger.V(0).Infof("  [force-new-cluster] step 11 complete: cp1 healthy, all %d etcd members healthy", total)
 	logger.V(0).Infof("  [force-new-cluster] bootstrap recovery complete")
 	return nil
 }
