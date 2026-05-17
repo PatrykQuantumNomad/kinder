@@ -50,6 +50,15 @@ type ResumeOptions struct {
 	// Context allows callers to cancel the in-flight Resume. Defaults to
 	// context.Background().
 	Context context.Context
+	// Strategy is the explicit resume-strategy override. Valid values:
+	//   ""           — empty (same as "auto") — preserve existing probe+dispatch
+	//   "auto"       — read the io.x-k8s.kinder.resume-strategy label, dispatch
+	//   "ip-pin"     — force StrategyIPPinned (bypass label probe); legacy
+	//                  clusters without /kind/ipam-state.json hard-fail per W2 Option A
+	//   "cert-regen" — force StrategyCertRegen (bypass label probe); skips drift
+	//                  detection (always regenerates)
+	// Phase 57.3: developer-facing override for UAT and direct recovery invocation.
+	Strategy string
 }
 
 // ResumeResult is the structured outcome of a Resume call. It is the JSON shape
@@ -252,15 +261,24 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 	//   StrategyCertRegen ("cert-regen") — reactive wholesale regen after start
 	//   ""                               — legacy (absent label); treat as cert-regen
 	//
-	// readResumeStrategy reads the bootstrap CP's label via docker inspect.
+	// Phase 57.3: opts.Strategy overrides label probe when non-empty/non-"auto".
+	// "ip-pin" forces ip-pinned path; "cert-regen" forces cert-regen and skips
+	// drift detection. "auto" (default) and "" both probe the label.
 	var strategy string
 	if len(cp) >= 2 {
-		strategy = readResumeStrategy(binaryName, cp)
-		// Defensive: nerdctl cannot pin IPs (RESEARCH PIT-4). If label says
-		// ip-pinned but runtime is nerdctl, downgrade to cert-regen.
-		if strategy == StrategyIPPinned && filepath.Base(binaryName) == "nerdctl" {
-			opts.Logger.Warnf("nerdctl detected; downgrading resume-strategy from ip-pinned to cert-regen")
+		switch opts.Strategy {
+		case "ip-pin":
+			strategy = StrategyIPPinned
+		case "cert-regen":
 			strategy = StrategyCertRegen
+		default: // "auto", "", or any other value: probe the label
+			strategy = readResumeStrategy(binaryName, cp)
+			// Defensive: nerdctl cannot pin IPs (RESEARCH PIT-4). If label says
+			// ip-pinned but runtime is nerdctl, downgrade to cert-regen.
+			if strategy == StrategyIPPinned && filepath.Base(binaryName) == "nerdctl" {
+				opts.Logger.Warnf("nerdctl detected; downgrading resume-strategy from ip-pinned to cert-regen")
+				strategy = StrategyCertRegen
+			}
 		}
 	}
 
@@ -367,26 +385,40 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 	// Phase 4: workers
 	startNodes(workers)
 
-	// Phase 4.5: cert-regen / legacy path (REACTIVE — only on drift).
+	// Phase 4.5: cert-regen / legacy path.
 	// Runs AFTER all containers are started (kubeadm needs API server reachable,
 	// per RESEARCH PIT-5). Wholesale across all CPs (RESEARCH PIT-6).
+	//
+	// When opts.Strategy == "cert-regen" (or its resolved value StrategyCertRegen
+	// was forced by the flag), drift detection is SKIPPED — we always regenerate.
+	// This is the Phase 57.3 recovery path: the operator has confirmed cert mismatch
+	// and does not want a drift probe to decide whether to regen.
 	if (strategy == StrategyCertRegen || strategy == "") && len(cp) >= 2 && len(startErrs) == 0 {
-		// Reactive: check drift on each CP. If ANY CP drifted, regen all (wholesale).
-		anyDrift := false
-		for _, c := range cp {
-			drifted, _, _, driftErr := IPDriftDetected(binaryName, c.String(), os.TempDir())
-			if driftErr != nil {
-				// Log warning and treat as drift — better to regen unnecessarily
-				// than to leave stale certs in place.
-				opts.Logger.Warnf("IPDriftDetected error on %s (treating as drift): %v", c.String(), driftErr)
-				drifted = true
+		runRegen := false
+		if opts.Strategy == "cert-regen" {
+			// Flag-forced path: skip drift detection, always regen.
+			opts.Logger.V(1).Infof("--strategy=cert-regen: skipping drift detection, running cert-regen unconditionally")
+			runRegen = true
+		} else {
+			// Reactive: check drift on each CP. If ANY CP drifted, regen all (wholesale).
+			for _, c := range cp {
+				drifted, _, _, driftErr := IPDriftDetected(binaryName, c.String(), os.TempDir())
+				if driftErr != nil {
+					// Log warning and treat as drift — better to regen unnecessarily
+					// than to leave stale certs in place.
+					opts.Logger.Warnf("IPDriftDetected error on %s (treating as drift): %v", c.String(), driftErr)
+					drifted = true
+				}
+				if drifted {
+					runRegen = true
+					break
+				}
 			}
-			if drifted {
-				anyDrift = true
-				break
+			if !runRegen {
+				opts.Logger.V(1).Infof("etcd peer IPs unchanged; cert-regen skipped")
 			}
 		}
-		if anyDrift {
+		if runRegen {
 			if regenErr := RegenerateEtcdPeerCertsWholesale(cp, opts.Logger); regenErr != nil {
 				res := &ResumeResult{
 					Cluster:  opts.ClusterName,
@@ -396,8 +428,6 @@ func Resume(opts ResumeOptions) (*ResumeResult, error) {
 				}
 				return res, errors.Wrap(regenErr, "HA resume cert-regen failed: delete and recreate the cluster")
 			}
-		} else {
-			opts.Logger.V(1).Infof("etcd peer IPs unchanged; cert-regen skipped")
 		}
 	}
 

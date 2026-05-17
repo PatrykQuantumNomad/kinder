@@ -45,6 +45,9 @@ type flagpole struct {
 	WaitTimeout time.Duration
 	// JSON enables JSON output for scripted consumers.
 	JSON bool
+	// Strategy is the resume strategy override; one of "auto" (probe + dispatch),
+	// "ip-pin" (force ip-pinned path), or "cert-regen" (force cert-regen path).
+	Strategy string
 }
 
 // resumeFn is the test-injection point for the orchestration call. Production
@@ -82,6 +85,8 @@ func NewCommand(logger log.Logger, streams cmd.IOStreams) *cobra.Command {
 	c.Flags().DurationVar(&flags.Timeout, "timeout", 30*time.Second, "graceful start timeout (e.g. 30s, 2m)")
 	c.Flags().DurationVar(&flags.WaitTimeout, "wait", 5*time.Minute, "max time to wait for all nodes Ready (e.g. 5m, 600s)")
 	c.Flags().BoolVar(&flags.JSON, "json", false, "output JSON")
+	c.Flags().StringVar(&flags.Strategy, "strategy", "auto",
+		"resume strategy override; one of \"auto\" (probe + dispatch), \"ip-pin\" (force ip-pinned path), \"cert-regen\" (force cert-regen path)")
 	return c
 }
 
@@ -91,6 +96,12 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []stri
 	}
 	if flags.Timeout < 0 {
 		return fmt.Errorf("invalid --timeout %v: must be >= 0", flags.Timeout)
+	}
+	switch flags.Strategy {
+	case "auto", "ip-pin", "cert-regen":
+		// valid
+	default:
+		return fmt.Errorf("unsupported --strategy %q; supported values: \"auto\", \"ip-pin\", \"cert-regen\"", flags.Strategy)
 	}
 
 	name, err := resolveClusterName(args)
@@ -112,6 +123,7 @@ func runE(logger log.Logger, streams cmd.IOStreams, flags *flagpole, args []stri
 		WaitTimeout:  flags.WaitTimeout,
 		Logger:       logger,
 		Provider:     provider,
+		Strategy:     flags.Strategy,
 	})
 
 	// Render output regardless of resumeErr so partial-failure data and

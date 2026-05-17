@@ -1681,6 +1681,179 @@ func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// Phase 57.3: --strategy flag dispatch tests
+// ============================================================================
+//
+// These tests exercise the opts.Strategy override in Resume() which bypasses
+// label probe. They cover:
+//   - "ip-pin" → forces ip-pinned path even if label says cert-regen
+//   - "cert-regen" → forces cert-regen and SKIPS drift detection (always regen)
+//   - "auto" → falls back to label probe (same as empty Strategy)
+// MUST NOT call t.Parallel().
+
+// TestResume_StrategyOverride_IPPin_ForcesIPPin: opts.Strategy="ip-pin" bypasses
+// label probe and forces StrategyIPPinned path even when label would say cert-regen.
+// MUST NOT call t.Parallel().
+func TestResume_StrategyOverride_IPPin_ForcesIPPin(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	cpNetworks := map[string]string{"cp1": "kind-net", "cp2": "kind-net", "cp3": "kind-net"}
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNetworks, cpIPs)
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		// Label says cert-regen — but Strategy="ip-pin" must override it.
+		strategyLabel: map[string]string{"cp1": StrategyCertRegen, "cp2": StrategyCertRegen, "cp3": StrategyCertRegen},
+		currentIPs:    cpIPs,
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+		Strategy:    "ip-pin",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// ip-pinned path: MUST have network disconnect+connect calls.
+	netCalls := tc.networkCalls()
+	if len(netCalls) == 0 {
+		t.Error("Strategy=ip-pin must trigger network disconnect/connect calls")
+	}
+
+	// ip-pinned path: MUST NOT have kubeadm calls (cert-regen not run).
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			t.Errorf("Strategy=ip-pin must NOT call kubeadm; got: %v", c.joined())
+		}
+	}
+}
+
+// TestResume_StrategyOverride_CertRegen_SkipsDriftDetection: opts.Strategy="cert-regen"
+// skips drift detection and runs regen unconditionally even when IPs have not drifted.
+// MUST NOT call t.Parallel().
+func TestResume_StrategyOverride_CertRegen_SkipsDriftDetection(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withEtcdHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withApiserverHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	// Same IPs recorded and current → normal cert-regen path would skip regen.
+	// Strategy="cert-regen" must override and run regen anyway.
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	cpNets := map[string]string{"cp1": "kind", "cp2": "kind", "cp3": "kind"}
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNets, cpIPs)
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyCertRegen},
+		currentIPs:      cpIPs, // no drift
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+		Strategy:    "cert-regen",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Must have called kubeadm (regen ran) despite no IP drift.
+	kubeadmCount := 0
+	for _, c := range tc.allCalls() {
+		if c.name == "kubeadm" {
+			kubeadmCount++
+		}
+	}
+	if kubeadmCount == 0 {
+		t.Error("Strategy=cert-regen must run kubeadm regen even with no IP drift")
+	}
+}
+
+// TestResume_StrategyOverride_Auto_ProbesLabel: opts.Strategy="auto" falls back to
+// label probe (same semantics as empty Strategy). Cluster labeled ip-pinned should
+// take the ip-pinned path.
+// MUST NOT call t.Parallel().
+func TestResume_StrategyOverride_Auto_ProbesLabel(t *testing.T) {
+	withResumeBinaryName(t, "docker")
+	withCertRegenSleeper(t, func(time.Duration) {})
+	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
+	withReadinessProber(t, alwaysReadyProber())
+
+	cpNetworks := map[string]string{"cp1": "kind-net", "cp2": "kind-net", "cp3": "kind-net"}
+	cpIPs := map[string]string{"cp1": "172.18.0.5", "cp2": "172.18.0.6", "cp3": "172.18.0.7"}
+	ippinFk := writeIPAMStateToOSTempDir(t, cpNetworks, cpIPs)
+	withIPPinCmderFn(t, ippinFk.cmder)
+
+	tc := &haTestCmder{
+		containerStates: pausedInspectMap("cp1", "cp2", "cp3"),
+		strategyLabel:   map[string]string{"cp1": StrategyIPPinned, "cp2": StrategyIPPinned, "cp3": StrategyIPPinned},
+		currentIPs:      cpIPs,
+	}
+	withCmder(t, tc.cmder())
+
+	all := []nodes.Node{
+		&fakeNode{name: "cp1", role: "control-plane"},
+		&fakeNode{name: "cp2", role: "control-plane"},
+		&fakeNode{name: "cp3", role: "control-plane"},
+	}
+	prov := &fakeProvider{
+		clusters: []string{"k"},
+		nodesMap: map[string][]nodes.Node{"k": all},
+	}
+
+	_, err := Resume(ResumeOptions{
+		ClusterName: "k",
+		Provider:    prov,
+		Logger:      noopLogger{},
+		Strategy:    "auto", // explicit "auto" must read label
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// "auto" probed the ip-pinned label → network calls MUST exist.
+	netCalls := tc.networkCalls()
+	if len(netCalls) == 0 {
+		t.Error("Strategy=auto must probe label and take ip-pinned path (network calls expected)")
+	}
+}
+
 // joinedCallsHA formats haTestCall slice for debug output.
 func joinedCallsHA(calls []haTestCall) []string {
 	out := make([]string, len(calls))

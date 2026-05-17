@@ -360,6 +360,84 @@ func TestResumeCmd_ResolveError(t *testing.T) {
 	}
 }
 
+// TestResumeCmd_StrategyFlagPropagated: --strategy=cert-regen is forwarded to
+// ResumeOptions.Strategy. Tests the full round-trip through flag parsing and runE.
+func TestResumeCmd_StrategyFlagPropagated(t *testing.T) {
+	for _, tc := range []struct {
+		flag string
+		want string
+	}{
+		{"auto", "auto"},
+		{"ip-pin", "ip-pin"},
+		{"cert-regen", "cert-regen"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+			var captured string
+			withResumeFn(t, func(opts lifecycle.ResumeOptions) (*lifecycle.ResumeResult, error) {
+				captured = opts.Strategy
+				return &lifecycle.ResumeResult{Cluster: "kind", State: "resumed", Nodes: []lifecycle.NodeResult{}}, nil
+			})
+
+			streams, _, _ := newStreams()
+			c := NewCommand(log.NoopLogger{}, streams)
+			c.SetArgs([]string{"--strategy=" + tc.flag})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("Execute returned error: %v", err)
+			}
+			if captured != tc.want {
+				t.Errorf("expected Strategy=%q, got %q", tc.want, captured)
+			}
+		})
+	}
+}
+
+// TestResumeCmd_StrategyDefaultIsAuto: no --strategy flag → ResumeOptions.Strategy
+// equals "auto" (the registered default).
+func TestResumeCmd_StrategyDefaultIsAuto(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	var captured string
+	withResumeFn(t, func(opts lifecycle.ResumeOptions) (*lifecycle.ResumeResult, error) {
+		captured = opts.Strategy
+		return &lifecycle.ResumeResult{Cluster: "kind", State: "resumed", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if captured != "auto" {
+		t.Errorf("expected default Strategy=%q, got %q", "auto", captured)
+	}
+}
+
+// TestResumeCmd_StrategyInvalidRejected: --strategy=bad-value → command exits
+// non-zero with a clear error message; resumeFn is not called.
+func TestResumeCmd_StrategyInvalidRejected(t *testing.T) {
+	withResolveClusterName(t, func(_ []string) (string, error) { return "kind", nil })
+	called := false
+	withResumeFn(t, func(_ lifecycle.ResumeOptions) (*lifecycle.ResumeResult, error) {
+		called = true
+		return &lifecycle.ResumeResult{Cluster: "kind", State: "resumed", Nodes: []lifecycle.NodeResult{}}, nil
+	})
+
+	streams, _, _ := newStreams()
+	c := NewCommand(log.NoopLogger{}, streams)
+	c.SetArgs([]string{"--strategy=bad-value"})
+	err := c.Execute()
+	if err == nil {
+		t.Fatalf("expected error for unsupported --strategy value, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported --strategy") {
+		t.Errorf("error should mention 'unsupported --strategy': %v", err)
+	}
+	if called {
+		t.Errorf("resumeFn must not be called when --strategy validation fails")
+	}
+}
+
 func mapKeys(m map[string]interface{}) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
