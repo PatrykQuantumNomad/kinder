@@ -804,6 +804,21 @@ func cycleEtcdClusterSimultaneous(cpNodes []nodes.Node, etcdEndpoint string, log
 	return nil
 }
 
+// restartKubelet restarts the kubelet service on a node via systemctl. This is
+// needed in the force-new-cluster bootstrap path because on macOS Docker Desktop
+// with kindest/node v1.35.x, kubelet enters a degraded state when kube-apiserver
+// is down — it only runs status_manager loops and does NOT manage static pods.
+// A kubelet restart triggers an immediate re-scan of /etc/kubernetes/manifests
+// and starts/stops static pods accordingly. This is safe to call repeatedly.
+func restartKubelet(node nodes.Node, logger log.Logger) {
+	logger.V(1).Infof("    restartKubelet: systemctl restart kubelet on %s", node.String())
+	if err := node.Command("systemctl", "restart", "kubelet").Run(); err != nil {
+		// Non-fatal: log and continue. The subsequent health gate will catch any
+		// failure to start the container.
+		logger.V(1).Infof("    restartKubelet: systemctl restart kubelet on %s returned error (non-fatal): %v", node.String(), err)
+	}
+}
+
 // waitForEtcdContainerGone polls `crictl ps --name etcd -q` until no container
 // ID is returned (etcd has stopped) or deadline expires.
 func waitForEtcdContainerGone(node nodes.Node, deadline, tick time.Duration) error {
@@ -1013,10 +1028,15 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	}
 
 	// Step 4: Start cp1: mv-in cp1's manifest.
-	logger.V(0).Infof("  [force-new-cluster] step 4: starting cp1 (%s) with --force-new-cluster", states[0].node.String())
+	// After mv-in, restart kubelet so it immediately scans the manifest directory
+	// and starts the etcd container. On macOS Docker Desktop, kubelet enters a
+	// degraded state when kube-apiserver is down (only runs status_manager loops,
+	// does NOT manage static pods). A kubelet restart triggers immediate re-sync.
+	logger.V(0).Infof("  [force-new-cluster] step 4: starting cp1 (%s) with --force-new-cluster (mv-in + kubelet restart)", states[0].node.String())
 	if err := states[0].node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
 		return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", states[0].node.String())
 	}
+	restartKubelet(states[0].node, logger)
 
 	// Step 5: Wait for cp1 healthy (1/1 quorum as single-member cluster).
 	logger.V(0).Infof("  [force-new-cluster] step 5: waiting for cp1 etcd to be healthy")
@@ -1086,17 +1106,20 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	}
 	logger.V(0).Infof("  [force-new-cluster] step 7 complete: WAL cleared for %d CPs", total-1)
 
-	// Step 8: Start cp2/cp3 — mv-in their manifests.
+	// Step 8: Start cp2/cp3 — mv-in their manifests + restart kubelet.
 	// With empty data dirs and --initial-cluster-state=existing, they connect
 	// to cp1 at the new peer URL (from the manifest --initial-cluster patched in
 	// step 1) and sync the full Raft log from cp1.
-	logger.V(0).Infof("  [force-new-cluster] step 8: starting remaining CPs (%d)", total-1)
+	// Restart kubelet on each node after mv-in so it immediately starts the etcd
+	// container (same degraded-kubelet workaround as step 4).
+	logger.V(0).Infof("  [force-new-cluster] step 8: starting remaining CPs (%d) via mv-in + kubelet restart", total-1)
 	for i := 1; i < total; i++ {
 		st := states[i]
 		logger.V(1).Infof("    mv-in etcd.yaml on %s (%d/%d)", st.node.String(), i, total-1)
 		if err := st.node.Command("mv", etcdManifestBackup, etcdManifestPath).Run(); err != nil {
 			return errors.Wrapf(err, "force-new-cluster: mv-in etcd.yaml on %s", st.node.String())
 		}
+		restartKubelet(st.node, logger)
 	}
 
 	// Step 9: Wait for cp2 and cp3 healthy.
@@ -1121,10 +1144,12 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		return err
 	}
 
-	// Step 11: Wait for cp1 healthy after kubelet-triggered restart.
-	logger.V(0).Infof("  [force-new-cluster] step 11: waiting for cp1 (%s) to re-join after --force-new-cluster removal", states[0].node.String())
-	// Give kubelet time to notice the manifest change and restart the pod.
-	certRegenSleeper(kubeletFileCheckFrequency + staticPodCycleSafetyMargin)
+	// Step 11: Wait for cp1 healthy after --force-new-cluster removal restart.
+	// Restart kubelet to trigger immediate re-scan of the updated manifest (now
+	// without --force-new-cluster). Kubelet will stop the running container and
+	// start a new one with the clean spec.
+	logger.V(0).Infof("  [force-new-cluster] step 11: restarting cp1 (%s) without --force-new-cluster flag", states[0].node.String())
+	restartKubelet(states[0].node, logger)
 	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
 		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster removal", states[0].node.String())
 	}
