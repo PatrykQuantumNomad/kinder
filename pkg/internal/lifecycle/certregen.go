@@ -845,6 +845,43 @@ func waitForEtcdContainerGone(node nodes.Node, deadline, tick time.Duration) err
 	return errors.Errorf("etcd container on %s still running after %v", node.String(), deadline)
 }
 
+// waitForMemberStarted polls `etcdctl member list` via cp1's container until
+// memberName appears with a non-empty name in the list (indicating it has
+// connected to cp1 and the membership change is committed in the Raft log).
+//
+// This is needed between rolling member-add iterations in forceNewClusterBootstrap.
+// After cp2 joins and its local health check passes, cp1 may still be in the
+// joint-consensus transition from the "add cp2" Raft config change.  Attempting
+// to add cp3 before that transition commits causes:
+//   etcdserver: re-configuration failed due to not enough started members
+//
+// Polling member list from cp1 ensures the commit is durable before we proceed.
+func waitForMemberStarted(cp1Node nodes.Node, cp1EtcdID, memberName, etcdEndpoint string, deadline, tick time.Duration) error {
+	end := time.Now().Add(deadline)
+	for time.Now().Before(end) {
+		out, err := exec.OutputLines(cp1Node.Command(
+			"crictl", "exec", cp1EtcdID, "etcdctl",
+			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+			"--key=/etc/kubernetes/pki/etcd/peer.key",
+			"--endpoints="+etcdEndpoint,
+			"member", "list", "--write-out=json",
+		))
+		if err == nil {
+			members, parseErr := parseEtcdMemberList(strings.Join(out, ""))
+			if parseErr == nil {
+				for _, m := range members {
+					if m.name == memberName {
+						return nil // committed and started
+					}
+				}
+			}
+		}
+		certRegenSleeper(tick)
+	}
+	return errors.Errorf("member %s did not appear as started in etcd member list within %v", memberName, deadline)
+}
+
 // peerURLForState builds the etcd peer URL for a node state.
 // For IPv6/dual-stack clusters where currentIP is an IPv6 address, the URL
 // uses the bracketed IPv6 form: https://[<ip>]:2380.
@@ -1111,12 +1148,31 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		}
 		restartKubelet(st.node, logger)
 
-		// Step 9: Wait for this member to become healthy before adding the next.
+		// Step 9a: Wait for this member's local etcd endpoint to be healthy.
 		logger.V(0).Infof("  [force-new-cluster] step 9 (%d/%d): waiting for %s etcd to be healthy", i, total-1, memberName)
 		if err := etcdHealthChecker(st.node, etcdEndpoint); err != nil {
 			return errors.Wrapf(err, "force-new-cluster: etcd health gate failed on %s after member join", memberName)
 		}
 		logger.V(0).Infof("  [force-new-cluster] step 9 (%d/%d): %s etcd healthy", i, total-1, memberName)
+
+		// Step 9b: Wait for cp1 to see this member as "started" in the member list.
+		// This ensures cp1's Raft reconfiguration for this member is fully committed
+		// before we proceed to register the next member. Without this, cp1 may still
+		// be in joint-consensus transition and reject the next member add with:
+		//   "re-configuration failed due to not enough started members"
+		if i < total-1 {
+			// Only needed before the next member add (not after the last member).
+			cp1EtcdIDForWait, waitIDErr := getEtcdContainerID(states[0].node)
+			if waitIDErr != nil {
+				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): could not get cp1 container ID for member-list wait (non-fatal): %v", i, total-1, waitIDErr)
+			} else {
+				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): waiting for %s to appear as started in cp1 member list", i, total-1, memberName)
+				if waitErr := waitForMemberStarted(states[0].node, cp1EtcdIDForWait, memberName, etcdEndpoint, 2*time.Minute, healthGateTick); waitErr != nil {
+					return errors.Wrapf(waitErr, "force-new-cluster: member %s did not become started on cp1 after joining", memberName)
+				}
+				logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): %s confirmed started in cp1 member list", i, total-1, memberName)
+			}
+		}
 	}
 	logger.V(0).Infof("  [force-new-cluster] steps 6-9 complete: all %d remaining CPs registered and healthy", total-1)
 

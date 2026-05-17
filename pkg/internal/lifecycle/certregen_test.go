@@ -1713,7 +1713,9 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
 	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
 	//   rolling step 6 (i=1): getEtcdContainerID cp1 → call 6 → "fakeid123" (restarted by mv-in)
-	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 7+ → "fakeid123" (may have rotated)
+	//   rolling step 9b (i=1): getEtcdContainerID cp1 → call 7 → "fakeid123" (member-list wait)
+	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 8+ → "fakeid123" (may have rotated)
+	//   (no step 9b for i=2 — last member, no next add pending)
 	crictlPsCallCount := 0
 	var crictlMu sync.Mutex
 
@@ -1774,12 +1776,21 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 			}
 			if len(args) >= 2 && args[0] == "exec" {
 				// crictl exec fakeid123 etcdctl ... member add <name> --peer-urls=...
+				// crictl exec fakeid123 etcdctl ... member list --write-out=json
 				for i, a := range args {
-					if a == "member" && i+1 < len(args) && args[i+1] == "add" && i+2 < len(args) {
-						mu.Lock()
-						memberAddTargets = append(memberAddTargets, args[i+2])
-						mu.Unlock()
-						return "", nil
+					if a == "member" && i+1 < len(args) {
+						switch args[i+1] {
+						case "add":
+							if i+2 < len(args) {
+								mu.Lock()
+								memberAddTargets = append(memberAddTargets, args[i+2])
+								mu.Unlock()
+								return "", nil
+							}
+						case "list":
+							// Return all 3 nodes as started so waitForMemberStarted passes.
+							return `{"members":[{"ID":1,"name":"cp1","peerURLs":["https://172.19.0.6:2380"]},{"ID":2,"name":"cp2","peerURLs":["https://172.19.0.4:2380"]},{"ID":3,"name":"cp3","peerURLs":["https://172.19.0.5:2380"]}]}`, nil
+						}
 					}
 				}
 				return "", nil
