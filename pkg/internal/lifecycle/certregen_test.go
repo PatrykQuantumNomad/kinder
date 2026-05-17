@@ -213,14 +213,14 @@ func joinCalls(calls []recordedCall) []string {
 
 // wrapWithIPRegen wraps an inner lookup function to additionally handle
 // the new commands introduced by renewOrRegenOneCert + currentNodeIPv4 +
-// extractEtcdManifestIP + patchEtcdManifestIPs:
+// currentNodeIPv6 + extractEtcdManifestIP + patchEtcdManifestIPs:
 //   - `ip -4 addr show eth0`         → fake inet line (172.18.0.5)
+//   - `ip -6 addr show eth0`         → empty (no IPv6 found; triggers IPv4 fallback)
 //   - `hostname`                     → fake hostname ("cp-test")
 //   - `bash -c cat > ...`            → success (empty)
 //   - `rm -f <paths>`                → success (empty)
 //   - `kubeadm init phase certs ...` → success (empty) if inner doesn't override
 //   - `grep -E initial-advertise-peer-urls= etcd.yaml` → fake manifest line with same IP (no drift)
-//   - `grep -c <oldIP> <manifest>`   → "0" (nothing to patch, no drift)
 //   - `sed -i <expr> <manifest>`     → success (empty)
 //
 // Inner is called first for all commands. If inner returns a non-empty stdout
@@ -238,6 +238,16 @@ func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, 
 		// Defaults for commands introduced by the IP-drift cert regeneration fix.
 		switch name {
 		case "ip":
+			// ip -4 addr show eth0 → fake IPv4 inet line.
+			// ip -6 addr show eth0 → empty (no global IPv6 found; currentNodeIPv6 falls back).
+			for _, a := range args {
+				if a == "-4" {
+					return "    inet 172.18.0.5/16 brd 172.18.255.255 scope global eth0\n", nil
+				}
+				if a == "-6" {
+					return "", nil // no IPv6; triggers fallback to IPv4 in currentNodeIPv6
+				}
+			}
 			return "    inet 172.18.0.5/16 brd 172.18.255.255 scope global eth0\n", nil
 		case "hostname":
 			return "cp-test\n", nil
@@ -255,14 +265,9 @@ func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, 
 					}
 				}
 			}
-			// patchEtcdManifestIPs: grep -c <oldIP> <manifest>
-			// Return "0" → oldIP not found → sed is skipped (no drift to patch).
-			if len(args) >= 1 && args[0] == "-c" {
-				return "0\n", nil
-			}
 			return "", nil
 		case "sed":
-			// patchEtcdManifestIPs: sed -i <expr> <manifest>
+			// patchEtcdManifestIPs: sed -i <pass1-exprs...> <manifest> (two-pass approach)
 			return "", nil
 		case "crictl":
 			// Phase 1.6: getEtcdContainerID and etcdctl member list/update via crictl exec.
@@ -467,16 +472,17 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 
 // TestRegenerateEtcdPeerCertsWholesale_HappyPath: 3 CP nodes, IPv4, 4 cert types.
 //
-// Command count breakdown:
+// Command count breakdown (IPv4 cluster — no ip -6 command):
 //   Phase 1 (cert regen, ALL 3 CPs first):
-//     per CP: ip-detect(1) + grep-manifest-ip(1) + pre-snap(1) +
+//     per CP: grep-manifest-ip(1) + ip-detect-v4(1) + pre-snap(1) +
 //             4×(hostname+bash-cfg+rm+kubeadm-init)(16) = 19
 //     total phase 1: 19 × 3 = 57
-//   Phase 1.5 (manifest IP patch): no-op in tests (old IP == current IP, ipMap empty)
-//     total phase 1.5: 0
+//   Phase 1.5 (etcd health wait): etcdHealthChecker mocked → 0 node.Command calls.
 //   Phase 1.6 (etcd member peer URL update): always runs on firstNode=cp1:
 //     crictl ps --name etcd -q (1) + crictl exec etcdctl member list (1) = 2
 //     no member update calls (all peer URLs match current IPs in no-drift test)
+//   Phase 1.7 (manifest IP patch): no-op in tests (old IP == current IP, ipMap empty)
+//     total phase 1.7: 0
 //   Phase 2a (simultaneous etcd restart):
 //     3×mv-out(etcd.yaml) + 3×mv-in(etcd.yaml) = 6 total
 //     (etcdHealthChecker is mocked — no node.Command calls from health gate)
@@ -486,13 +492,14 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 //     (apiserverHealthChecker is mocked — no node.Command calls from health gate)
 //   Post-pass verify (per CP):
 //     kubeadm certs check-expiration = 1 per CP × 3 CPs = 3
-//   Grand total: 57 + 0 + 2 + 6 + 6 + 3 = 74 node.Command calls.
+//   Grand total: 57 + 0 + 2 + 0 + 6 + 6 + 3 = 74 node.Command calls.
 //
 // check-expiration order: pre-cp1(0), pre-cp2(1), pre-cp3(2) from Phase 1,
 // then post-cp1(3), post-cp2(4), post-cp3(5) from post-pass verify.
 // First 3 calls = pre, next 3 = post.
 //
-// etcdHealthChecker called 1×/CP in Phase 2a = 3 total.
+// etcdHealthChecker called:
+//   3×(Phase 1.5 wait, one per CP) + 3×(Phase 2a simultaneous restart, one per CP) = 6 total.
 // apiserverHealthChecker called 1×/CP in Phase 2b = 3 total.
 func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
@@ -531,12 +538,13 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify etcd health checker was called once per CP in Phase 2a simultaneous restart.
+	// Verify etcd health checker was called:
+	//   3×(Phase 1.5 wait) + 3×(Phase 2a simultaneous restart) = 6 total.
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
-	if len(etcdCalls) != 3 { // 3 CPs × 1 simultaneous etcd restart health gate
-		t.Errorf("expected 3 etcdHealthChecker calls (1 per CP in simultaneous restart), got %d", len(etcdCalls))
+	if len(etcdCalls) != 6 { // 3 Phase1.5 + 3 Phase2a
+		t.Errorf("expected 6 etcdHealthChecker calls (3 Phase1.5 wait + 3 Phase2a restart), got %d", len(etcdCalls))
 	}
 	// All etcd endpoints should be IPv4 loopback.
 	for i, c := range etcdCalls {
@@ -559,9 +567,9 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	}
 
 	// Verify node.Command calls total (see comment above for breakdown).
-	// Phase 1.6 always runs: crictl ps(1) + crictl exec member list(1) = 2 extra calls on cp1.
+	// Phase 1.6 always runs: crictl ps(1) + crictl exec member list(1) = 2 calls on cp1.
 	calls := rec.snapshot()
-	if len(calls) != 74 { // 74 total: 57 phase1 + 0 phase1.5 + 2 phase1.6 + 6 phase2a + 6 phase2b + 3 post-pass
+	if len(calls) != 74 { // 74 total: 57 phase1 + 0 phase1.5 + 2 phase1.6 + 0 phase1.7 + 6 phase2a + 6 phase2b + 3 post-pass
 		t.Errorf("expected 74 node.Command calls (57 phase1 + 2 phase1.6 + 6 phase2a + 6 phase2b + 3 post-pass), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
@@ -601,12 +609,13 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// All etcd endpoints should be IPv6 loopback (1 call per CP in Phase 2a).
+	// All etcd endpoints should be IPv6 loopback:
+	//   3×(Phase 1.5 wait) + 3×(Phase 2a simultaneous restart) = 6 total.
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
-	if len(etcdCalls) != 3 { // 1 per CP in Phase 2a simultaneous restart
-		t.Errorf("expected 3 etcdHealthChecker calls (1 per CP), got %d", len(etcdCalls))
+	if len(etcdCalls) != 6 { // 3 Phase1.5 + 3 Phase2a
+		t.Errorf("expected 6 etcdHealthChecker calls (3 Phase1.5 wait + 3 Phase2a restart), got %d", len(etcdCalls))
 	}
 	for i, c := range etcdCalls {
 		if c.endpoint != "https://[::1]:2379" {
@@ -626,13 +635,13 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 }
 
 // TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout: etcdHealthChecker
-// always fails. Assert error contains "etcd ready-gate failed" and
+// always fails. Assert error contains "etcd ready-gate" and
 // "Cluster state is undefined". Assert diagnostic dump header fired.
 //
-// With simultaneous etcd restart (Phase 2a): ALL 3 CPs do mv-out + mv-in before
-// the health gate fires. The health gate fires on CP0 (first CP in the list).
-// Since health gate fails on CP0, Phase 2b (apiserver cycling) is never reached.
-// Total mv calls: 3 mv-out (Phase 2a) + 3 mv-in (Phase 2a) = 6.
+// With the new Phase 1.5 (etcd health wait), the health gate fires on CP0
+// BEFORE Phase 2a. The failure happens at Phase 1.5 (health wait), so NO mv
+// calls happen (Phase 2a is never reached).
+// Total mv calls: 0.
 func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
 	swapEtcdHealthChecker(t, instantFailEtcd("etcd ready-gate timed out after 60s"))
@@ -651,8 +660,9 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when etcd health gate fails, got nil")
 	}
-	if !strings.Contains(err.Error(), "etcd ready-gate failed") {
-		t.Errorf("error should contain 'etcd ready-gate failed': %v", err)
+	// Error wraps: "cert regen phase 1.5 (etcd health wait) failed on cp1. ... : etcd ready-gate timed out after 60s"
+	if !strings.Contains(err.Error(), "etcd ready-gate") {
+		t.Errorf("error should contain 'etcd ready-gate': %v", err)
 	}
 	if !strings.Contains(err.Error(), "Cluster state is undefined") {
 		t.Errorf("error should contain 'Cluster state is undefined': %v", err)
@@ -666,9 +676,7 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 		t.Errorf("expected diagnostic dump header in logs; got lines: %v", clog.lines)
 	}
 
-	// Phase 2a simultaneous etcd restart: ALL 3 CPs do mv-out then mv-in before
-	// the health gate fires and fails. Phase 2b is never reached.
-	// Total mv calls: 3 mv-out (etcd.yaml) + 3 mv-in (etcd.yaml) = 6.
+	// Phase 1.5 (health wait) fails before Phase 2a, so NO mv calls happen.
 	mvTotal := 0
 	calls := rec.snapshot()
 	for _, c := range calls {
@@ -676,8 +684,8 @@ func TestRegenerateEtcdPeerCertsWholesale_EtcdHealthGateTimeout(t *testing.T) {
 			mvTotal++
 		}
 	}
-	if mvTotal != 6 {
-		t.Errorf("expected exactly 6 mv calls (3 mv-out + 3 mv-in for simultaneous etcd restart), got %d", mvTotal)
+	if mvTotal != 0 {
+		t.Errorf("expected exactly 0 mv calls (Phase 2a never reached), got %d", mvTotal)
 	}
 }
 
@@ -1248,5 +1256,221 @@ func TestRegenerateEtcdServerCert_RealX509Verify_LoopbackHandshake(t *testing.T)
 				t.Fatal("TLS handshake timed out")
 			}
 		})
+	}
+}
+
+// TestRegenerateEtcdPeerCertsWholesale_IPRotation: Docker IPAM "musical chairs"
+// scenario where after pause/resume, nodes receive each other's old IPs.
+//
+// Setup:
+//   - cp1: old manifest IP=172.19.0.4, current IP=172.19.0.3 (got cp2's old IP? no...)
+//     Actually: cp1 at creation had IP 172.19.0.4; after resume it gets 172.19.0.3.
+//   - cp2: old manifest IP=172.19.0.6, current IP=172.19.0.4 (got cp1's old IP).
+//   - cp3: old manifest IP=172.19.0.5, current IP=172.19.0.5 (unchanged).
+//
+// WAL member list (from etcd before any updates):
+//   cp1: peerURL=https://172.19.0.4:2380 (stale — cp1 now has .3)
+//   cp2: peerURL=https://172.19.0.6:2380 (stale — cp2 now has .4)
+//   cp3: peerURL=https://172.19.0.5:2380 (current)
+//
+// Expected outcome: cp1 updated first (.4→.3, releasing .4), then cp2 updated
+// (.6→.4, claiming the now-free .4). NO "Peer URLs already exists" error.
+//
+// The wrapWithIPRegen inner function overrides:
+//   - grep initial-advertise-peer-urls returns different OLD IPs per CP name.
+//   - ip -4 addr show eth0 returns different CURRENT IPs per CP name.
+//   - crictl ps → fake etcd container ID.
+//   - crictl exec member list → member list with pre-rotation peer URLs.
+//   - crictl exec member update → records call order.
+func TestRegenerateEtcdPeerCertsWholesale_IPRotation(t *testing.T) {
+	swapCertRegenSleeper(t, noopSleeper())
+	swapEtcdHealthChecker(t, instantOKEtcd())
+	swapApiserverHealthChecker(t, instantOKApiserver())
+
+	// Member list: cp1 WAL has 172.19.0.4, cp2 WAL has 172.19.0.6, cp3 current.
+	// cp2 wants 172.19.0.4, cp1 needs to release it first.
+	// The member list JSON has cp2 BEFORE cp1 (worst-case ordering for ordering bug).
+	memberListJSON := `{"members":[
+		{"ID":9999999999,"name":"cp2","peerURLs":["https://172.19.0.6:2380"],"clientURLs":["https://172.19.0.4:2379"]},
+		{"ID":1111111111,"name":"cp3","peerURLs":["https://172.19.0.5:2380"],"clientURLs":["https://172.19.0.5:2379"]},
+		{"ID":4444444444,"name":"cp1","peerURLs":["https://172.19.0.4:2380"],"clientURLs":["https://172.19.0.3:2379"]}
+	]}`
+
+	checkExpCallIdx := 0
+	const numCPs = 3
+	var memberUpdateOrder []string
+	mu := sync.Mutex{}
+
+	rec := &recordingCmder{
+		lookup: func(name string, args []string) (string, error) {
+			// Per-node IP simulation for rotation scenario.
+			// ip -4 addr show eth0: different current IP per node.
+			if name == "ip" {
+				for _, a := range args {
+					if a == "-6" {
+						return "", nil
+					}
+				}
+				// Determine which node's context we're in by tracking call sequence.
+				// Not ideal, but wrapWithIPRegen doesn't have per-node context.
+				// Use a per-invocation counter approach instead.
+				// For simplicity, we call the inner function that knows about node names.
+				// Since recordingCmder doesn't expose node name, we use the
+				// currentNodeIPv4-specific node state.
+				// Fall through to wrapWithIPRegen defaults below.
+				return "", nil
+			}
+			// kubeadm certs check-expiration: pre/post sequence.
+			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
+				idx := checkExpCallIdx
+				checkExpCallIdx++
+				if idx < numCPs {
+					return preJSON, nil
+				}
+				return postJSON, nil
+			}
+			// grep initial-advertise-peer-urls: return old manifest IP per invocation.
+			// Uses a counter: cp1 gets .4, cp2 gets .6, cp3 gets .5 (in phase-1 order).
+			if name == "grep" && len(args) >= 1 && args[0] == "-E" {
+				for _, a := range args {
+					if strings.Contains(a, "initial-advertise-peer-urls") {
+						// Returns stale IPs matching the WAL member list.
+						// We use a counter to differentiate CP calls.
+						// Phase 1 order: cp1, cp2, cp3.
+						return "", nil // fall through to wrapWithIPRegen defaults
+					}
+				}
+			}
+			// crictl ps → fake etcd container ID.
+			if name == "crictl" && len(args) >= 3 && args[0] == "ps" {
+				return "fakeEtcdRotation123\n", nil
+			}
+			// crictl exec etcdctl member list.
+			if name == "crictl" && len(args) >= 2 && args[0] == "exec" {
+				for i, a := range args {
+					if a == "member" && i+1 < len(args) && args[i+1] == "list" {
+						return memberListJSON, nil
+					}
+					if a == "member" && i+1 < len(args) && args[i+1] == "update" {
+						// Record the updated member name (extract from --peer-urls arg).
+						for _, aa := range args {
+							if strings.HasPrefix(aa, "--peer-urls=") {
+								mu.Lock()
+								memberUpdateOrder = append(memberUpdateOrder, aa)
+								mu.Unlock()
+							}
+						}
+						return "Member updated in cluster\n", nil
+					}
+				}
+			}
+			return "", nil
+		},
+	}
+
+	// We need per-node IP awareness. Override ip -4 using a stateful counter.
+	// Phase 1 visits cp1, cp2, cp3 in order; currentNodeIPv4 is called once per CP.
+	ipCallIdx := 0
+	// IP rotation: cp1's current=172.19.0.3, cp2's current=172.19.0.4, cp3's current=172.19.0.5
+	currentIPsForCPs := []string{
+		"    inet 172.19.0.3/16 brd 172.19.255.255 scope global eth0\n", // cp1
+		"    inet 172.19.0.4/16 brd 172.19.255.255 scope global eth0\n", // cp2
+		"    inet 172.19.0.5/16 brd 172.19.255.255 scope global eth0\n", // cp3
+	}
+	// Old manifest IPs: cp1=172.19.0.4, cp2=172.19.0.6, cp3=172.19.0.5
+	manifestIPsForCPs := []string{
+		"    - --initial-advertise-peer-urls=https://172.19.0.4:2380\n", // cp1
+		"    - --initial-advertise-peer-urls=https://172.19.0.6:2380\n", // cp2
+		"    - --initial-advertise-peer-urls=https://172.19.0.5:2380\n", // cp3
+	}
+
+	innerLookup := rec.lookup
+	rec.lookup = func(name string, args []string) (string, error) {
+		// ip -4 addr: per-node stateful.
+		if name == "ip" {
+			for _, a := range args {
+				if a == "-6" {
+					return "", nil
+				}
+			}
+			idx := ipCallIdx % len(currentIPsForCPs)
+			ipCallIdx++
+			return currentIPsForCPs[idx], nil
+		}
+		// grep initial-advertise-peer-urls: per-node stateful.
+		if name == "grep" && len(args) >= 1 && args[0] == "-E" {
+			for _, a := range args {
+				if strings.Contains(a, "initial-advertise-peer-urls") {
+					// Use ipCallIdx-1 since ip was already called for this CP
+					// (ip is called before grep in Phase 1 loop).
+					// Actually ipCallIdx is incremented per ip call, so we use
+					// a separate counter.
+					return "", nil // will fall through to innerLookup
+				}
+			}
+		}
+		return innerLookup(name, args)
+	}
+
+	// Simpler approach: use a dedicated manifest-grep counter.
+	manifestCallIdx := 0
+	outerLookup := rec.lookup
+	rec.lookup = func(name string, args []string) (string, error) {
+		if name == "grep" && len(args) >= 1 && args[0] == "-E" {
+			for _, a := range args {
+				if strings.Contains(a, "initial-advertise-peer-urls") {
+					idx := manifestCallIdx % len(manifestIPsForCPs)
+					manifestCallIdx++
+					return manifestIPsForCPs[idx], nil
+				}
+			}
+		}
+		return outerLookup(name, args)
+	}
+
+	withCmder(t, rec.cmder())
+	withIPv4ClusterIPFamily(t)
+
+	cpNodes := makeHACPNodes("cp1", "cp2", "cp3")
+	clog := &captureLogger{}
+	err := RegenerateEtcdPeerCertsWholesale(cpNodes, clog)
+	if err != nil {
+		t.Fatalf("IP rotation: unexpected error — want nil, got: %v", err)
+	}
+
+	mu.Lock()
+	updateCount := len(memberUpdateOrder)
+	mu.Unlock()
+
+	// cp1 (.4→.3) and cp2 (.6→.4) must both be updated (2 updates).
+	// cp3 (.5→.5) needs no update.
+	if updateCount != 2 {
+		t.Errorf("expected 2 member updates (cp1 + cp2), got %d (updates=%v)", updateCount, memberUpdateOrder)
+	}
+
+	// The update releasing .4 (cp1: new URL contains .3) must come BEFORE
+	// the update claiming .4 (cp2: new URL contains .4).
+	// Verify: the update with .3 in its new URL comes before the one with .4.
+	mu.Lock()
+	defer mu.Unlock()
+	releaseIdx := -1
+	claimIdx := -1
+	for i, url := range memberUpdateOrder {
+		if strings.Contains(url, "172.19.0.3") {
+			releaseIdx = i // cp1 releasing .4, taking .3
+		}
+		if strings.Contains(url, "172.19.0.4") {
+			claimIdx = i // cp2 claiming .4
+		}
+	}
+	if releaseIdx == -1 {
+		t.Errorf("expected an update containing 172.19.0.3 (cp1 new URL), got %v", memberUpdateOrder)
+	}
+	if claimIdx == -1 {
+		t.Errorf("expected an update containing 172.19.0.4 (cp2 new URL), got %v", memberUpdateOrder)
+	}
+	if releaseIdx != -1 && claimIdx != -1 && releaseIdx > claimIdx {
+		t.Errorf("wrong update order: cp1 (release .4) at idx=%d AFTER cp2 (claim .4) at idx=%d — rotation fix not applied (updates=%v)",
+			releaseIdx, claimIdx, memberUpdateOrder)
 	}
 }
