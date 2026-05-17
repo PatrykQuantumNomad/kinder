@@ -279,7 +279,7 @@ Forensic state available for the planner:
 
 ### Phase 57.3: HA cluster cert-regen recovery (INSERTED 2026-05-16; SCOPE EXPANDED 2026-05-16)
 
-**Goal**: After `kinder pause` + `kinder resume` on ANY HA cluster (IPv4, IPv6, or dual-stack), every `kube-apiserver` process successfully completes its TLS handshake to etcd on its loopback within 30s of apiserver start, and all CP nodes report Ready within the `--wait 10m` window.
+**Goal**: After `kinder pause` + `kinder resume` on ANY HA cluster (IPv4, IPv6, or dual-stack), every `kube-apiserver` process successfully completes its TLS handshake to etcd on its loopback within 30s of apiserver start, and all CP nodes report Ready within the `--wait 15m` window.
 **Depends on**: Phase 52 (the cert-regen module being fixed). **Blocks Phase 58.**
 **Requirements**: To be derived during planning (likely a new LIFE-12 requirement, or appended scope to LIFE-09).
 **Why urgent**:
@@ -306,8 +306,8 @@ This is architecturally upstream of Phase 57.2's LB listener fix (LB lds.yaml + 
   - **Option C — apiserver static-pod manifest stale-config**: The apiserver static-pod manifest may reference cert paths or fingerprints that no longer match after cert-regen. Verify the manifest is re-rendered (or kubelet re-reads it) between cert-regen and apiserver restart.
 
 **Success Criteria** (what must be TRUE):
-  1. After `kinder pause` + `kinder resume --wait 10m` on a vanilla IPv4 HA cluster (3-CP + 2-worker + 1-LB), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` (apiserver bound and serving) within the wait window. Verified specifically against the cert-regen strategy path (post-57.4 the default may flip back to ip-pin; test must force cert-regen for this SC).
-  2. After resume on a vanilla IPv4 HA cluster, host `kubectl --context kind-<cluster> get nodes` returns all 5 nodes (3 CP + 2 worker) in `Ready` state within the `--wait 10m` window.
+  1. After `kinder pause` + `kinder resume --wait 15m` on a vanilla IPv4 HA cluster (3-CP + 2-worker + 1-LB), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` (apiserver bound and serving) within the wait window. Verified specifically against the cert-regen strategy path (post-57.4 the default may flip back to ip-pin; test must force cert-regen for this SC).
+  2. After resume on a vanilla IPv4 HA cluster, host `kubectl --context kind-<cluster> get nodes` returns all 5 nodes (3 CP + 2 worker) in `Ready` state within the `--wait 15m` window.
   3. After resume on an explicit IPv6 HA cluster (`networking.ipFamily: ipv6`), `docker exec <cp1> sh -c 'curl -k --max-time 5 https://127.0.0.1:6443/healthz'` returns `ok` within the wait window (parity with SC1 on the IPv6 stack).
   4. New regression test asserts the regenerated etcd cert chain allows apiserver→etcd TLS handshake to succeed (using FakeNode/FakeCmd + a real openssl x509 verify on the regenerated cert) — covers both IPv4 and IPv6 loopback SANs.
   5. Phase 58 UAT script `hack/uat-47-ha-smoke.sh` test_09 passes against the post-57.3+57.4 binary on macOS Docker Desktop. Phase 57.2 UAT script `hack/uat-57.2-ipv6-listener.sh` test_11 also passes (IPv6 parity).

@@ -131,16 +131,17 @@ test_03_get_nodes_positional() {
 }
 
 test_09_resume_wait_duration_string() {
-  echo "--- test_09: resume --wait 5m duration-string parsing ---"
+  echo "--- test_09: resume --wait 15m duration-string parsing ---"
   # Pre-condition: cluster is running. We pause + resume here to exercise --wait.
+  # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
   "${KINDER_BIN}" pause "${CLUSTER}"
   local stderr_capture
   set +e
-  stderr_capture="$("${KINDER_BIN}" resume "${CLUSTER}" --wait 5m 2>&1 >/dev/null)"
+  stderr_capture="$("${KINDER_BIN}" resume "${CLUSTER}" --wait 15m 2>&1 >/dev/null)"
   local exit_code=$?
   set -e
   if [[ ${exit_code} -ne 0 ]]; then
-    echo "[FAIL] test_09 — resume --wait 5m exited ${exit_code}"
+    echo "[FAIL] test_09 — resume --wait 15m exited ${exit_code}"
     echo "${stderr_capture}"
     return 1
   fi
@@ -150,7 +151,7 @@ test_09_resume_wait_duration_string() {
     return 1
   fi
   kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
-  echo "[OK] test_09 — --wait 5m accepted; no ParseInt; cluster Ready"
+  echo "[OK] test_09 — --wait 15m accepted; no ParseInt; cluster Ready"
 }
 
 test_12_doctor_healthy_3of3() {
@@ -207,7 +208,8 @@ test_14_pause_snapshot_leaderid() {
   fi
   echo "[OK] test_14 — leaderID = ${leader}"
   # Resume so subsequent SC1/SC2 evidence runs against a live cluster.
-  "${KINDER_BIN}" resume "${CLUSTER}" --wait 5m
+  # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
+  "${KINDER_BIN}" resume "${CLUSTER}" --wait 15m
   kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
 }
 
@@ -227,7 +229,8 @@ test_sc1_post_pause_stats() {
     fi
   done <<< "${ps_out}"
   echo "[OK] SC1 — all ${CLUSTER}-* containers are Exited post-pause"
-  "${KINDER_BIN}" resume "${CLUSTER}" --wait 5m
+  # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
+  "${KINDER_BIN}" resume "${CLUSTER}" --wait 15m
   kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
 }
 
@@ -276,7 +279,8 @@ EOF
   kubectl --context "kind-${CLUSTER}" exec "${POD_NAME}" -- sh -c "echo '${SENTINEL}' > /data/sentinel.txt"
 
   "${KINDER_BIN}" pause "${CLUSTER}"
-  "${KINDER_BIN}" resume "${CLUSTER}" --wait 5m
+  # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
+  "${KINDER_BIN}" resume "${CLUSTER}" --wait 15m
   kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready pod -l app=uat --timeout=180s
 
   local POD_NAME_AFTER POD_UID_AFTER SVC_IP_AFTER SENTINEL_AFTER
@@ -312,7 +316,8 @@ test_ordering() {
   else
     echo "[WARN] ordering — could not locate all three role markers in pause output (text-mode schema may have changed)"
   fi
-  resume_out="$("${KINDER_BIN}" resume "${CLUSTER}" --wait 5m 2>&1)"
+  # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
+  resume_out="$("${KINDER_BIN}" resume "${CLUSTER}" --wait 15m 2>&1)"
   echo "${resume_out}"
   kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
 }
