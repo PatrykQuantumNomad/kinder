@@ -826,6 +826,25 @@ func withCertRegenSleeper(t *testing.T, fn func(time.Duration)) {
 	t.Cleanup(func() { certRegenSleeper = prev })
 }
 
+// withEtcdHealthChecker swaps the package-level etcdHealthChecker for the
+// duration of the test. Phase 57.3: required for tests that exercise the
+// cert-regen code path via Resume(). MUST NOT be used with t.Parallel().
+func withEtcdHealthChecker(t *testing.T, fn func(nodes.Node, string) error) {
+	t.Helper()
+	prev := etcdHealthChecker
+	etcdHealthChecker = fn
+	t.Cleanup(func() { etcdHealthChecker = prev })
+}
+
+// withApiserverHealthChecker swaps the package-level apiserverHealthChecker for
+// the duration of the test. MUST NOT be used with t.Parallel().
+func withApiserverHealthChecker(t *testing.T, fn func(nodes.Node, string) error) {
+	t.Helper()
+	prev := apiserverHealthChecker
+	apiserverHealthChecker = fn
+	t.Cleanup(func() { apiserverHealthChecker = prev })
+}
+
 // withResumeBinaryName swaps resumeBinaryName for the duration of the test.
 func withResumeBinaryName(t *testing.T, name string) {
 	t.Helper()
@@ -892,8 +911,32 @@ func (h *haTestCmder) cmder() Cmder {
 		// defaultCmder("docker", "start", ...) → name="docker"/"podman"/"nerdctl"
 		switch name {
 		case "kubeadm":
-			// node.Command("kubeadm", "certs", "renew", "etcd-peer") routes through
-			// defaultCmder as: defaultCmder("kubeadm", "certs", "renew", "etcd-peer").
+			// node.Command("kubeadm", "certs", "renew", <ct>) or
+			// node.Command("kubeadm", "certs", "check-expiration", "-o", "json").
+			// Phase 57.3: return alternating pre/post check-expiration JSON so
+			// post-pass verify passes (pre=2027, post=2028, advancing notAfter).
+			if len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
+				h.mu.Lock()
+				// Count check-expiration calls to alternate pre/post.
+				// First call per CP is pre-snap (2027); second is post-snap (2028).
+				// Use the global call count: even=pre, odd=post.
+				checkExpIdx := 0
+				for _, c := range h.calls {
+					if c.name == "kubeadm" && len(c.args) >= 3 && c.args[0] == "certs" && c.args[1] == "check-expiration" {
+						checkExpIdx++
+					}
+				}
+				h.mu.Unlock()
+				// checkExpIdx is already incremented (this call was appended before handler).
+				// First call per CP (checkExpIdx odd after this call = first call on a CP): return pre.
+				// Actually: checkExpIdx was 1-based at this point (this call was already appended).
+				// Use 1,3,5,... as pre-snap and 2,4,6,... as post-snap.
+				if checkExpIdx%2 == 1 {
+					return &fakeCmd{stdout: `{"certificates":[{"name":"etcd-peer","notAfter":"2027-01-01T00:00:00Z"},{"name":"etcd-server","notAfter":"2027-01-01T00:00:00Z"},{"name":"etcd-healthcheck-client","notAfter":"2027-01-01T00:00:00Z"},{"name":"apiserver-etcd-client","notAfter":"2027-01-01T00:00:00Z"}]}`}
+				}
+				return &fakeCmd{stdout: `{"certificates":[{"name":"etcd-peer","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-server","notAfter":"2028-01-01T00:00:00Z"},{"name":"etcd-healthcheck-client","notAfter":"2028-01-01T00:00:00Z"},{"name":"apiserver-etcd-client","notAfter":"2028-01-01T00:00:00Z"}]}`}
+			}
+			// certs renew and other kubeadm calls succeed silently.
 			return &fakeCmd{}
 
 		case "mv":
@@ -931,6 +974,11 @@ func (h *haTestCmder) cmder() Cmder {
 					state = "exited"
 				}
 				return &fakeCmd{stdout: state + "\n"}
+			}
+			// Phase 57.3: ClusterIPFamily issues `inspect --format '{{index .Config.Labels "io.x-k8s.kinder.ip-family"}}' <container>`.
+			// Distinguish from resume-strategy label inspect.
+			if strings.Contains(format, "ip-family") {
+				return &fakeCmd{stdout: "ipv4\n"} // default IPv4 for HA strategy tests
 			}
 			if strings.Contains(format, "Config.Labels") || strings.Contains(format, "resume-strategy") {
 				label := h.strategyLabel[container]
@@ -1273,6 +1321,8 @@ func TestResume_HAWithCertRegen_NoIPDrift_SkipsRegen(t *testing.T) {
 func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 	withResumeBinaryName(t, "docker")
 	withCertRegenSleeper(t, func(time.Duration) {})
+	withEtcdHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withApiserverHealthChecker(t, func(nodes.Node, string) error { return nil })
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
@@ -1309,15 +1359,17 @@ func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// kubeadm certs renew etcd-peer must have been called on all 3 CPs.
+	// Phase 57.3: kubeadm is now called 6 times per CP:
+	// 1×check-expiration (pre) + 4×renew (etcd-peer/server/healthcheck-client/apiserver-etcd-client) + 1×check-expiration (post) = 6 per CP.
+	// 3 CPs × 6 = 18 total kubeadm calls.
 	kubeadmCount := 0
 	for _, c := range tc.allCalls() {
 		if c.name == "kubeadm" {
 			kubeadmCount++
 		}
 	}
-	if kubeadmCount != 3 {
-		t.Errorf("expected kubeadm certs renew on all 3 CPs, got %d calls; calls=%v",
+	if kubeadmCount != 18 {
+		t.Errorf("expected 18 kubeadm calls (6/CP × 3 CPs), got %d calls; calls=%v",
 			kubeadmCount, joinedCallsHA(tc.allCalls()))
 	}
 }
@@ -1328,6 +1380,8 @@ func TestResume_HAWithCertRegen_IPDrift_RunsWholesaleRegen(t *testing.T) {
 func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 	withResumeBinaryName(t, "docker")
 	withCertRegenSleeper(t, func(time.Duration) {})
+	withEtcdHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withApiserverHealthChecker(t, func(nodes.Node, string) error { return nil })
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
@@ -1367,15 +1421,16 @@ func TestResume_HALegacyNoLabel_RunsWholesaleRegen(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// kubeadm certs renew should have been called on all 3 CPs (legacy = drift=true always).
+	// Phase 57.3: kubeadm is now called 6 times per CP:
+	// 1×check-expiration (pre) + 4×renew + 1×check-expiration (post) = 6/CP × 3 CPs = 18 total.
 	kubeadmCount := 0
 	for _, c := range tc.allCalls() {
 		if c.name == "kubeadm" {
 			kubeadmCount++
 		}
 	}
-	if kubeadmCount != 3 {
-		t.Errorf("expected kubeadm calls on all 3 CPs for legacy cluster, got %d; calls=%v",
+	if kubeadmCount != 18 {
+		t.Errorf("expected 18 kubeadm calls (6/CP × 3 CPs) for legacy cluster, got %d; calls=%v",
 			kubeadmCount, joinedCallsHA(tc.allCalls()))
 	}
 }
@@ -1496,6 +1551,8 @@ func TestResume_HAIPPin_DisconnectFailsHaltsResume(t *testing.T) {
 func TestResume_HACertRegen_RegenFailsHaltsResume(t *testing.T) {
 	withResumeBinaryName(t, "docker")
 	withCertRegenSleeper(t, func(time.Duration) {})
+	withEtcdHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withApiserverHealthChecker(t, func(nodes.Node, string) error { return nil })
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 
 	probeCalled := false
@@ -1567,6 +1624,8 @@ func TestResume_HACertRegen_RegenFailsHaltsResume(t *testing.T) {
 func TestResume_HAIPPin_NerdctlPath(t *testing.T) {
 	withResumeBinaryName(t, "nerdctl")
 	withCertRegenSleeper(t, func(time.Duration) {})
+	withEtcdHealthChecker(t, func(nodes.Node, string) error { return nil })
+	withApiserverHealthChecker(t, func(nodes.Node, string) error { return nil })
 	withResumeReadinessHook(t, func(_, _ string, _ log.Logger) {})
 	withReadinessProber(t, alwaysReadyProber())
 
