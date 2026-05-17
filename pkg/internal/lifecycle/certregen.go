@@ -50,8 +50,8 @@ const (
 
 	kubeAPIServerManifestPath   = "/etc/kubernetes/manifests/kube-apiserver.yaml"
 	kubeAPIServerManifestBackup = "/tmp/kube-apiserver-bak.yaml"
-	etcdHealthGateDeadline      = 60 * time.Second
-	apiserverHealthGateDeadline = 60 * time.Second
+	etcdHealthGateDeadline      = 5 * time.Minute
+	apiserverHealthGateDeadline = 2 * time.Minute
 	healthGateTick              = 1 * time.Second
 )
 
@@ -259,51 +259,62 @@ func extractEtcdManifestIP(node nodes.Node) (string, error) {
 	return "", errors.Errorf("extractEtcdManifestIP: initial-advertise-peer-urls not found or unparseable on %s; lines: %v", node.String(), lines)
 }
 
-// patchEtcdManifestIPs rewrites the etcd static-pod manifest on node,
-// replacing every occurrence of each key in ipMap (stale IP) with the
-// corresponding value (current IP). This updates --initial-cluster,
-// --initial-advertise-peer-urls, --listen-peer-urls, --advertise-client-urls,
-// --listen-client-urls, and the kubeadm annotation in one pass.
+// patchEtcdManifestIPs rewrites the etcd static-pod manifest AND the
+// kube-apiserver static-pod manifest on node, replacing stale IPs with
+// current IPs.
+//
+// etcdIpMap is used for etcd.yaml (may map IPv4→IPv6 for dual-stack clusters
+// where etcd peer URLs use IPv6). apiserverIpMap is used for
+// kube-apiserver.yaml — pass nil to use etcdIpMap for both manifests (correct
+// for IPv4-only and IPv6-only clusters). For dual-stack clusters, pass a
+// separate apiserverIpMap that maps IPv4→new_IPv4 so that kube-apiserver's
+// --advertise-address stays IPv4 (kubeadm dual-stack convention; kube-apiserver
+// v1.35 requires the primary service CIDR IP family to match the advertise-
+// address family, and the first service CIDR is IPv4 for dual-stack clusters).
 //
 // Uses a two-pass sed approach to avoid double-substitution. Sequential sed
 // expressions have a hazard: if IP A is replaced by IP B, and IP B is also a
 // key in ipMap, a subsequent sed would incorrectly replace the just-written B.
 // The two-pass approach replaces old IPs with unique non-IP markers in pass 1,
 // then replaces markers with new IPs in pass 2, avoiding any collision.
-//
-// ipMap must be non-empty; it is the caller's responsibility to populate it
-// with at least the local node's entry.
-func patchEtcdManifestIPs(node nodes.Node, ipMap map[string]string) error {
-	if len(ipMap) == 0 {
+func patchEtcdManifestIPs(node nodes.Node, etcdIpMap, apiserverIpMap map[string]string) error {
+	if apiserverIpMap == nil {
+		apiserverIpMap = etcdIpMap
+	}
+	if len(etcdIpMap) == 0 && len(apiserverIpMap) == 0 {
 		return nil // no-op: no IP drift detected
 	}
-
-	// Build two sets of sed expressions:
-	//   pass1: old_ip → __KINDER_IP_N__ (unique marker, can't collide with any IP)
-	//   pass2: __KINDER_IP_N__ → new_ip
+	// manifestPatch holds per-manifest sed replacement specs.
 	type ipReplacement struct {
 		oldIP  string
 		newIP  string
 		marker string
 	}
-	var replacements []ipReplacement
-	idx := 0
-	for oldIP, newIP := range ipMap {
-		if oldIP == newIP {
-			continue
+
+	// buildReplacements converts an ipMap into a slice of ipReplacement (pass1/pass2
+	// markers). Returns nil if ipMap is empty or all entries are no-ops.
+	buildReplacements := func(m map[string]string) []ipReplacement {
+		var reps []ipReplacement
+		idx := 0
+		for oldIP, newIP := range m {
+			if oldIP == newIP {
+				continue
+			}
+			reps = append(reps, ipReplacement{oldIP, newIP, fmt.Sprintf("__KINDER_IP_%d__", idx)})
+			idx++
 		}
-		marker := fmt.Sprintf("__KINDER_IP_%d__", idx)
-		replacements = append(replacements, ipReplacement{oldIP, newIP, marker})
-		idx++
-	}
-	if len(replacements) == 0 {
-		return nil
+		return reps
 	}
 
-	for _, manifestPath := range []string{etcdManifestPath, kubeAPIServerManifestPath} {
+	// applyReplacements runs pass1 (old→marker), pass2 (marker→new), and the
+	// optional pass3 (IPv6 bracket normalization) on a single manifest file.
+	applyReplacements := func(manifestPath string, reps []ipReplacement) error {
+		if len(reps) == 0 {
+			return nil
+		}
 		// Check if any of the old IPs exist in this manifest before running sed.
 		hasAny := false
-		for _, r := range replacements {
+		for _, r := range reps {
 			checkLines, _ := exec.OutputLines(node.Command("grep", "-c", r.oldIP, manifestPath))
 			if len(checkLines) > 0 && strings.TrimSpace(checkLines[0]) != "0" {
 				hasAny = true
@@ -311,13 +322,12 @@ func patchEtcdManifestIPs(node nodes.Node, ipMap map[string]string) error {
 			}
 		}
 		if !hasAny {
-			continue // no old IPs in this manifest; skip
+			return nil // no old IPs in this manifest; skip
 		}
 
 		// Pass 1: replace all old IPs with unique markers.
-		// Build a single sed command with multiple -e expressions for pass 1.
 		pass1Args := []string{"-i"}
-		for _, r := range replacements {
+		for _, r := range reps {
 			pass1Args = append(pass1Args, "-e", "s|"+r.oldIP+"|"+r.marker+"|g")
 		}
 		pass1Args = append(pass1Args, manifestPath)
@@ -327,15 +337,50 @@ func patchEtcdManifestIPs(node nodes.Node, ipMap map[string]string) error {
 
 		// Pass 2: replace markers with new IPs.
 		pass2Args := []string{"-i"}
-		for _, r := range replacements {
+		for _, r := range reps {
 			pass2Args = append(pass2Args, "-e", "s|"+r.marker+"|"+r.newIP+"|g")
 		}
 		pass2Args = append(pass2Args, manifestPath)
 		if err := node.Command("sed", pass2Args...).Run(); err != nil {
 			return errors.Wrapf(err, "sed pass2 patch %s on %s", manifestPath, node.String())
 		}
+
+		// Pass 3 (IPv6 bracket normalization): dual-stack kubeadm manifests store
+		// IPv6 addresses in URL flags WITHOUT brackets (e.g.
+		// "--advertise-client-urls=https://fc00::10:2379"), while IPv6-only manifests
+		// use bracketed form (e.g. "https://[fc00::a]:2379"). After passes 1-2 replace
+		// an IPv6 address, the result may still lack brackets, producing malformed URLs
+		// that etcd rejects on startup ("URL address does not have the form host:port").
+		//
+		// Fix: for each IPv6 new IP, normalize "://IP:digits" → "://[IP]:digits" in
+		// URL context. The replacement is idempotent: if brackets already exist
+		// (IPv6-only case), the pattern "://IP:digits" does NOT match the manifest
+		// (the manifest has "://[IP]:digits") so the sed is a no-op.
+		var pass3Args []string
+		for _, r := range reps {
+			if strings.Contains(r.newIP, ":") { // IPv6 detected
+				pass3Args = append(pass3Args,
+					"-e", "s|://"+r.newIP+":\\([[:digit:]]\\)|://["+r.newIP+"]:"+`\1`+"|g",
+				)
+			}
+		}
+		if len(pass3Args) > 0 {
+			pass3Args = append([]string{"-i"}, pass3Args...)
+			pass3Args = append(pass3Args, manifestPath)
+			if err := node.Command("sed", pass3Args...).Run(); err != nil {
+				return errors.Wrapf(err, "sed pass3 IPv6-bracket-normalize %s on %s", manifestPath, node.String())
+			}
+		}
+		return nil
 	}
-	return nil
+
+	etcdReps := buildReplacements(etcdIpMap)
+	apiserverReps := buildReplacements(apiserverIpMap)
+
+	if err := applyReplacements(etcdManifestPath, etcdReps); err != nil {
+		return err
+	}
+	return applyReplacements(kubeAPIServerManifestPath, apiserverReps)
 }
 
 // renewOrRegenOneCert issues a cert renewal for certName on node.
@@ -572,14 +617,20 @@ func updateEtcdMemberPeerURLs(states []nodeRegenState, ipMap map[string]string, 
 			logger.Warnf("  [phase 1.6] could not match etcd member %q to a node state, skipping", member.name)
 			continue
 		}
-		parsedPeer := net.ParseIP(peerIP)
-		isIPv6PeerURL := parsedPeer != nil && parsedPeer.To4() == nil
-		var expectedIP string
-		if isIPv6PeerURL && matchedState.extraIP != "" {
-			expectedIP = matchedState.extraIP
-		} else {
-			expectedIP = matchedState.currentIP
-		}
+		// For all cluster types (IPv4-only, IPv6-only, dual-stack), the target
+		// peer URL IP is always currentIP:
+		//   - IPv4-only: currentIP=IPv4, WAL=IPv4 → update to new IPv4
+		//   - IPv6-only: currentIP=IPv6, WAL=IPv6 → update to new IPv6 (stable noop)
+		//   - Dual-stack: currentIP=IPv6, WAL=IPv4 → update to IPv6 (stable address)
+		//     Rationale: for dual-stack, etcd binds peer port on IPv6 (from manifest's
+		//     --listen-peer-urls). IPv6 is stable across pause/resume (container MAC-
+		//     derived). IPv4 rotates via Docker DHCP. Updating WAL IPv4→IPv6 makes
+		//     peer addresses match where etcd actually listens, enabling post-phase-2a
+		//     quorum. The WAL IPv4 was written by kubeadm at join time using IPv4
+		//     (kubeadm's dual-stack behavior); etcd overrode the listen address with
+		//     --listen-peer-urls=IPv6. After restart, etcd reads WAL for membership
+		//     but connects to peers using WAL peer URLs — which must be IPv6.
+		expectedIP := matchedState.currentIP
 		if expectedIP == "" {
 			logger.Warnf("  [phase 1.6] no expected IP for member %s (currentIP=%q extraIP=%q), skipping",
 				member.name, matchedState.currentIP, matchedState.extraIP)
@@ -677,16 +728,17 @@ func extractIPFromURL(rawURL string) string {
 
 // buildNewPeerURL constructs the new peer URL for a member given the old peer
 // URL, the stale IP, and the matched node state.
+//
+// For all cluster types, the new peer IP is always currentIP:
+//   - IPv4-only:   currentIP=IPv4, staleIP=IPv4  → new URL uses new IPv4
+//   - IPv6-only:   currentIP=IPv6, staleIP=IPv6  → new URL uses new IPv6
+//   - Dual-stack:  currentIP=IPv6, staleIP=IPv4  → new URL uses IPv6
+//     Rationale: etcd binds port 2380 on IPv6 (--listen-peer-urls=IPv6 in manifest).
+//     IPv6 is stable across pause/resume; IPv4 rotates via Docker DHCP. Updating
+//     the WAL peer URL from stale IPv4 to the stable IPv6 makes peers reachable
+//     after a simultaneous restart in phase 2a.
 func buildNewPeerURL(oldPeerURL, staleIP string, st *nodeRegenState) string {
-	// Determine whether the original peer URL used IPv6 (bracketed non-IPv4 address).
-	parsedStale := net.ParseIP(staleIP)
-	useIPv6 := parsedStale != nil && parsedStale.To4() == nil
-	var newIP string
-	if useIPv6 && st.extraIP != "" {
-		newIP = st.extraIP
-	} else {
-		newIP = st.currentIP
-	}
+	newIP := st.currentIP
 	if newIP == "" {
 		return ""
 	}
@@ -999,18 +1051,18 @@ func removeForceNewClusterFlag(node nodes.Node) error {
 //
 // After this function returns, etcd is healthy on all CPs with correct WAL
 // peer URLs and manifest IPs. The caller must still run Phase 2b (apiserver).
-func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, etcdEndpoint string, logger log.Logger) error {
+func forceNewClusterBootstrap(states []nodeRegenState, ipMap, apiserverIpMap map[string]string, etcdEndpoint string, logger log.Logger) error {
 	total := len(states)
 	logger.V(0).Infof("  [force-new-cluster] starting recovery bootstrap for %d CP nodes", total)
 
 	// Step 1: Patch ALL manifests with corrected IPs.
 	// Must happen before step 2 (stop etcd) so that when etcd restarts it reads
 	// correct --initial-cluster values from the manifest.
-	if len(ipMap) > 0 {
-		logger.V(0).Infof("  [force-new-cluster] step 1: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
+	if len(ipMap) > 0 || len(apiserverIpMap) > 0 {
+		logger.V(0).Infof("  [force-new-cluster] step 1: patching etcd/apiserver manifests with %d etcd / %d apiserver IP remappings", len(ipMap), len(apiserverIpMap))
 		for _, st := range states {
 			logger.V(1).Infof("    patching manifests on %s", st.node.String())
-			if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
+			if err := patchEtcdManifestIPs(st.node, ipMap, apiserverIpMap); err != nil {
 				return errors.Wrapf(err, "force-new-cluster: manifest patch failed on %s", st.node.String())
 			}
 		}
@@ -1129,6 +1181,15 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	// with the current network topology.
 	cp1CurrentPeerURL := peerURLForState(&states[0])
 	if cp1CurrentPeerURL != "" {
+		// Step 5.1 pre-check: re-confirm cp1 is still healthy before fetching the
+		// container ID. etcd may have entered a brief CrashLoopBackOff window between
+		// step 5's health check returning and step 5.1 executing — particularly in
+		// dual-stack clusters where step 1 manifest patching triggers a kubelet
+		// restart that coincides with port 2380 still being held by the old container.
+		// etcdHealthChecker waits up to 2 minutes, covering the CrashLoopBackOff window.
+		if preCheckErr := etcdHealthChecker(states[0].node, etcdEndpoint); preCheckErr != nil {
+			return errors.Wrapf(preCheckErr, "force-new-cluster: step 5.1: cp1 etcd not healthy before peer URL update")
+		}
 		cp1EtcdID5, idErr := getEtcdContainerID(states[0].node)
 		if idErr != nil {
 			return errors.Wrapf(idErr, "force-new-cluster: step 5.1: get cp1 container ID on %s", states[0].node.String())
@@ -1230,28 +1291,67 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		memberName := st.node.String()
 
 		// Step 6: Register this member in the Raft log.
-		// Re-fetch cp1's etcd container ID fresh for this iteration.
-		cp1EtcdID, err := getEtcdContainerID(states[0].node)
-		if err != nil {
-			return errors.Wrapf(err, "force-new-cluster: get cp1 etcd container ID on %s (iteration %d)", states[0].node.String(), i)
+		//
+		// Wait for cp1's cluster to be healthy before each member add.
+		// This handles two failure modes:
+		//  (A) "etcdserver: unhealthy cluster" after a preceding member joins
+		//      (cluster needs time to stabilize the new config change in Raft);
+		//  (B) "bind: address already in use" crash-loop where cp1's etcd container
+		//      was momentarily restarted by kubelet background reconciliation, causing
+		//      a brief window with no running etcd container.
+		//
+		// etcdHealthChecker waits up to 2 minutes (etcdHealthGateDeadline) polling
+		// cp1's local etcd endpoint. This covers both the "unhealthy cluster" and
+		// "no container yet" windows.
+		logger.V(1).Infof("    [force-new-cluster] step 6 pre-check (%d/%d): waiting for cp1 cluster health before member add", i, total-1)
+		if healthPreErr := etcdHealthChecker(states[0].node, etcdEndpoint); healthPreErr != nil {
+			return errors.Wrapf(healthPreErr, "force-new-cluster: step 6 pre-check: cp1 etcd not healthy before adding member %s", memberName)
 		}
 		peerURL := peerURLForState(&st)
 		if peerURL == "" {
 			return errors.Errorf("force-new-cluster: could not build peer URL for %s (currentIP=%q)", memberName, st.currentIP)
 		}
 		logger.V(0).Infof("  [force-new-cluster] step 6 (%d/%d): adding member %s with peer URL %s", i, total-1, memberName, peerURL)
-		addArgs := []string{
-			"crictl", "exec", cp1EtcdID, "etcdctl",
-			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
-			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
-			"--key=/etc/kubernetes/pki/etcd/peer.key",
-			"--endpoints=" + etcdEndpoint,
-			"member", "add", memberName, "--peer-urls=" + peerURL,
+		// Retry member add: "etcdserver: unhealthy cluster" is transient after a
+		// preceding member join — the cluster needs a moment to stabilize (peer
+		// connections fully established, leader confirmed, health check passes).
+		// Retry up to 10 times with 5s sleep between attempts.
+		// Container ID is re-fetched on each attempt since it may rotate between tries.
+		const memberAddMaxAttempts = 10
+		var memberAddErr error
+		var cp1EtcdID string
+		for attempt := 1; attempt <= memberAddMaxAttempts; attempt++ {
+			// Re-fetch container ID on each retry (may rotate between attempts).
+			var idErr error
+			cp1EtcdID, idErr = getEtcdContainerID(states[0].node)
+			if idErr != nil {
+				memberAddErr = errors.Wrapf(idErr, "get cp1 etcd container ID (attempt %d)", attempt)
+				certRegenSleeper(5 * time.Second)
+				continue
+			}
+			addArgs := []string{
+				"crictl", "exec", cp1EtcdID, "etcdctl",
+				"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+				"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+				"--key=/etc/kubernetes/pki/etcd/peer.key",
+				"--endpoints=" + etcdEndpoint,
+				"member", "add", memberName, "--peer-urls=" + peerURL,
+			}
+			memberAddErr = states[0].node.Command(addArgs[0], addArgs[1:]...).Run()
+			if memberAddErr == nil {
+				break
+			}
+			if attempt < memberAddMaxAttempts {
+				logger.V(1).Infof("    [force-new-cluster] step 6 (%d/%d): member add attempt %d/%d failed (transient?): %v — retrying in 5s",
+					i, total-1, attempt, memberAddMaxAttempts, memberAddErr)
+				certRegenSleeper(5 * time.Second)
+			}
 		}
-		if err := states[0].node.Command(addArgs[0], addArgs[1:]...).Run(); err != nil {
-			return errors.Wrapf(err, "force-new-cluster: etcdctl member add %s failed", memberName)
+		if memberAddErr != nil {
+			return errors.Wrapf(memberAddErr, "force-new-cluster: etcdctl member add %s failed", memberName)
 		}
 		logger.V(1).Infof("    [force-new-cluster] member %s registered", memberName)
+		_ = cp1EtcdID // container ID was used in the retry loop above
 
 		// Step 7: Clear stale WAL on this member before starting it.
 		logger.V(1).Infof("    [force-new-cluster] step 7 (%d/%d): clearing /var/lib/etcd/member on %s", i, total-1, memberName)
@@ -1261,23 +1361,25 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 
 		// Step 7.5: Patch --initial-cluster in this member's backup manifest.
 		//
-		// cp2/cp3 manifests may contain stale peer URLs for other nodes (from before
-		// the IP rotation on pause/resume). When --force-new-cluster is used to
-		// bootstrap cp1, the WAL peer URLs are reset to match the current IPs (step
-		// 5.1 ensures cp1's WAL uses currentIP). But cp2/cp3's manifests still have
-		// the OLD --initial-cluster entries for OTHER nodes.
+		// When cpN starts with --initial-cluster-state=existing and a cleared WAL,
+		// it downloads the V3 snapshot from cp1, then validates that the cluster's
+		// member count matches the number of entries in --initial-cluster. If the
+		// counts differ, etcd fatals with "member count is unequal".
 		//
-		// When cp2 starts with --initial-cluster-state=existing and a cleared WAL,
-		// it uses --initial-cluster to FIND the existing cluster. If cp1's entry in
-		// cp2's manifest has the old IP (now belonging to another node), cp2 connects
-		// to the wrong host and can never join cp1's cluster.
+		// At the time cpN starts (i-th iteration), only states[0..i] are registered
+		// in cp1's Raft log (cp1 via --force-new-cluster, cp2..cpN via member add
+		// in step 6). The remaining members (cpN+1 and beyond) have NOT been added
+		// yet. So --initial-cluster must list ONLY the already-registered members:
+		// states[0] through states[i] (inclusive), a total of i+1 entries.
 		//
-		// Fix: rebuild --initial-cluster using current IPs from all states. Use sed
-		// to replace the entire --initial-cluster=... line in the backup manifest with
-		// the correct value before mv-in.
-		newInitialCluster := buildInitialCluster(states)
+		// The manifest on disk (from step 1's patchEtcdManifestIPs) already has the
+		// correct IPs for all 3 nodes in its --initial-cluster. We need to TRIM it
+		// to only include the currently-registered members so etcd's validation
+		// passes.
+		registeredStates := states[:i+1]
+		newInitialCluster := buildInitialCluster(registeredStates)
 		if newInitialCluster != "" {
-			logger.V(1).Infof("    [force-new-cluster] step 7.5 (%d/%d): patching --initial-cluster in %s backup: %s", i, total-1, memberName, newInitialCluster)
+			logger.V(1).Infof("    [force-new-cluster] step 7.5 (%d/%d): patching --initial-cluster in %s backup (registered-only: %s)", i, total-1, memberName, newInitialCluster)
 			// Use sed to replace the --initial-cluster=... line. The manifest lives
 			// at etcdManifestBackup on this node (not yet mv-in'd to the live path).
 			sedExpr := "s|--initial-cluster=.*|--initial-cluster=" + newInitialCluster + "|"
@@ -1308,7 +1410,7 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		// Only needed before the next member add (not after the last member).
 		if i < total-1 {
 			logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): waiting for %s to appear as started in cp1 member list", i, total-1, memberName)
-			if waitErr := waitForMemberStarted(states[0].node, memberName, etcdEndpoint, 2*time.Minute, healthGateTick); waitErr != nil {
+			if waitErr := waitForMemberStarted(states[0].node, memberName, etcdEndpoint, etcdHealthGateDeadline, healthGateTick); waitErr != nil {
 				return errors.Wrapf(waitErr, "force-new-cluster: member %s did not become started on cp1 after joining", memberName)
 			}
 			logger.V(1).Infof("    [force-new-cluster] step 9b (%d/%d): %s confirmed started in cp1 member list", i, total-1, memberName)
@@ -1366,18 +1468,37 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	}
 
 	// Derive loopback endpoints from cluster IPFamily (RESEARCH §7).
-	// ClusterIPFamily returns true for IPv6/dual, false for IPv4. The
-	// dual-stack case picks the IPv6 loopback (works fine — etcd binds
-	// on `::` with ipv4_compat=true; the IPv6 form is accepted).
+	// ClusterIPFamily returns true for IPv6/dual, false for IPv4.
+	// ClusterIPFamilyIsDual returns true specifically for dual-stack clusters.
+	//
+	// Endpoint selection logic:
+	//   - IPv4-only: 127.0.0.1 loopback for both etcd and apiserver.
+	//   - IPv6-only: [::1] loopback for both (kubeadm generates IPv6 manifests
+	//     with listen-client-urls = https://[::1]:2379,https://node-ipv6:2379).
+	//   - Dual-stack: IPv4 loopback (127.0.0.1). kubeadm's dual-stack etcd
+	//     manifests set listen-client-urls = https://127.0.0.1:2379,https://node-ipv4:2379
+	//     — etcd does NOT bind on [::1] in dual-stack mode.
+	//
+	// ipv6 remains true for pure IPv6-only clusters (controls cert generation
+	// and manifest patching address selection further below). For dual-stack,
+	// ipv6=true is also kept (so IPv6 addresses are used for cert SANs and
+	// manifest patches), but the health-check endpoints use IPv4 loopback.
 	ipv6, fErr := loadbalancer.ClusterIPFamily(ProviderBinaryName(), cpNodes[0])
 	if fErr != nil {
 		return errors.Wrapf(fErr,
 			"cert regen: failed to derive cluster IP family from %s. Cluster state is undefined — delete and recreate the cluster",
 			cpNodes[0].String())
 	}
+	isDual, dErr := loadbalancer.ClusterIPFamilyIsDual(ProviderBinaryName(), cpNodes[0])
+	if dErr != nil {
+		return errors.Wrapf(dErr,
+			"cert regen: failed to detect dual-stack on %s. Cluster state is undefined — delete and recreate the cluster",
+			cpNodes[0].String())
+	}
 	etcdEndpoint := "https://127.0.0.1:2379"
 	healthzURL := "https://127.0.0.1:6443/healthz"
-	if ipv6 {
+	if ipv6 && !isDual {
+		// Pure IPv6-only cluster: use IPv6 loopback.
 		etcdEndpoint = "https://[::1]:2379"
 		healthzURL = "https://[::1]:6443/healthz"
 	}
@@ -1452,12 +1573,27 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 			logger.Warnf("pre-renew check-expiration snapshot failed on %s: %v (continuing; post-pass verify will be best-effort)", node.String(), preErr)
 		}
 
+		// For dual-stack clusters, kubeadm uses IPv4 as kube-apiserver's
+		// --advertise-address (see original container args at cluster creation).
+		// renewOrRegenOneCert passes currentIP as localAPIEndpoint.advertiseAddress
+		// to kubeadm. If we pass the IPv6 address here, kubeadm rewrites
+		// the kube-apiserver manifest's --advertise-address to IPv6, which
+		// kube-apiserver v1.35 rejects at startup ("service IP family must match
+		// public address family"). Fix: for dual-stack, swap currentIP (IPv6) and
+		// extraIP (IPv4) so kubeadm receives IPv4 as the advertise-address while
+		// still including the IPv6 in the etcd cert SANs.
+		certCurrentIP, certExtraIP := currentIP, extraIP
+		if isDual && extraIP != "" {
+			// isDual: currentIP=IPv6, extraIP=IPv4.
+			// Pass IPv4 as advertise-address; IPv6 as the extra SAN.
+			certCurrentIP, certExtraIP = extraIP, currentIP
+		}
 		for _, ct := range certTypes {
 			if _, ok := cycleForCertType[ct]; !ok {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Errorf("unknown cert type %q (cluster state is undefined — delete and recreate the cluster)", ct)
 			}
-			if err := renewOrRegenOneCert(node, ct, currentIP, extraIP); err != nil {
+			if err := renewOrRegenOneCert(node, ct, certCurrentIP, certExtraIP); err != nil {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Wrapf(err,
 					"cert regen phase 1 failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
@@ -1472,11 +1608,34 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 
 	// Build ipMap for Phase 1.7 (manifest patch) and forceNewClusterBootstrap.
 	// Must be computed before Phase 1.5 so it is available for both code paths.
+	//
+	// ipMap (etcd manifest): maps oldIP → currentIP for etcd.yaml patches.
+	//   - IPv4-only:  oldIPv4 → newIPv4
+	//   - IPv6-only:  oldIPv6 → newIPv6
+	//   - Dual-stack: oldIPv4 → newIPv6 (etcd uses IPv6 peer URLs after cert regen)
+	//
+	// apiserverIpMap: maps oldIP → IP for kube-apiserver.yaml patches.
+	//   - IPv4-only:  oldIPv4 → newIPv4  (same as ipMap)
+	//   - IPv6-only:  oldIPv6 → newIPv6  (same as ipMap)
+	//   - Dual-stack: oldIPv4 → newIPv4  (kube-apiserver keeps IPv4 advertise-address;
+	//     kube-apiserver v1.35 requires service-cluster-ip-range[0] family to match
+	//     advertise-address family, and the first service CIDR is IPv4 for dual-stack).
 	ipMap := make(map[string]string)
+	apiserverIpMap := make(map[string]string)
 	for _, st := range states {
 		if st.oldIP != "" && st.oldIP != st.currentIP {
 			ipMap[st.oldIP] = st.currentIP
-			logger.V(1).Infof("  IP drift map: %s → %s (on %s)", st.oldIP, st.currentIP, st.node.String())
+			logger.V(1).Infof("  IP drift map (etcd): %s → %s (on %s)", st.oldIP, st.currentIP, st.node.String())
+		}
+		// For kube-apiserver manifest patching: always map oldIP → new IPv4 (extraIP
+		// for dual-stack, currentIP otherwise). This ensures --advertise-address in
+		// the apiserver manifest stays IPv4 for dual-stack clusters.
+		if isDual && st.oldIP != "" && st.extraIP != "" && st.oldIP != st.extraIP {
+			apiserverIpMap[st.oldIP] = st.extraIP
+			logger.V(1).Infof("  IP drift map (apiserver/dual): %s → %s (on %s)", st.oldIP, st.extraIP, st.node.String())
+		} else if !isDual && st.oldIP != "" && st.oldIP != st.currentIP {
+			// Non-dual-stack: apiserver map same as etcd map.
+			apiserverIpMap[st.oldIP] = st.currentIP
 		}
 	}
 
@@ -1510,7 +1669,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 		// to recover the all-isolated scenario.
 		logger.V(0).Infof("cert regen phase 1.5: etcd quorum wait failed on %s, attempting force-new-cluster bootstrap: %v",
 			states[0].node.String(), healthErr)
-		if fErr := forceNewClusterBootstrap(states, ipMap, etcdEndpoint, logger); fErr != nil {
+		if fErr := forceNewClusterBootstrap(states, ipMap, apiserverIpMap, etcdEndpoint, logger); fErr != nil {
 			dumpCertRegenDiagnostics(states[0].node, "force-new-cluster", logger)
 			return errors.Wrapf(fErr,
 				"cert regen phase 1.5 (force-new-cluster bootstrap) failed on %s. Cluster state is undefined — delete and recreate the cluster",
@@ -1567,11 +1726,11 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	// patches manifests before starting cp1 with --force-new-cluster, and also
 	// patches cp2/cp3 manifests before starting them as rejoining members.
 	if !forceBootstrapped {
-		if len(ipMap) > 0 {
-			logger.V(0).Infof("cert regen phase 1.7: patching etcd/apiserver manifests with %d IP remappings", len(ipMap))
+		if len(ipMap) > 0 || len(apiserverIpMap) > 0 {
+			logger.V(0).Infof("cert regen phase 1.7: patching etcd/apiserver manifests with %d etcd / %d apiserver IP remappings", len(ipMap), len(apiserverIpMap))
 			for _, st := range states {
 				logger.V(1).Infof("    patching manifests on %s", st.node.String())
-				if err := patchEtcdManifestIPs(st.node, ipMap); err != nil {
+				if err := patchEtcdManifestIPs(st.node, ipMap, apiserverIpMap); err != nil {
 					dumpCertRegenDiagnostics(st.node, "manifest-patch", logger)
 					return errors.Wrapf(err,
 						"cert regen phase 1.7 (manifest IP patch) failed on %s. Cluster state is undefined — delete and recreate the cluster",

@@ -97,6 +97,41 @@ func SetClusterIPFamilyCmderForTest(c func(string, ...string) exec.Cmd) func(str
 // resume path mis-classified IPv4 clusters as IPv6 on macOS Docker Desktop's
 // dual-stack kind network by reading docker `EnableIPv6` instead of the
 // cluster's authoritative IPFamily; closed by Phase 57.2 on 2026-05-15.
+// ClusterIPFamilyIsDual returns (true, nil) if the cluster is dual-stack
+// (ipFamily: dual), (false, nil) for IPv4-only or IPv6-only clusters. Uses
+// the same label-based probe as ClusterIPFamily. Introduced for Phase 57.3
+// cert-regen: dual-stack etcd manifests use IPv4 loopback for --listen-client-urls
+// (not IPv6 loopback) so the etcd health endpoint must be https://127.0.0.1:2379
+// even though ClusterIPFamily returns ipv6=true for dual-stack clusters.
+func ClusterIPFamilyIsDual(binaryName string, node nodes.Node) (bool, error) {
+	var out strings.Builder
+	cmd := defaultClusterIPFamilyCmder(binaryName,
+		"inspect", "--format",
+		`{{index .Config.Labels "`+constants.IPFamilyLabel+`"}}`,
+		node.String(),
+	)
+	cmd.SetStdout(&out)
+	if err := cmd.Run(); err != nil {
+		return false, errors.Wrapf(err,
+			"ClusterIPFamilyIsDual: %s inspect failed for %s", binaryName, node.String())
+	}
+	val := strings.TrimSpace(out.String())
+	switch val {
+	case constants.IPFamilyValueDual:
+		return true, nil
+	case constants.IPFamilyValueIPv4, constants.IPFamilyValueIPv6:
+		return false, nil
+	case "":
+		return false, errors.Errorf(
+			"ClusterIPFamilyIsDual: %s label absent on %s — delete and recreate the cluster",
+			constants.IPFamilyLabel, node.String())
+	default:
+		return false, errors.Errorf(
+			"ClusterIPFamilyIsDual: unrecognized %s label value %q on %s — delete and recreate the cluster",
+			constants.IPFamilyLabel, val, node.String())
+	}
+}
+
 func ClusterIPFamily(binaryName string, node nodes.Node) (bool, error) {
 	var out strings.Builder
 	cmd := defaultClusterIPFamilyCmder(binaryName,
