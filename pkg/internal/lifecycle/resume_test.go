@@ -986,6 +986,28 @@ func (h *haTestCmder) cmder() Cmder {
 		case "sed":
 			// patchEtcdManifestIPs: sed -i <expr> <manifest>
 			return &fakeCmd{}
+		case "crictl":
+			// Phase 1.6: getEtcdContainerID and etcdctl member list/update.
+			if len(args) >= 3 && args[0] == "ps" && args[1] == "--name" && args[2] == "etcd" {
+				return &fakeCmd{stdout: "fakeEtcdContainer123\n"}
+			}
+			if len(args) >= 2 && args[0] == "exec" {
+				// crictl exec <etcdID> etcdctl ... member list → all peers at current IP
+				for i, a := range args {
+					if a == "member" && i+1 < len(args) && args[i+1] == "list" {
+						return &fakeCmd{stdout: `{"members":[
+							{"ID":111,"name":"cp1","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]},
+							{"ID":222,"name":"cp2","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]},
+							{"ID":333,"name":"cp3","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]}
+						]}`}
+					}
+					if a == "member" && i+1 < len(args) && args[i+1] == "update" {
+						return &fakeCmd{stdout: "Member updated in cluster\n"}
+					}
+				}
+				return &fakeCmd{}
+			}
+			return &fakeCmd{}
 		}
 
 		// For container runtime commands (docker/podman/nerdctl), dispatch on args[0].

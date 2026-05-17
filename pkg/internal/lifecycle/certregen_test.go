@@ -264,6 +264,31 @@ func wrapWithIPRegen(inner func(string, []string) (string, error)) func(string, 
 		case "sed":
 			// patchEtcdManifestIPs: sed -i <expr> <manifest>
 			return "", nil
+		case "crictl":
+			// Phase 1.6: getEtcdContainerID and etcdctl member list/update via crictl exec.
+			if len(args) >= 3 && args[0] == "ps" && args[1] == "--name" && args[2] == "etcd" {
+				// crictl ps --name etcd -q → fake container ID
+				return "fakeEtcdContainer123\n", nil
+			}
+			if len(args) >= 2 && args[0] == "exec" {
+				// crictl exec <etcdID> etcdctl ... member list --write-out=json
+				// Return a member list where all peer URLs use the current IP (172.18.0.5),
+				// matching the no-drift scenario (extractEtcdManifestIP returns same IP as
+				// currentNodeIPv4). This means Phase 1.6 finds all peers already current → 0 updates.
+				for i, a := range args {
+					if a == "member" && i+1 < len(args) && args[i+1] == "list" {
+						return `{"members":[
+							{"ID":111,"name":"cp1","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]},
+							{"ID":222,"name":"cp2","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]},
+							{"ID":333,"name":"cp3","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]}
+						]}`, nil
+					}
+					if a == "member" && i+1 < len(args) && args[i+1] == "update" {
+						return "Member updated in cluster\n", nil
+					}
+				}
+			}
+			return "", nil
 		case "kubeadm":
 			if len(args) >= 4 && args[0] == "init" && args[1] == "phase" && args[2] == "certs" {
 				return "", nil
@@ -449,6 +474,9 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 //     total phase 1: 19 × 3 = 57
 //   Phase 1.5 (manifest IP patch): no-op in tests (old IP == current IP, ipMap empty)
 //     total phase 1.5: 0
+//   Phase 1.6 (etcd member peer URL update): always runs on firstNode=cp1:
+//     crictl ps --name etcd -q (1) + crictl exec etcdctl member list (1) = 2
+//     no member update calls (all peer URLs match current IPs in no-drift test)
 //   Phase 2a (simultaneous etcd restart):
 //     3×mv-out(etcd.yaml) + 3×mv-in(etcd.yaml) = 6 total
 //     (etcdHealthChecker is mocked — no node.Command calls from health gate)
@@ -458,7 +486,7 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 //     (apiserverHealthChecker is mocked — no node.Command calls from health gate)
 //   Post-pass verify (per CP):
 //     kubeadm certs check-expiration = 1 per CP × 3 CPs = 3
-//   Grand total: 57 + 0 + 6 + 6 + 3 = 72 node.Command calls.
+//   Grand total: 57 + 0 + 2 + 6 + 6 + 3 = 74 node.Command calls.
 //
 // check-expiration order: pre-cp1(0), pre-cp2(1), pre-cp3(2) from Phase 1,
 // then post-cp1(3), post-cp2(4), post-cp3(5) from post-pass verify.
@@ -531,9 +559,10 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	}
 
 	// Verify node.Command calls total (see comment above for breakdown).
+	// Phase 1.6 always runs: crictl ps(1) + crictl exec member list(1) = 2 extra calls on cp1.
 	calls := rec.snapshot()
-	if len(calls) != 72 { // 72 total: 57 phase1 + 0 phase1.5 + 6 phase2a + 6 phase2b + 3 post-pass
-		t.Errorf("expected 72 node.Command calls (57 phase1 + 6 phase2a + 6 phase2b + 3 post-pass), got %d; calls=%v", len(calls), joinCalls(calls))
+	if len(calls) != 74 { // 74 total: 57 phase1 + 0 phase1.5 + 2 phase1.6 + 6 phase2a + 6 phase2b + 3 post-pass
+		t.Errorf("expected 74 node.Command calls (57 phase1 + 2 phase1.6 + 6 phase2a + 6 phase2b + 3 post-pass), got %d; calls=%v", len(calls), joinCalls(calls))
 	}
 }
 
@@ -882,6 +911,141 @@ func TestRegenerateEtcdPeerCertsWholesale_PerCertManifestRouting(t *testing.T) {
 		if len(mvCalls[mvIdx]) < 2 || mvCalls[mvIdx][0] != kubeAPIServerManifestBackup {
 			t.Errorf("apiserver mv-in[%d]: expected first arg %q, got %v", mvIdx, kubeAPIServerManifestBackup, mvCalls[mvIdx])
 		}
+	}
+}
+
+// TestRegenerateEtcdPeerCertsWholesale_IPDrift_MemberUpdate: when IP drift is
+// detected (old manifest IP != current IP), Phase 1.6 should call
+// `etcdctl member list` and `etcdctl member update` for members with stale URLs.
+//
+// Setup: 3 CPs, each with old IP 172.18.0.10/11/12 in manifest,
+// current IP 172.18.0.5 (same for all, since wrapWithIPRegen returns 172.18.0.5
+// for all nodes). The ipMap will be {172.18.0.10→172.18.0.5, ...} but only one
+// unique new IP so only one substitution matters per member.
+//
+// We verify: crictl ps (for getEtcdContainerID) is called, etcdctl member list
+// is called, and etcdctl member update is called for members with stale URLs.
+func TestRegenerateEtcdPeerCertsWholesale_IPDrift_MemberUpdate(t *testing.T) {
+	swapCertRegenSleeper(t, noopSleeper())
+	swapEtcdHealthChecker(t, instantOKEtcd())
+	swapApiserverHealthChecker(t, instantOKApiserver())
+
+	// Member list JSON: 3 members, two with stale peer IPs (172.18.0.10, 172.18.0.11),
+	// one already correct (172.18.0.5).
+	memberListJSON := `{"members":[
+		{"ID":1234567890,"name":"cp1","peerURLs":["https://172.18.0.10:2380"],"clientURLs":["https://172.18.0.5:2379"]},
+		{"ID":9876543210,"name":"cp2","peerURLs":["https://172.18.0.11:2380"],"clientURLs":["https://172.18.0.6:2379"]},
+		{"ID":1111111111,"name":"cp3","peerURLs":["https://172.18.0.5:2380"],"clientURLs":["https://172.18.0.5:2379"]}
+	]}`
+
+	checkExpCallIdx := 0
+	const numCPs = 3
+	var memberUpdateCalls []string
+	mu := sync.Mutex{}
+
+	rec := &recordingCmder{
+		lookup: wrapWithIPRegen(func(name string, args []string) (string, error) {
+			if name == "kubeadm" && len(args) >= 3 && args[0] == "certs" && args[1] == "check-expiration" {
+				idx := checkExpCallIdx
+				checkExpCallIdx++
+				if idx < numCPs {
+					return preJSON, nil
+				}
+				return postJSON, nil
+			}
+			// Override grep for IP drift: return OLD manifest IP != currentNodeIPv4 (172.18.0.5)
+			if name == "grep" && len(args) >= 1 && args[0] == "-E" {
+				for _, a := range args {
+					if strings.Contains(a, "initial-advertise-peer-urls") {
+						// Return different IP per CP to simulate drift.
+						// We use 172.18.0.10 for all CPs for simplicity.
+						return "    - --initial-advertise-peer-urls=https://172.18.0.10:2380\n", nil
+					}
+				}
+			}
+			// grep -c for patchEtcdManifestIPs: return "1" so sed runs.
+			if name == "grep" && len(args) >= 1 && args[0] == "-c" {
+				return "1\n", nil
+			}
+			// crictl ps --name etcd -q → fake container ID
+			if name == "crictl" && len(args) >= 3 && args[0] == "ps" && args[1] == "--name" && args[2] == "etcd" {
+				return "abc123etcd\n", nil
+			}
+			// crictl exec <etcdID> etcdctl member list --write-out=json
+			if name == "crictl" && len(args) >= 2 && args[0] == "exec" {
+				for i, a := range args {
+					if a == "member" && i+1 < len(args) && args[i+1] == "list" {
+						return memberListJSON, nil
+					}
+					if a == "member" && i+1 < len(args) && args[i+1] == "update" {
+						// Record the update call.
+						mu.Lock()
+						memberUpdateCalls = append(memberUpdateCalls, strings.Join(args, " "))
+						mu.Unlock()
+						return "Member updated in cluster\n", nil
+					}
+				}
+			}
+			return "", nil
+		}),
+	}
+	withCmder(t, rec.cmder())
+	withIPv4ClusterIPFamily(t)
+
+	cpNodes := makeHACPNodes("cp1", "cp2", "cp3")
+	clog := &captureLogger{}
+	err := RegenerateEtcdPeerCertsWholesale(cpNodes, clog)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mu.Lock()
+	updateCount := len(memberUpdateCalls)
+	mu.Unlock()
+
+	// Two members have stale URLs (172.18.0.10 and 172.18.0.11 vs current 172.18.0.5).
+	// Only members whose peerURL contains an oldIP from ipMap should be updated.
+	// ipMap = {172.18.0.10 → 172.18.0.5} (all CPs return same old IP 172.18.0.10).
+	// Member list has 2 members with 172.18.0.10 or 172.18.0.11. Only 172.18.0.10
+	// is in ipMap → 1 member updated (cp1: 172.18.0.10 → 172.18.0.5).
+	// cp2 has 172.18.0.11 which is NOT in ipMap (cp2's oldIP is also 172.18.0.10
+	// since all nodes return same grep result, so ipMap["172.18.0.10"]="172.18.0.5"
+	// only). cp3 already has 172.18.0.5 → no update.
+	if updateCount < 1 {
+		t.Errorf("expected at least 1 etcdctl member update call for stale peer URLs, got %d (calls=%v)", updateCount, memberUpdateCalls)
+	}
+}
+
+// TestParseEtcdMemberList_HappyPath: valid JSON with 3 members.
+func TestParseEtcdMemberList_HappyPath(t *testing.T) {
+	raw := `{"header":{"cluster_id":123},"members":[
+		{"ID":1234567890,"name":"cp1","peerURLs":["https://172.19.0.3:2380"],"clientURLs":["https://172.19.0.3:2379"]},
+		{"ID":9876543210,"name":"cp2","peerURLs":["https://172.19.0.4:2380"],"clientURLs":["https://172.19.0.4:2379"]}
+	]}`
+	members, err := parseEtcdMemberList(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+	if members[0].name != "cp1" {
+		t.Errorf("members[0].name=%q, want cp1", members[0].name)
+	}
+	if members[0].peerURL != "https://172.19.0.3:2380" {
+		t.Errorf("members[0].peerURL=%q, want https://172.19.0.3:2380", members[0].peerURL)
+	}
+	// ID should be hex-formatted
+	if members[0].id != fmt.Sprintf("%x", uint64(1234567890)) {
+		t.Errorf("members[0].id=%q, want %q", members[0].id, fmt.Sprintf("%x", uint64(1234567890)))
+	}
+}
+
+// TestParseEtcdMemberList_Malformed: invalid JSON.
+func TestParseEtcdMemberList_Malformed(t *testing.T) {
+	_, err := parseEtcdMemberList("{not-json}")
+	if err == nil {
+		t.Fatal("expected error for malformed JSON, got nil")
 	}
 }
 

@@ -183,6 +183,39 @@ func currentNodeIPv4(node nodes.Node) (string, error) {
 	return "", errors.Errorf("no IPv4 inet line for eth0 on %s; lines: %v", node.String(), lines)
 }
 
+// currentNodeIPv6 returns the first global-scope IPv6 address of eth0 inside
+// the given CP node. Used for IPv6/dual-stack clusters where etcd peer
+// connections use IPv6 addresses.
+func currentNodeIPv6(node nodes.Node) (string, error) {
+	lines, err := exec.OutputLines(node.Command(
+		"ip", "-6", "addr", "show", "eth0",
+	))
+	if err != nil {
+		return "", errors.Wrapf(err, "ip -6 addr show eth0 on %s", node.String())
+	}
+	// Parse the first "inet6 <IP>/prefix scope global" line.
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if !strings.HasPrefix(ln, "inet6 ") {
+			continue
+		}
+		if !strings.Contains(ln, "scope global") {
+			continue // skip link-local and other non-global addresses
+		}
+		// "inet6 fc00:4d57:1afd:1f1b::a/64 scope global nodad" → "fc00:4d57:1afd:1f1b::a"
+		fields := strings.Fields(ln)
+		if len(fields) < 2 {
+			continue
+		}
+		ipCIDR := fields[1]
+		ip := strings.Split(ipCIDR, "/")[0]
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+			return ip, nil
+		}
+	}
+	return "", errors.Errorf("no global IPv6 inet6 line for eth0 on %s; lines: %v", node.String(), lines)
+}
+
 // extractEtcdManifestIP reads the node's own IP from its etcd static-pod
 // manifest by parsing the `--initial-advertise-peer-urls` flag. This is the
 // IP the node had at cluster creation time (or last kubeadm join/init). After
@@ -282,7 +315,11 @@ func patchEtcdManifestIPs(node nodes.Node, ipMap map[string]string) error {
 //
 // For client-only certs (etcd-healthcheck-client, apiserver-etcd-client) there
 // are no IP SANs, so the regeneration is still correct (and idempotent).
-func renewOrRegenOneCert(node nodes.Node, certName, currentIP string) error {
+//
+// extraIP is an optional additional IP to include in the kubeadm config (for
+// dual-stack/IPv6 clusters where the etcd peer cert must include both IPv4 and
+// IPv6 addresses in SANs). Pass "" to skip.
+func renewOrRegenOneCert(node nodes.Node, certName, currentIP, extraIP string) error {
 	// Cert-path table (kubeadm subcommand → pki path).
 	certPaths := map[string][2]string{
 		"etcd-peer":               {"/etc/kubernetes/pki/etcd/peer.crt", "/etc/kubernetes/pki/etcd/peer.key"},
@@ -303,13 +340,26 @@ func renewOrRegenOneCert(node nodes.Node, certName, currentIP string) error {
 	hostnameStr := strings.TrimSpace(hostname[0])
 
 	// Write a minimal kubeadm config with the CURRENT IP.
+	// If extraIP is provided (dual-stack/IPv6 clusters), include it as an
+	// additional SAN via etcd.local.peerCertSANs / serverCertSANs so the cert
+	// is valid for both IPv4 and IPv6 peer/server connections.
 	cfgPath := "/tmp/kinder-regen-" + certName + ".yaml"
+	etcdSANsSection := "    dataDir: /var/lib/etcd\n"
+	if extraIP != "" {
+		// Include both IPs in etcd SAN lists for dual-stack cluster compatibility.
+		// peerCertSANs: for etcd-peer cert (peer mTLS between nodes).
+		// serverCertSANs: for etcd-server cert (client→etcd TLS).
+		sanList := "    - " + currentIP + "\n    - " + extraIP + "\n"
+		etcdSANsSection = "    dataDir: /var/lib/etcd\n" +
+			"    peerCertSANs:\n" + sanList +
+			"    serverCertSANs:\n" + sanList
+	}
 	cfgContent := "apiVersion: kubeadm.k8s.io/v1beta4\nkind: InitConfiguration\n" +
 		"localAPIEndpoint:\n  advertiseAddress: " + currentIP + "\n  bindPort: 6443\n" +
 		"nodeRegistration:\n  name: " + hostnameStr + "\n" +
 		"---\n" +
 		"apiVersion: kubeadm.k8s.io/v1beta4\nkind: ClusterConfiguration\n" +
-		"etcd:\n  local:\n    dataDir: /var/lib/etcd\n"
+		"etcd:\n  local:\n" + etcdSANsSection
 
 	// Write config via echo -e into the container.
 	if err := node.Command("bash", "-c",
@@ -371,6 +421,256 @@ func cycleManifestOne(node nodes.Node, c certCycle, etcdEndpoint, healthzURL str
 	return nil
 }
 
+// updateEtcdMemberPeerURLs updates the peer URLs for any member whose IP changed
+// by calling `etcdctl member update <id> --peer-urls=https://<newIP>:2380` while
+// etcd is still running (before the simultaneous restart).
+//
+// BACKGROUND: etcd stores peer membership (member IDs + peer URLs) in the Raft log
+// and WAL. The --initial-cluster flag in the static-pod manifest is IGNORED when
+// --initial-cluster-state=existing (used for all joined members). On restart, etcd
+// reads peer URLs from the WAL. After Docker IPAM reassignment, the WAL contains
+// pre-pause peer URLs — causing "dial tcp <stale-IP>:2380: connection refused"
+// after restart even though --initial-cluster was patched in the manifest.
+//
+// The fix: before the simultaneous restart, update the cluster's membership record
+// via the live etcd API. This writes the new peer URL into the Raft log, so when
+// etcd restarts it finds the correct URLs in the WAL.
+//
+// This function uses direct IP comparison (WAL peer URL IP vs node's current IPs)
+// rather than the ipMap approach, which handles both IPv4 and IPv6 clusters. For
+// each etcd member, we match it to a node (by hostname in the member name), get
+// the node's current IPs, and update the peer URL if stale. For IPv6 clusters,
+// the WAL may store IPv6 peer URLs, so we check against both IPv4 and IPv6.
+//
+// This function is always called when IP drift is detected (ipMap non-empty).
+func updateEtcdMemberPeerURLs(states []nodeRegenState, ipMap map[string]string, etcdEndpoint string, logger log.Logger) error {
+	// Even if ipMap is empty (no IPv4 drift), we still check WAL peer URLs
+	// for IPv6 drift on dual-stack/IPv6 clusters. The function uses direct
+	// IP comparison (WAL vs current node IPs) rather than the ipMap.
+	// Only skip if there are no current IPs to compare against.
+	hasCurrentIPs := false
+	for _, st := range states {
+		if st.currentIP != "" || st.extraIP != "" {
+			hasCurrentIPs = true
+			break
+		}
+	}
+	if !hasCurrentIPs {
+		logger.V(1).Infof("phase 1.6: no node states with current IPs, skipping")
+		return nil
+	}
+
+	// Step 1: Get member list from the first running CP. We pick states[0].node
+	// because it ran Phase 1 cert regen first and should be available.
+	firstNode := states[0].node
+	etcdID, err := getEtcdContainerID(firstNode)
+	if err != nil {
+		return errors.Wrapf(err, "phase 1.6: could not get etcd container ID on %s", firstNode.String())
+	}
+
+	// Run etcdctl member list --write-out=json to get member IDs + peer URLs.
+	args := []string{
+		"crictl", "exec", etcdID, "etcdctl",
+		"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+		"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+		"--key=/etc/kubernetes/pki/etcd/peer.key",
+		"--endpoints=" + etcdEndpoint,
+		"member", "list", "--write-out=json",
+	}
+	out, listErr := exec.OutputLines(firstNode.Command(args[0], args[1:]...))
+	if listErr != nil {
+		return errors.Wrapf(listErr, "phase 1.6: etcdctl member list failed on %s", firstNode.String())
+	}
+
+	// Parse the member list JSON.
+	members, parseErr := parseEtcdMemberList(strings.Join(out, ""))
+	if parseErr != nil {
+		return errors.Wrapf(parseErr, "phase 1.6: parse etcdctl member list output")
+	}
+
+	// Build a combined IP drift map covering BOTH IPv4 and IPv6 addresses.
+	// ipMap has IPv4 drift (old→new). Also build ipv6Map from nodeRegenState
+	// extraIP fields (IPv6 addresses detected in Phase 1).
+	//
+	// For each member, we check if the peer URL contains any stale IP.
+	// "Stale" means: the IP in the peer URL is not the current IP of any node.
+	// We detect this by checking if the peer URL IP matches any node's IPv4 or
+	// IPv6 address as recorded in states.
+	//
+	// Build a set of all CURRENT IPs (IPv4 + IPv6) for quick lookup.
+	currentIPs := make(map[string]string) // current IP → new peer URL containing that IP
+	for _, st := range states {
+		if st.currentIP != "" {
+			currentIPs[st.currentIP] = ""
+		}
+		if st.extraIP != "" {
+			currentIPs[st.extraIP] = ""
+		}
+	}
+
+	// For each member, check if its peer URL IP is stale.
+	// Stale = peer URL IP is NOT in the set of current IPs.
+	// Find the new peer URL by matching the member name to a node in states.
+	updated := 0
+	for _, member := range members {
+		// Extract the IP from the peer URL (strip scheme, brackets, port).
+		peerIP := extractIPFromURL(member.peerURL)
+		if peerIP == "" {
+			logger.Warnf("  [phase 1.6] could not parse IP from peer URL %q for member %s, skipping", member.peerURL, member.name)
+			continue
+		}
+		// Check if this IP is current.
+		if _, isCurrent := currentIPs[peerIP]; isCurrent {
+			logger.V(1).Infof("  [phase 1.6] member %s peer URL %s is current (IP %s matches a live node), no update needed",
+				member.name, member.peerURL, peerIP)
+			continue
+		}
+		// Peer URL is stale. Find the matching node state by member name (which
+		// is the container/node hostname, e.g. "uat-573-ipv6-control-plane").
+		var matchedState *nodeRegenState
+		for j := range states {
+			nodeName := states[j].node.String()
+			if nodeName == member.name || strings.HasSuffix(nodeName, member.name) || strings.HasSuffix(member.name, nodeName) {
+				matchedState = &states[j]
+				break
+			}
+		}
+		if matchedState == nil {
+			logger.Warnf("  [phase 1.6] could not match etcd member %q to a node state, skipping", member.name)
+			continue
+		}
+		// Determine the new peer URL. Use the same scheme and port from the original,
+		// but with the current IP. For IPv6/dual-stack, prefer extraIP (IPv6) if the
+		// original peer URL used IPv6; otherwise use currentIP (IPv4).
+		newPeerURL := buildNewPeerURL(member.peerURL, peerIP, matchedState)
+		if newPeerURL == "" {
+			logger.Warnf("  [phase 1.6] could not build new peer URL for member %s (peerURL=%s), skipping", member.name, member.peerURL)
+			continue
+		}
+
+		logger.V(0).Infof("  [phase 1.6] updating etcd member %s (%s) peer URL: %s → %s",
+			member.name, member.id, member.peerURL, newPeerURL)
+		updateArgs := []string{
+			"crictl", "exec", etcdID, "etcdctl",
+			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+			"--key=/etc/kubernetes/pki/etcd/peer.key",
+			"--endpoints=" + etcdEndpoint,
+			"member", "update", member.id, "--peer-urls=" + newPeerURL,
+		}
+		if err := firstNode.Command(updateArgs[0], updateArgs[1:]...).Run(); err != nil {
+			return errors.Wrapf(err,
+				"phase 1.6: etcdctl member update %s (peer URL %s→%s) failed",
+				member.id, member.peerURL, newPeerURL)
+		}
+		updated++
+	}
+	logger.V(0).Infof("  [phase 1.6] updated %d etcd member peer URLs", updated)
+	return nil
+}
+
+// extractIPFromURL extracts the IP address from an etcd peer URL.
+// Handles formats like:
+//   - https://172.19.0.3:2380          → "172.19.0.3"
+//   - https://[172.19.0.3]:2380        → "172.19.0.3" (IPv4 in brackets)
+//   - https://[fc00:4d57:1afd::a]:2380 → "fc00:4d57:1afd::a"
+func extractIPFromURL(rawURL string) string {
+	// Strip scheme.
+	u := rawURL
+	for _, prefix := range []string{"https://", "http://"} {
+		u = strings.TrimPrefix(u, prefix)
+	}
+	// Strip port suffix (":2380" etc).
+	if colon := strings.LastIndex(u, ":"); colon >= 0 {
+		// For IPv6, the last colon is the port separator after ']'.
+		if strings.HasSuffix(u[:colon], "]") || !strings.Contains(u[:colon], ":") {
+			u = u[:colon]
+		}
+	}
+	// Strip IPv6 brackets.
+	u = strings.Trim(u, "[]")
+	if net.ParseIP(u) != nil {
+		return u
+	}
+	return ""
+}
+
+// buildNewPeerURL constructs the new peer URL for a member given the old peer
+// URL, the stale IP, and the matched node state.
+func buildNewPeerURL(oldPeerURL, staleIP string, st *nodeRegenState) string {
+	// Determine whether the original peer URL used IPv6 (bracketed non-IPv4 address).
+	parsedStale := net.ParseIP(staleIP)
+	useIPv6 := parsedStale != nil && parsedStale.To4() == nil
+	var newIP string
+	if useIPv6 && st.extraIP != "" {
+		newIP = st.extraIP
+	} else {
+		newIP = st.currentIP
+	}
+	if newIP == "" {
+		return ""
+	}
+	// For IPv6, wrap in brackets.
+	if net.ParseIP(newIP) != nil && strings.Contains(newIP, ":") {
+		newIP = "[" + newIP + "]"
+	}
+	// Replace the stale IP in the original URL.
+	staleInURL := staleIP
+	// If the original URL had the stale IP in brackets (IPv4 in brackets notation).
+	if strings.Contains(oldPeerURL, "["+staleIP+"]") {
+		return strings.Replace(oldPeerURL, "["+staleIP+"]", newIP, 1)
+	}
+	// Plain IP without brackets.
+	return strings.Replace(oldPeerURL, staleInURL, newIP, 1)
+}
+
+// etcdMember holds a parsed etcd cluster member record.
+type etcdMember struct {
+	id      string // hex member ID, e.g. "6f1e1de96aea0868"
+	name    string // container/node name
+	peerURL string // e.g. "https://172.19.0.6:2380"
+}
+
+// parseEtcdMemberList parses `etcdctl member list --write-out=json` output.
+// The JSON schema is: {"header":..., "members":[{"ID":uint64,"name":"...","peerURLs":["..."],...}]}
+func parseEtcdMemberList(raw string) ([]etcdMember, error) {
+	var doc struct {
+		Members []struct {
+			ID       uint64   `json:"ID"`
+			Name     string   `json:"name"`
+			PeerURLs []string `json:"peerURLs"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &doc); err != nil {
+		return nil, errors.Errorf("parseEtcdMemberList: JSON unmarshal failed: %v (raw: %q)", err, raw)
+	}
+	out := make([]etcdMember, 0, len(doc.Members))
+	for _, m := range doc.Members {
+		// Format ID as hex (same representation etcdctl uses in update commands).
+		id := fmt.Sprintf("%x", m.ID)
+		peerURL := ""
+		if len(m.PeerURLs) > 0 {
+			peerURL = m.PeerURLs[0]
+		}
+		out = append(out, etcdMember{id: id, name: m.Name, peerURL: peerURL})
+	}
+	return out, nil
+}
+
+// getEtcdContainerID returns the crictl container ID of the running etcd container.
+func getEtcdContainerID(node nodes.Node) (string, error) {
+	lines, err := exec.OutputLines(node.Command("crictl", "ps", "--name", "etcd", "-q"))
+	if err != nil {
+		return "", errors.Wrapf(err, "crictl ps --name etcd on %s", node.String())
+	}
+	for _, ln := range lines {
+		if id := strings.TrimSpace(ln); id != "" {
+			return id, nil
+		}
+	}
+	return "", errors.Errorf("no running etcd container on %s", node.String())
+}
+
 // cycleEtcdClusterSimultaneous performs a cluster-wide simultaneous etcd restart
 // across all CP nodes. This is required to prevent etcd WAL stale peer URL failures.
 //
@@ -427,10 +727,12 @@ func cycleEtcdClusterSimultaneous(cpNodes []nodes.Node, etcdEndpoint string, log
 // nodeRegenState holds per-CP data collected during Phase 1 so Phase 2 can
 // run without re-querying the nodes.
 type nodeRegenState struct {
-	node      nodes.Node
-	preSnap   certExpirationSnapshot // may be nil if snapshot capture failed
-	currentIP string
-	oldIP     string // IP read from the etcd manifest before cert regen; may equal currentIP
+	node        nodes.Node
+	preSnap     certExpirationSnapshot // may be nil if snapshot capture failed
+	currentIP   string                 // current IPv4 address (from ip -4 addr show eth0)
+	oldIP       string                 // IPv4 read from etcd manifest before cert regen
+	extraIP     string                 // current IPv6 address (for dual-stack/IPv6 clusters; may be empty)
+	oldExtraIP  string                 // IPv6 read from etcd manifest before cert regen (may be empty)
 }
 
 // RegenerateEtcdPeerCertsWholesale runs cert regeneration in two phases across
@@ -508,13 +810,28 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 			oldIP = "" // empty → will not be added to ipMap
 		}
 
-		// Determine current container IP for cert SAN injection (IP drift fix).
+		// Determine current container IPv4 for manifest patching and IP drift detection.
 		currentIP, ipErr := currentNodeIPv4(node)
 		if ipErr != nil {
 			dumpCertRegenDiagnostics(node, "ip-detect", logger)
 			return errors.Wrapf(ipErr,
 				"cert regen: failed to detect current IP on %s. Cluster state is undefined — delete and recreate the cluster",
 				node.String())
+		}
+
+		// For IPv6/dual-stack clusters, also detect the IPv6 global address and
+		// include it as an extra SAN in the cert. This is required because etcd
+		// peer connections in IPv6 kind clusters use the node's IPv6 address even
+		// though the manifest uses IPv4 (in bracket notation) as the advertise address.
+		// The cert must have BOTH IPv4 and IPv6 SANs to pass peer mutual TLS.
+		var extraIP string
+		if ipv6 {
+			if ip6, ip6Err := currentNodeIPv6(node); ip6Err == nil {
+				extraIP = ip6
+				logger.V(1).Infof("    dual-stack/IPv6: including extra SAN %s for peer certs on %s", extraIP, node.String())
+			} else {
+				logger.Warnf("    cert regen: could not detect IPv6 address on %s: %v (peer certs may lack IPv6 SAN)", node.String(), ip6Err)
+			}
 		}
 		logger.V(1).Infof("    current IP on %s: %s (old manifest IP: %s)", node.String(), currentIP, oldIP)
 
@@ -529,7 +846,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Errorf("unknown cert type %q (cluster state is undefined — delete and recreate the cluster)", ct)
 			}
-			if err := renewOrRegenOneCert(node, ct, currentIP); err != nil {
+			if err := renewOrRegenOneCert(node, ct, currentIP, extraIP); err != nil {
 				dumpCertRegenDiagnostics(node, ct, logger)
 				return errors.Wrapf(err,
 					"cert regen phase 1 failed on %s for %s. Cluster state is undefined — delete and recreate the cluster",
@@ -537,7 +854,7 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 			}
 		}
 
-		states[i] = nodeRegenState{node: node, preSnap: preSnap, currentIP: currentIP, oldIP: oldIP}
+		states[i] = nodeRegenState{node: node, preSnap: preSnap, currentIP: currentIP, oldIP: oldIP, extraIP: extraIP, oldExtraIP: ""}
 		logger.V(1).Infof("    [phase 1] cert files regenerated on %s", node.String())
 	}
 	logger.V(0).Infof("cert regen phase 1 complete: all %d CP nodes have fresh cert files", total)
@@ -573,6 +890,26 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	} else {
 		logger.V(1).Infof("cert regen phase 1.5: no IP drift detected, manifests unchanged")
 	}
+
+	// ── PHASE 1.6: Update etcd member peer URLs via live cluster API ──────
+	// While etcd is still running on all CPs, update the cluster membership
+	// record for any member whose WAL peer URL is stale. This writes the new
+	// peer URLs into the Raft log so they are present in the WAL when etcd
+	// restarts. Without this step, the simultaneous restart would still fail:
+	// etcd reads peer URLs from the WAL on startup (--initial-cluster-state=existing),
+	// ignoring the --initial-cluster flag in the manifest.
+	//
+	// Phase 1.6 runs unconditionally (even without IPv4 drift) because IPv6/dual-
+	// stack clusters may have stale IPv6 peer URLs in the WAL even when the IPv4
+	// address mapping (ipMap) shows no drift. The function compares WAL peer URL
+	// IPs directly against node current IPs, so it handles all IP family cases.
+	logger.V(0).Infof("cert regen phase 1.6: verifying and updating etcd member peer URLs")
+	if err := updateEtcdMemberPeerURLs(states, ipMap, etcdEndpoint, logger); err != nil {
+		dumpCertRegenDiagnostics(states[0].node, "member-update", logger)
+		return errors.Wrapf(err,
+			"cert regen phase 1.6 (etcd member peer URL update) failed. Cluster state is undefined — delete and recreate the cluster")
+	}
+	logger.V(0).Infof("cert regen phase 1.6 complete: etcd member peer URLs verified")
 
 	// ── PHASE 2: Cycle static-pod manifests ───────────────────────────────
 	// All peer certs are now valid. Restart etcd cluster-wide simultaneously
