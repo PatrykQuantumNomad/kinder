@@ -894,11 +894,16 @@ func waitForMemberStarted(cp1Node nodes.Node, memberName, etcdEndpoint string, d
 }
 
 // peerURLForState builds the etcd peer URL for a node state.
+// For IPv4 clusters it uses: https://<ip>:2380.
 // For IPv6/dual-stack clusters where currentIP is an IPv6 address, the URL
 // uses the bracketed IPv6 form: https://[<ip>]:2380.
-// For IPv4 clusters it uses: https://<ip>:2380.
+// For IPv6-only clusters (currentIP=""), falls back to extraIP (IPv6 address).
 func peerURLForState(st *nodeRegenState) string {
 	ip := st.currentIP
+	if ip == "" {
+		// IPv6-only cluster: use the IPv6 address from extraIP.
+		ip = st.extraIP
+	}
 	if ip == "" {
 		return ""
 	}
@@ -1092,6 +1097,67 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 		return errors.Wrapf(err, "force-new-cluster: cp1 (%s) etcd not healthy after --force-new-cluster start", states[0].node.String())
 	}
 	logger.V(0).Infof("  [force-new-cluster] step 5 complete: cp1 etcd healthy (single-member)")
+
+	// Step 5.1: Fix cp1's peer URL in the WAL if it has a stale IP from before pause.
+	//
+	// etcd --force-new-cluster does NOT reset the member's peer URL — it uses the
+	// EXISTING WAL entry's peer URL, ignoring --initial-advertise-peer-urls. After
+	// an IP rotation (Docker IPAM reassignment on pause/resume), cp1's WAL peer URL
+	// may contain the OLD IP (the IP cp1 had at cluster creation). Adding cp2/cp3
+	// later would fail with "Peer URLs already exists" if cp1's WAL peer URL
+	// collides with another node's current IP (IP "musical chairs").
+	//
+	// Fix: read cp1's member ID from member list, then update its peer URL to match
+	// the manifest's --initial-advertise-peer-urls (which reflects the CURRENT IP
+	// after any patchEtcdManifestIPs call in step 1). This makes the WAL consistent
+	// with the current network topology.
+	cp1CurrentPeerURL := peerURLForState(&states[0])
+	if cp1CurrentPeerURL != "" {
+		cp1EtcdID5, idErr := getEtcdContainerID(states[0].node)
+		if idErr != nil {
+			return errors.Wrapf(idErr, "force-new-cluster: step 5.1: get cp1 container ID on %s", states[0].node.String())
+		}
+		// Get member list to find cp1's member ID.
+		mlOut, mlErr := exec.OutputLines(states[0].node.Command(
+			"crictl", "exec", cp1EtcdID5, "etcdctl",
+			"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+			"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+			"--key=/etc/kubernetes/pki/etcd/peer.key",
+			"--endpoints="+etcdEndpoint,
+			"member", "list", "--write-out=json",
+		))
+		if mlErr != nil {
+			return errors.Wrapf(mlErr, "force-new-cluster: step 5.1: etcdctl member list on %s", states[0].node.String())
+		}
+		members5, parseErr := parseEtcdMemberList(strings.Join(mlOut, ""))
+		if parseErr != nil {
+			return errors.Wrapf(parseErr, "force-new-cluster: step 5.1: parse member list on %s", states[0].node.String())
+		}
+		if len(members5) != 1 {
+			return errors.Errorf("force-new-cluster: step 5.1: expected 1 member after --force-new-cluster, got %d", len(members5))
+		}
+		cp1MemberID := members5[0].id
+		cp1WALPeerURL := members5[0].peerURL
+		if cp1WALPeerURL != cp1CurrentPeerURL {
+			logger.V(0).Infof("  [force-new-cluster] step 5.1: updating cp1 peer URL in WAL: %s → %s", cp1WALPeerURL, cp1CurrentPeerURL)
+			updateArgs := []string{
+				"crictl", "exec", cp1EtcdID5, "etcdctl",
+				"--cacert=/etc/kubernetes/pki/etcd/ca.crt",
+				"--cert=/etc/kubernetes/pki/etcd/peer.crt",
+				"--key=/etc/kubernetes/pki/etcd/peer.key",
+				"--endpoints=" + etcdEndpoint,
+				"member", "update", cp1MemberID, "--peer-urls=" + cp1CurrentPeerURL,
+			}
+			if updateErr := states[0].node.Command(updateArgs[0], updateArgs[1:]...).Run(); updateErr != nil {
+				return errors.Wrapf(updateErr, "force-new-cluster: step 5.1: etcdctl member update cp1 %s on %s", cp1MemberID, states[0].node.String())
+			}
+			logger.V(0).Infof("  [force-new-cluster] step 5.1 complete: cp1 peer URL updated to %s", cp1CurrentPeerURL)
+		} else {
+			logger.V(1).Infof("  [force-new-cluster] step 5.1: cp1 peer URL already correct (%s), no update needed", cp1WALPeerURL)
+		}
+	} else {
+		logger.V(1).Infof("  [force-new-cluster] step 5.1: cp1 has no IP available, skipping peer URL update")
+	}
 
 	// Step 5.5: Remove --force-new-cluster from cp1's manifest NOW, before member joins.
 	//

@@ -1656,9 +1656,10 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap(t *testing.T)
 	err := RegenerateEtcdPeerCertsWholesale(cpNodes, clog)
 
 	// getEtcdContainerID fails because crictl ps always returns empty.
-	// That means forceNewClusterBootstrap will fail at step 6 (member add setup).
-	// This is expected — the test verifies the bootstrap was ATTEMPTED and failed
-	// with the correct error before etcdctl member add, not that it succeeded.
+	// That means forceNewClusterBootstrap will fail at step 5.1 (peer URL update
+	// setup — crictl ps returns empty so cp1EtcdID5 lookup fails).
+	// This is expected — the test verifies the bootstrap was ATTEMPTED and failed,
+	// not that it succeeded.
 	//
 	// To test the FULL success path, we would need getEtcdContainerID to succeed,
 	// which requires crictl ps to return a container ID. But crictl ps must return
@@ -1713,9 +1714,10 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 	//   sub-step 2a: getEtcdContainerID x3 (one per CP) → calls 0,1,2 → "fakeid123" (running)
 	//   sub-step 2c: crictl stop x3 (one per CP) → crictl stop fakeid123 (not crictl ps)
 	//   sub-step 2d: waitForEtcdContainerGone x3 (one per CP) → calls 3,4,5 → empty (stopped)
-	//   rolling step 6 (i=1): getEtcdContainerID cp1 → call 6 → "fakeid123" (restarted by mv-in)
-	//   rolling step 9b (i=1): waitForMemberStarted internal getEtcdContainerID cp1 → call 7
-	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 8+ → "fakeid123" (may have rotated)
+	//   step 5.1: getEtcdContainerID cp1 → call 6 → "fakeid123" (for member list + update)
+	//   rolling step 6 (i=1): getEtcdContainerID cp1 → call 7 → "fakeid123"
+	//   rolling step 9b (i=1): waitForMemberStarted internal getEtcdContainerID cp1 → call 8
+	//   rolling step 6 (i=2): getEtcdContainerID cp1 → call 9+ → "fakeid123"
 	//   (no step 9b for i=2 — last member, no next add pending)
 	crictlPsCallCount := 0
 	var crictlMu sync.Mutex
@@ -1776,8 +1778,7 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 				return "", nil
 			}
 			if len(args) >= 2 && args[0] == "exec" {
-				// crictl exec fakeid123 etcdctl ... member add <name> --peer-urls=...
-				// crictl exec fakeid123 etcdctl ... member list --write-out=json
+				// crictl exec fakeid123 etcdctl ... member add/list/update ...
 				for i, a := range args {
 					if a == "member" && i+1 < len(args) {
 						switch args[i+1] {
@@ -1789,8 +1790,22 @@ func TestRegenerateEtcdPeerCertsWholesale_ForceNewClusterBootstrap_FullSuccess(t
 								return "", nil
 							}
 						case "list":
-							// Return all 3 nodes as started so waitForMemberStarted passes.
+							// Step 5.1 (first member list call after step 5): return 1 member
+							// so forceNewClusterBootstrap validates the single-member state.
+							// Use cp1's peerURL=172.19.0.6 (stale, to trigger the member update path).
+							// Step 9b (subsequent member list calls): return all 3 members as started.
+							mu.Lock()
+							memberListCount := len(memberAddTargets) // before any adds → 0 = first list
+							mu.Unlock()
+							if memberListCount == 0 {
+								// step 5.1: single-member with stale peer URL (to exercise update path)
+								return `{"members":[{"ID":1,"name":"cp1","peerURLs":["https://172.19.0.5:2380"]}]}`, nil
+							}
+							// step 9b: all 3 members started
 							return `{"members":[{"ID":1,"name":"cp1","peerURLs":["https://172.19.0.6:2380"]},{"ID":2,"name":"cp2","peerURLs":["https://172.19.0.4:2380"]},{"ID":3,"name":"cp3","peerURLs":["https://172.19.0.5:2380"]}]}`, nil
+						case "update":
+							// step 5.1: etcdctl member update cp1-ID --peer-urls=... → success
+							return "", nil
 						}
 					}
 				}
