@@ -850,12 +850,16 @@ func peerURLForState(st *nodeRegenState) string {
 // static-pod manifest on node, immediately after the `    - etcd` command line.
 // Uses sed append-after to avoid double-injection and to survive manifest
 // reformatting (the YAML indentation is always 4 spaces in kubeadm output).
-func addForceNewClusterFlag(node nodes.Node) error {
+//
+// manifestPath is the current on-node path to the manifest file. When called
+// from forceNewClusterBootstrap step 3, the manifest has been mv-out to
+// etcdManifestBackup (/tmp/etcd-bak.yaml) — callers must pass the correct path.
+func addForceNewClusterFlag(node nodes.Node, manifestPath string) error {
 	// Idempotency guard: skip if already present.
 	// Use `grep -c -- pattern file` with `--` to prevent grep from treating
 	// --force-new-cluster as a flag. The `-F` flag treats the pattern as a
 	// fixed string (not a regex), which is correct here.
-	lines, _ := exec.OutputLines(node.Command("grep", "-cF", "--", "--force-new-cluster", etcdManifestPath))
+	lines, _ := exec.OutputLines(node.Command("grep", "-cF", "--", "--force-new-cluster", manifestPath))
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) != "0" {
 		return nil // already present
 	}
@@ -863,9 +867,9 @@ func addForceNewClusterFlag(node nodes.Node) error {
 	// The sed `a` command appends a line after the matched line.
 	if err := node.Command("sed", "-i",
 		`/^    - etcd$/a\    - --force-new-cluster`,
-		etcdManifestPath,
+		manifestPath,
 	).Run(); err != nil {
-		return errors.Wrapf(err, "sed inject --force-new-cluster into %s on %s", etcdManifestPath, node.String())
+		return errors.Wrapf(err, "sed inject --force-new-cluster into %s on %s", manifestPath, node.String())
 	}
 	return nil
 }
@@ -1000,8 +1004,11 @@ func forceNewClusterBootstrap(states []nodeRegenState, ipMap map[string]string, 
 	logger.V(0).Infof("  [force-new-cluster] step 2 complete: all etcd containers stopped")
 
 	// Step 3: Add --force-new-cluster to cp1's manifest.
-	logger.V(0).Infof("  [force-new-cluster] step 3: injecting --force-new-cluster into %s manifest", states[0].node.String())
-	if err := addForceNewClusterFlag(states[0].node); err != nil {
+	// IMPORTANT: The manifest was mv-out to etcdManifestBackup in step 2b.
+	// We inject the flag into the backup file so that when step 4 mv-in restores
+	// it to etcdManifestPath, the flag is present from first start.
+	logger.V(0).Infof("  [force-new-cluster] step 3: injecting --force-new-cluster into %s manifest (at backup path)", states[0].node.String())
+	if err := addForceNewClusterFlag(states[0].node, etcdManifestBackup); err != nil {
 		return err
 	}
 
