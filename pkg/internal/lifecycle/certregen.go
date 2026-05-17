@@ -955,32 +955,31 @@ func RegenerateEtcdPeerCertsWholesale(cpNodes []nodes.Node, logger log.Logger) e
 	}
 	logger.V(0).Infof("cert regen phase 1 complete: all %d CP nodes have fresh cert files", total)
 
-	// ── PHASE 1.5: Wait for etcd then update WAL peer URLs ───────────────────
+	// ── PHASE 1.5: Wait for etcd quorum on the bootstrap CP ─────────────────
 	// ORDERING NOTE: Phase 1.5 (WAL peer URL update via live etcd API) MUST run
-	// before Phase 1.6 (manifest IP patch). Reason:
+	// before Phase 1.7 (manifest IP patch). Reason:
 	//   - After Phase 1, etcd is running (it started from the original manifest,
-	//     which may have stale peer IPs but etcd binds to the available IP).
-	//   - Phase 1.6 (manifest patch) causes kubelet to restart etcd. If we call
-	//     etcdctl AFTER the manifest patch, the old etcd instance has been killed
-	//     and the new one may not be ready in time.
-	//   - By calling etcdctl BEFORE the manifest patch, we use the still-running
-	//     etcd instance to update the WAL peer URLs, which persists into the WAL
-	//     so the restarted etcd sees correct peer URLs on startup.
+	//     which may have stale peer IPs but etcd adapts and binds to eth0).
+	//   - Phase 1.7 (manifest patch) triggers a kubelet-managed etcd restart.
+	//     We must call etcdctl BEFORE the manifest patch while the original etcd
+	//     instance is still running.
 	//
-	// Wait for etcd to be reachable on all CPs before calling etcdctl. After
-	// pause/resume with IP drift, etcd may take up to 60s to start (the manifest
-	// has stale IPs but etcd adapts and binds to the actual eth0 address).
-	logger.V(0).Infof("cert regen phase 1.5: waiting for etcd quorum before WAL peer URL update")
-	for i, st := range states {
-		logger.V(1).Infof("    [phase 1.5] waiting for etcd on %s (%d/%d)", st.node.String(), i+1, total)
-		if err := etcdHealthChecker(st.node, etcdEndpoint); err != nil {
-			dumpCertRegenDiagnostics(st.node, "etcd-wait", logger)
-			return errors.Wrapf(err,
-				"cert regen phase 1.5 (etcd health wait) failed on %s. Cluster state is undefined — delete and recreate the cluster",
-				st.node.String())
-		}
+	// IMPORTANT: We wait only on states[0].node (the bootstrap CP that ran Phase
+	// 1 cert regen first). This is the same node used for `etcdctl member list`
+	// and `member update` in Phase 1.6. Waiting for ALL CPs fails in the IP-drift
+	// scenario: after IPAM reassignment, isolated CPs (those whose old peer URL is
+	// stale in the WAL) cannot form quorum and will never become healthy on their
+	// own local endpoint — they need Phase 1.6's WAL update first. The bootstrap
+	// CP, however, is part of the existing quorum (it started first and can reach
+	// the majority), so it will become healthy after the initial election settles.
+	logger.V(0).Infof("cert regen phase 1.5: waiting for etcd quorum on bootstrap CP (%s)", states[0].node.String())
+	if err := etcdHealthChecker(states[0].node, etcdEndpoint); err != nil {
+		dumpCertRegenDiagnostics(states[0].node, "etcd-wait", logger)
+		return errors.Wrapf(err,
+			"cert regen phase 1.5 (etcd health wait) failed on %s. Cluster state is undefined — delete and recreate the cluster",
+			states[0].node.String())
 	}
-	logger.V(0).Infof("cert regen phase 1.5 complete: etcd quorum confirmed on all %d CPs", total)
+	logger.V(0).Infof("cert regen phase 1.5 complete: etcd quorum confirmed on %s", states[0].node.String())
 
 	// ── PHASE 1.6: Update etcd WAL peer URLs via live cluster API ───────────
 	// With etcd running, update the cluster membership record for any member

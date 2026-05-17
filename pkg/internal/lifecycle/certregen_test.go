@@ -499,7 +499,7 @@ func TestIPDriftDetected_LegacyNoFile(t *testing.T) {
 // First 3 calls = pre, next 3 = post.
 //
 // etcdHealthChecker called:
-//   3×(Phase 1.5 wait, one per CP) + 3×(Phase 2a simultaneous restart, one per CP) = 6 total.
+//   1×(Phase 1.5 wait on states[0] = cp1 only) + 3×(Phase 2a simultaneous restart, one per CP) = 4 total.
 // apiserverHealthChecker called 1×/CP in Phase 2b = 3 total.
 func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	swapCertRegenSleeper(t, noopSleeper())
@@ -539,12 +539,12 @@ func TestRegenerateEtcdPeerCertsWholesale_HappyPath(t *testing.T) {
 	}
 
 	// Verify etcd health checker was called:
-	//   3×(Phase 1.5 wait) + 3×(Phase 2a simultaneous restart) = 6 total.
+	//   1×(Phase 1.5 wait on cp1 only) + 3×(Phase 2a simultaneous restart) = 4 total.
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
-	if len(etcdCalls) != 6 { // 3 Phase1.5 + 3 Phase2a
-		t.Errorf("expected 6 etcdHealthChecker calls (3 Phase1.5 wait + 3 Phase2a restart), got %d", len(etcdCalls))
+	if len(etcdCalls) != 4 { // 1 Phase1.5 + 3 Phase2a
+		t.Errorf("expected 4 etcdHealthChecker calls (1 Phase1.5 wait on cp1 + 3 Phase2a restart), got %d", len(etcdCalls))
 	}
 	// All etcd endpoints should be IPv4 loopback.
 	for i, c := range etcdCalls {
@@ -610,12 +610,12 @@ func TestRegenerateEtcdPeerCertsWholesale_IPv6Endpoint(t *testing.T) {
 	}
 
 	// All etcd endpoints should be IPv6 loopback:
-	//   3×(Phase 1.5 wait) + 3×(Phase 2a simultaneous restart) = 6 total.
+	//   1×(Phase 1.5 wait on cp1 only) + 3×(Phase 2a simultaneous restart) = 4 total.
 	etcdRec.mu.Lock()
 	etcdCalls := etcdRec.calls
 	etcdRec.mu.Unlock()
-	if len(etcdCalls) != 6 { // 3 Phase1.5 + 3 Phase2a
-		t.Errorf("expected 6 etcdHealthChecker calls (3 Phase1.5 wait + 3 Phase2a restart), got %d", len(etcdCalls))
+	if len(etcdCalls) != 4 { // 1 Phase1.5 + 3 Phase2a
+		t.Errorf("expected 4 etcdHealthChecker calls (1 Phase1.5 wait on cp1 + 3 Phase2a restart), got %d", len(etcdCalls))
 	}
 	for i, c := range etcdCalls {
 		if c.endpoint != "https://[::1]:2379" {
