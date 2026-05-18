@@ -625,3 +625,30 @@ template parsing error: template: :1:35: executing "" at <"kinder-twostep-diag-1
 {"none":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"d0e326b2d3163b27d3b0dd1be10533c8644a913a61ef290401c5d9ae93de4551","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":null}}
 
 ESCALATE — Docker Desktop is returning a placeholder string for some network state. Task 3 spec changes; see TASK 1 ESCALATION.
+
+=== DIAG=6 discriminator: does --privileged let kindest/node start cleanly? ===
+--- docker run --rm --privileged kindest/node:v1.34.0 echo "started-ok" ---
+INFO: ensuring we can execute mount/umount even with userns-remap
+INFO: remounting /sys read-only
+INFO: making mounts shared
+INFO: detected cgroup v2
+INFO: clearing and regenerating /etc/machine-id
+Initializing machine ID from random generator.
+INFO: setting iptables to detected mode: legacy
+INFO: detected IPv4 address: 172.17.0.3
+INFO: detected IPv6 address: fde6:6152:75c2::3
+INFO: starting init
+(user Ctrl+C'd — entrypoint hangs because kindest/node always exec /sbin/init regardless of args; the success signal is "starting init" being reached)
+
+--- docker run -d --privileged --network bridge kindest/node:v1.34.0 sleep 30 ---
+--- docker inspect --format '{{.State.Running}} {{(index .NetworkSettings.Networks "bridge").IPAddress}}' "$CID" ---
+true 172.17.0.3
+--- docker rm -f "$CID" ---
+ac22e07269ed0e9f88f1882ba2e0b7f52b29808387aa49b0aecc255bd4f830c1
+
+DISCRIMINATOR RESULT: Alt E (--privileged) IS SUFFICIENT. Container starts cleanly, State.Running=true, IPAddress is non-empty and parseable, both range template and index template return the IP correctly.
+
+FIX SHAPE LOCKED (revised from CONTEXT.md): PRAGMATIC scope chosen.
+  KEEP from CONTEXT.md: loud-log on ParseIP reject; ip-pin verdict surfacing at create time on docker+podman; RED test (rewrite fixture to match real failure: container exits before netns init); 4-env UAT.
+  DROP from CONTEXT.md: inspectProbeIP helper extraction; index-by-name template change; --network=none + explicit network connect refactor.
+  ADD beyond CONTEXT.md: --privileged flag on the probe's docker run at pkg/internal/doctor/ipamprobe.go:103-108.
