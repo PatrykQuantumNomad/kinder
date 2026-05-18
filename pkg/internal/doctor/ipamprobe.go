@@ -100,7 +100,14 @@ func ProbeIPAM(binaryName string) (Verdict, string, error) {
 
 	// Step 2: start a scratch container. kindest/node is used because it is
 	// always pulled by kinder, making the probe air-gap friendly (RESEARCH OQ-1).
+	// --privileged is required: Docker Desktop 4.73.0 (Engine 29.4.3) denies the
+	// elevated capabilities that kindest/node's systemd entrypoint requires by
+	// default. Without --privileged the container exits in ~96ms (ExitCode: 1),
+	// the network sandbox is never initialized, docker inspect returns an empty
+	// net.IP rendered as the literal string "invalid IP", and the probe falls
+	// through to VerdictCertRegen with a bogus reason (Phase 57.4 bug-of-record).
 	if err := ipamProbeCmder(binaryName, "run", "-d",
+		"--privileged",
 		"--name", probeName,
 		"--network", probeNet,
 		defaults.Image,

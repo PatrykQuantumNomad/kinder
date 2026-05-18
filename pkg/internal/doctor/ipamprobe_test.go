@@ -87,6 +87,74 @@ func (r *recordingCmder) cmder(name string, args ...string) exec.Cmd {
 	return r.delegate(name, args...)
 }
 
+// TestIPAMProbe_PrivilegedFlag verifies that the docker run invocation in Step 2
+// carries the --privileged flag. This pins the Phase 57.4 fix so any future
+// removal of --privileged trips this test.
+// Not parallel: uses package-level ipamProbeCmder global.
+func TestIPAMProbe_PrivilegedFlag(t *testing.T) {
+	var runArgs string
+
+	restore := setIPAMProbeCmder(func(name string, args ...string) exec.Cmd {
+		call := name + " " + strings.Join(args, " ")
+		if strings.Contains(call, " run ") {
+			runArgs = call
+			// Abort after capturing args; cleanup calls succeed silently.
+			return &fakeIPAMCmd{err: errors.New("abort after capture")}
+		}
+		// network create and cleanup calls succeed silently.
+		return &fakeIPAMCmd{err: nil}
+	})
+	defer restore()
+
+	ProbeIPAM("docker") //nolint:errcheck
+
+	if !strings.Contains(runArgs, "--privileged") {
+		t.Errorf("probe docker run must carry --privileged flag (Phase 57.4 fix), got: %q", runArgs)
+	}
+}
+
+// TestIPAMProbe_ValidIP_ReturnsIPPinned is the GREEN test for the Phase 57.4 fix.
+// With --privileged, the container sandbox initializes correctly and inspect
+// returns a valid IP. Assert VerdictIPPinned on the full happy path.
+// Not parallel: uses package-level ipamProbeCmder global.
+func TestIPAMProbe_ValidIP_ReturnsIPPinned(t *testing.T) {
+	// Sequence: full 8-step happy path with a valid IP from inspect.
+	//   1. network create  → ok
+	//   2. run (--privileged) → ok
+	//   3. inspect IP      → "172.200.0.3\n"  (valid, sandbox initialized)
+	//   4. disconnect      → ok
+	//   5. connect --ip    → ok
+	//   6. stop            → ok
+	//   7. start           → ok
+	//   8. inspect IP      → "172.200.0.3\n"  (same — ip-pin survived)
+	//   cleanup: rm -f     → ok
+	//   cleanup: network rm → ok
+	restore := setIPAMProbeCmder(seqCmder([]seqResponse{
+		{output: "", err: nil},              // 1. network create
+		{output: "", err: nil},              // 2. run --privileged
+		{output: "172.200.0.3\n", err: nil}, // 3. inspect IP (valid — sandbox OK)
+		{output: "", err: nil},              // 4. network disconnect
+		{output: "", err: nil},              // 5. network connect --ip
+		{output: "", err: nil},              // 6. stop
+		{output: "", err: nil},              // 7. start
+		{output: "172.200.0.3\n", err: nil}, // 8. inspect IP (same — ip-pin survived)
+		{output: "", err: nil},              // cleanup: rm -f
+		{output: "", err: nil},              // cleanup: network rm
+	}))
+	defer restore()
+
+	verdict, reason, err := ProbeIPAM("docker")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if verdict != VerdictIPPinned {
+		t.Errorf("expected VerdictIPPinned (GREEN), got %q (reason: %s)", verdict, reason)
+	}
+	if reason != "" {
+		t.Errorf("expected empty reason on VerdictIPPinned, got %q", reason)
+	}
+}
+
 // TestIPAMProbe_NerdctlShortCircuit verifies that binaryName="nerdctl" returns
 // VerdictUnsupported immediately, without calling any container command.
 // Not parallel: uses package-level ipamProbeCmder global.
