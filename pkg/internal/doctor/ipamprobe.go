@@ -133,9 +133,11 @@ func ProbeIPAM(binaryName string) (Verdict, string, error) {
 	}
 	originalIP := strings.TrimSpace(strings.Join(inspectLines, ""))
 	// T-52-01-01: validate the captured IP before passing it back to --ip.
+	// Phase 57.4: loud-log on rejection so future regressions surface immediately
+	// in user output rather than being buried in a generic warn line.
 	if net.ParseIP(originalIP) == nil {
 		return VerdictCertRegen,
-			fmt.Sprintf("probe runtime error: inspect returned invalid IP %q", originalIP),
+			fmt.Sprintf("⚠️ IPAM probe returned unparseable IP %q — this is likely a regression; please file an issue", originalIP),
 			nil
 	}
 

@@ -475,8 +475,16 @@ func TestIPAMProbe_EmptyNetworkSandbox_ReturnsInvalidIP(t *testing.T) {
 	if verdict != VerdictCertRegen {
 		t.Errorf("expected VerdictCertRegen (bug-of-record), got %q (reason: %s)", verdict, reason)
 	}
-	if !strings.Contains(reason, "invalid IP") {
-		t.Errorf("expected reason to contain %q (bug-of-record literal), got %q", "invalid IP", reason)
+	// Assert the Phase 57.4 loud-log wording so the grep marker in the UAT
+	// preamble freshness gate can detect it.
+	if !strings.Contains(reason, "⚠️ IPAM probe returned unparseable IP") {
+		t.Errorf("expected reason to contain loud-log prefix, got %q", reason)
+	}
+	if !strings.Contains(reason, "likely a regression") {
+		t.Errorf("expected reason to mention 'likely a regression', got %q", reason)
+	}
+	if !strings.Contains(reason, "please file an issue") {
+		t.Errorf("expected reason to mention 'please file an issue', got %q", reason)
 	}
 }
 
