@@ -121,6 +121,7 @@ func (p *provider) Provision(status *cli.Status, cfg *config.Cluster) (err error
 		verdict, reason, _ := provisionProbeIPAMFn("podman")
 		if verdict == doctor.VerdictIPPinned {
 			strategy = constants.StrategyIPPinned
+			p.logger.V(0).Infof("HA cluster will use ip-pin resume strategy")
 		} else {
 			strategy = constants.StrategyCertRegen
 			if reason != "" {

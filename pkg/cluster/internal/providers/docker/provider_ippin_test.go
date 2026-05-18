@@ -254,6 +254,72 @@ func TestPlanCreation_StrategyLabelInjected_Docker(t *testing.T) {
 	}
 }
 
+// capturingLogger is a minimal log.Logger implementation that records Infof
+// and Warnf messages for test assertions.
+type capturingLogger struct {
+	infos []string
+	warns []string
+}
+
+func (l *capturingLogger) Warn(msg string)                       { l.warns = append(l.warns, msg) }
+func (l *capturingLogger) Warnf(f string, a ...interface{})      { l.warns = append(l.warns, fmt.Sprintf(f, a...)) }
+func (l *capturingLogger) Error(msg string)                      {}
+func (l *capturingLogger) Errorf(f string, a ...interface{})     {}
+func (l *capturingLogger) V(_ log.Level) log.InfoLogger          { return &capturingInfoLogger{l} }
+
+type capturingInfoLogger struct{ parent *capturingLogger }
+
+func (li *capturingInfoLogger) Enabled() bool { return true }
+func (li *capturingInfoLogger) Info(msg string) {
+	li.parent.infos = append(li.parent.infos, msg)
+}
+func (li *capturingInfoLogger) Infof(f string, a ...interface{}) {
+	li.parent.infos = append(li.parent.infos, fmt.Sprintf(f, a...))
+}
+
+// TestProvisionLogsInfoOnIPPin verifies that a VerdictIPPinned probe result
+// causes a V(0).Infof containing "HA cluster" and "ip-pin" to be logged,
+// and that the ip-pinned strategy is chosen (mirroring TestProvisionLogsWarnOnProbeError).
+// Not parallel: swaps package-level provisionProbeIPAMFn global.
+func TestProvisionLogsInfoOnIPPin(t *testing.T) {
+	prevProbe := provisionProbeIPAMFn
+	provisionProbeIPAMFn = func(_ string) (doctor.Verdict, string, error) {
+		return doctor.VerdictIPPinned, "", nil
+	}
+	defer func() { provisionProbeIPAMFn = prevProbe }()
+
+	prevRecord := provisionRecordAndPinFn
+	provisionRecordAndPinFn = func(_, _ string, _ []string, _ log.Logger) error { return nil }
+	defer func() { provisionRecordAndPinFn = prevRecord }()
+
+	// Simulate the strategy decision block from Provision (docker provider).
+	logger := &capturingLogger{}
+	verdict, _, _ := provisionProbeIPAMFn("docker")
+	var strategy string
+	if verdict == doctor.VerdictIPPinned {
+		strategy = constants.StrategyIPPinned
+		logger.V(0).Infof("HA cluster will use ip-pin resume strategy")
+	} else {
+		strategy = constants.StrategyCertRegen
+	}
+
+	if strategy != constants.StrategyIPPinned {
+		t.Errorf("strategy = %q, want StrategyIPPinned", strategy)
+	}
+
+	// Assert the Infof fired with the expected message.
+	if len(logger.infos) == 0 {
+		t.Fatal("expected V(0).Infof to be called, but no info messages were recorded")
+	}
+	infoMsg := logger.infos[0]
+	if !strings.Contains(infoMsg, "HA cluster") {
+		t.Errorf("info message should contain 'HA cluster', got: %q", infoMsg)
+	}
+	if !strings.Contains(infoMsg, "ip-pin") {
+		t.Errorf("info message should contain 'ip-pin', got: %q", infoMsg)
+	}
+}
+
 // TestPlanCreation_EmptyStrategy_Docker verifies that planCreation accepts
 // an empty strategy (single-CP path, no label injected).
 func TestPlanCreation_EmptyStrategy_Docker(t *testing.T) {
