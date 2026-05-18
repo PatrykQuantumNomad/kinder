@@ -369,6 +369,49 @@ func TestIPAMProbe_UsesNonOverlappingSubnet(t *testing.T) {
 	}
 }
 
+// TestIPAMProbe_EmptyNetworkSandbox_ReturnsInvalidIP is the RED test for the
+// Phase 57.4 bug-of-record: kindest/node exits in ~96ms on Docker Desktop 4.73.0
+// without --privileged, the container's network sandbox is never initialized,
+// and docker inspect returns the literal string "invalid IP" (with space).
+// net.ParseIP correctly rejects it, and the current code falls through to
+// VerdictCertRegen — the bug.
+//
+// This test injects a fixture where:
+//   - network create succeeds
+//   - docker run succeeds (container start returns 0)
+//   - the subsequent docker inspect returns the literal "invalid IP" (with space,
+//     byte-identical to the Phase 58 forensic capture and DIAG=1 line 231)
+//   - Expected: VerdictCertRegen with reason containing "invalid IP"
+//
+// Not parallel: uses package-level ipamProbeCmder global.
+func TestIPAMProbe_EmptyNetworkSandbox_ReturnsInvalidIP(t *testing.T) {
+	// Sequence mirrors the 8-step ProbeIPAM flow up to Step 3 where it exits early:
+	//   1. network create  → ok
+	//   2. run             → ok  (container "starts" but sandbox never initializes)
+	//   3. inspect IP      → "invalid IP\n"  (bug-of-record fixture)
+	//   cleanup: rm -f     → ok
+	//   cleanup: network rm → ok
+	restore := setIPAMProbeCmder(seqCmder([]seqResponse{
+		{output: "", err: nil},          // 1. network create
+		{output: "", err: nil},          // 2. run (returns 0 — the container exists)
+		{output: "invalid IP\n", err: nil}, // 3. inspect → literal "invalid IP" with space
+		{output: "", err: nil},          // cleanup: rm -f
+		{output: "", err: nil},          // cleanup: network rm
+	}))
+	defer restore()
+
+	verdict, reason, err := ProbeIPAM("docker")
+	if err != nil {
+		t.Fatalf("expected nil error (soft fallback), got %v", err)
+	}
+	if verdict != VerdictCertRegen {
+		t.Errorf("expected VerdictCertRegen (bug-of-record), got %q (reason: %s)", verdict, reason)
+	}
+	if !strings.Contains(reason, "invalid IP") {
+		t.Errorf("expected reason to contain %q (bug-of-record literal), got %q", "invalid IP", reason)
+	}
+}
+
 // TestIPAMProbe_NetworkAndContainerNamesAreUnique verifies probe network and container
 // names include a timestamp/PID suffix matching kinder-ipam-probe-[a-zA-Z0-9_-]+.
 // Not parallel: uses package-level ipamProbeCmder global.
