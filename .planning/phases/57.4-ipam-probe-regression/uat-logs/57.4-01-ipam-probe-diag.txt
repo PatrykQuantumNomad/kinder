@@ -1,0 +1,627 @@
+=== Phase 57.4 Task 1 — IPAM probe diagnostic ===
+HEAD: fa516bcdacf4db785af3129414ecd21435bf9ab5
+Host date: 2026-05-18T15:54:26Z
+uname -a: Darwin Patryks-Mac-Studio.local 25.3.0 Darwin Kernel Version 25.3.0: Wed Jan 28 20:55:08 PST 2026; root:xnu-12377.91.3~2/RELEASE_ARM64_T6020 arm64
+sw_vers (macOS):
+ProductName:		macOS
+ProductVersion:		26.3.1
+ProductVersionExtra:	(a)
+BuildVersion:		25D771280a
+PROBE_NET=kinder-ipam-probe-diag-1779119666
+PROBE=kinder-ipam-probe-diag-1779119666
+--- creating probe network and container ---
+722d2f88e4b88da34ca6f796cffc4f28cdb25c604eaa764209147033e0cc1f54
+Unable to find image 'kindest/node:v1.34.0' locally
+v1.34.0: Pulling from kindest/node
+923fc4727c16: Pulling fs layer
+cbc68409da46: Pulling fs layer
+923fc4727c16: Download complete
+923fc4727c16: Pull complete
+cbc68409da46: Verifying Checksum
+cbc68409da46: Download complete
+cbc68409da46: Pull complete
+Digest: sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
+Status: Downloaded newer image for kindest/node:v1.34.0
+b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446
+
+=== DIAG=1 raw inspect — four formats ===
+--- format: (none — full JSON) ---
+[
+    {
+        "Id": "b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446",
+        "Created": "2026-05-18T15:54:43.849218472Z",
+        "Path": "/usr/local/bin/entrypoint",
+        "Args": [
+            "/sbin/init",
+            "sleep",
+            "600"
+        ],
+        "State": {
+            "Status": "exited",
+            "Running": false,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 0,
+            "ExitCode": 1,
+            "Error": "",
+            "StartedAt": "2026-05-18T15:54:44.653260555Z",
+            "FinishedAt": "2026-05-18T15:54:44.749449597Z"
+        },
+        "Image": "sha256:b1b6ffc307b4d2ac9bd8902aa24a720ff533ffa5b34193c66d7c0f21f2d77ee7",
+        "ResolvConfPath": "/var/lib/docker/containers/b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446/hostname",
+        "HostsPath": "/var/lib/docker/containers/b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446/hosts",
+        "LogPath": "/var/lib/docker/containers/b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446/b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446-json.log",
+        "Name": "/kinder-ipam-probe-diag-1779119666",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "kinder-ipam-probe-diag-1779119666",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "b849a63e426d4fb9c833c06bccbe3d462e97a58dec495babb9bf912e81ebb446",
+                "LowerDir": "/var/lib/docker/overlay2/29be5109f291405279245fb4f8977790f269328cf9f0f7a0bf6ade38548f643a-init/diff:/var/lib/docker/overlay2/21f45e81c924a821c2e4e6e3761c3e9c425032f9df5eb044b3b9cad5acbd2e19/diff:/var/lib/docker/overlay2/4766135aea6f1465881fa2e9caf2158098194c642fe73ed02ceee1dc7180720a/diff",
+                "MergedDir": "/var/lib/docker/overlay2/29be5109f291405279245fb4f8977790f269328cf9f0f7a0bf6ade38548f643a/merged",
+                "UpperDir": "/var/lib/docker/overlay2/29be5109f291405279245fb4f8977790f269328cf9f0f7a0bf6ade38548f643a/diff",
+                "WorkDir": "/var/lib/docker/overlay2/29be5109f291405279245fb4f8977790f269328cf9f0f7a0bf6ade38548f643a/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "b849a63e426d",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "container=docker",
+                "HTTP_PROXY=",
+                "HTTPS_PROXY=",
+                "NO_PROXY="
+            ],
+            "Cmd": [
+                "sleep",
+                "600"
+            ],
+            "Image": "kindest/node:v1.34.0",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/usr/local/bin/entrypoint",
+                "/sbin/init"
+            ],
+            "Labels": {},
+            "StopSignal": "SIGRTMIN+3",
+            "StopTimeout": 1
+        },
+        "NetworkSettings": {
+            "SandboxID": "",
+            "SandboxKey": "",
+            "Ports": {},
+            "Networks": {
+                "kinder-ipam-probe-diag-1779119666": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "722d2f88e4b88da34ca6f796cffc4f28cdb25c604eaa764209147033e0cc1f54",
+                    "EndpointID": "",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "kinder-ipam-probe-diag-1779119666",
+                        "b849a63e426d"
+                    ]
+                }
+            }
+        }
+    }
+]
+--- format: current production template ---
+invalid IP
+--- format: {{json .NetworkSettings.Networks}} ---
+{"kinder-ipam-probe-diag-1779119666":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"722d2f88e4b88da34ca6f796cffc4f28cdb25c604eaa764209147033e0cc1f54","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":["kinder-ipam-probe-diag-1779119666","b849a63e426d"]}}
+--- format: proposed index template (probeNet name) ---
+invalid IP
+
+=== DIAG=2 network attachments inventory ===
+--- docker network ls ---
+NETWORK ID     NAME                                DRIVER    SCOPE
+2b47fcbacc92   bridge                              bridge    local
+8c7af78e33f7   host                                host      local
+1ab5dd03012e   kind                                bridge    local
+722d2f88e4b8   kinder-ipam-probe-diag-1779119666   bridge    local
+31fc88156738   nearby-birds_backend                bridge    local
+d0e326b2d316   none                                null      local
+--- docker network inspect kinder-ipam-probe-diag-1779119666 (full) ---
+[
+    {
+        "Name": "kinder-ipam-probe-diag-1779119666",
+        "Id": "722d2f88e4b88da34ca6f796cffc4f28cdb25c604eaa764209147033e0cc1f54",
+        "Created": "2026-05-18T15:54:26.58014238Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": true,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "172.200.0.0/24",
+                    "Gateway": "172.200.0.1"
+                },
+                {
+                    "Subnet": "fde6:6152:75c2:1::/64",
+                    "Gateway": "fde6:6152:75c2:1::1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {
+            "com.docker.network.enable_ipv4": "true",
+            "com.docker.network.enable_ipv6": "true"
+        },
+        "Labels": {},
+        "Containers": {},
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "172.200.0.0/24": {
+                        "IPsInUse": 3,
+                        "DynamicIPsAvailable": 253
+                    },
+                    "fde6:6152:75c2:1::/64": {
+                        "IPsInUse": 2,
+                        "DynamicIPsAvailable": 18446744073709551614
+                    }
+                }
+            }
+        }
+    }
+]
+--- docker network inspect kind (full) ---
+[
+    {
+        "Name": "kind",
+        "Id": "1ab5dd03012efe4b78fd2ee93d7f7182cc2bd0845f314829abd9b97e279035fa",
+        "Created": "2026-05-15T20:55:01.651415256Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": true,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "fc00:4d57:1afd:1f1b::/64",
+                    "Gateway": "fc00:4d57:1afd:1f1b::1"
+                },
+                {
+                    "Subnet": "172.19.0.0/16",
+                    "Gateway": "172.19.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.driver.mtu": "65535",
+            "com.docker.network.enable_ipv4": "true"
+        },
+        "Labels": {},
+        "Containers": {
+            "239cb837e998836ba738f15cdba16521ccbd8cdf8ba01ddca06ed9af7d6657e1": {
+                "Name": "kind-registry",
+                "EndpointID": "874361766e6861c20b013ca62ff9b209198f4df68f8af8f867736d5f9359c898",
+                "MacAddress": "2a:fe:83:f1:56:78",
+                "IPv4Address": "172.19.0.8/16",
+                "IPv6Address": "fc00:4d57:1afd:1f1b::8/64"
+            }
+        },
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "172.19.0.0/16": {
+                        "IPsInUse": 4,
+                        "DynamicIPsAvailable": 65532
+                    },
+                    "fc00:4d57:1afd:1f1b::/64": {
+                        "IPsInUse": 3,
+                        "DynamicIPsAvailable": 18446744073709551613
+                    }
+                }
+            }
+        }
+    }
+]
+--- docker network inspect bridge (full) ---
+[
+    {
+        "Name": "bridge",
+        "Id": "2b47fcbacc925caad055dfdbeb969b5be67fefa757cb5c6038faacb7e3cb74f3",
+        "Created": "2026-05-15T20:50:48.139703417Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": true,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.17.0.0/16",
+                    "Gateway": "172.17.0.1"
+                },
+                {
+                    "Subnet": "fde6:6152:75c2::/64",
+                    "Gateway": "fde6:6152:75c2::1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "65535"
+        },
+        "Labels": {},
+        "Containers": {
+            "239cb837e998836ba738f15cdba16521ccbd8cdf8ba01ddca06ed9af7d6657e1": {
+                "Name": "kind-registry",
+                "EndpointID": "1b260fb2c86acedfbd28f77f7c6c09bbf3ab025e68503dbcd2e8a1baa9afebed",
+                "MacAddress": "8e:ef:f2:83:e4:82",
+                "IPv4Address": "172.17.0.2/16",
+                "IPv6Address": "fde6:6152:75c2::2/64"
+            }
+        },
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "172.17.0.0/16": {
+                        "IPsInUse": 4,
+                        "DynamicIPsAvailable": 65532
+                    },
+                    "fde6:6152:75c2::/64": {
+                        "IPsInUse": 3,
+                        "DynamicIPsAvailable": 18446744073709551613
+                    }
+                }
+            }
+        }
+    }
+]
+--- kinder-ipam-probe-diag-1779119666 attachments across all networks ---
+
+=== DIAG=3 Docker Desktop version + info ===
+--- docker version ---
+Client:
+ Version:           29.4.3
+ API version:       1.54
+ Go version:        go1.26.2
+ Git commit:        055a478
+ Built:             Wed May  6 17:06:34 2026
+ OS/Arch:           darwin/arm64
+ Context:           desktop-linux
+
+Server: Docker Desktop 4.73.0 (226246)
+ Engine:
+  Version:          29.4.3
+  API version:      1.54 (minimum version 1.40)
+  Go version:       go1.26.2
+  Git commit:       56be731
+  Built:            Wed May  6 17:09:05 2026
+  OS/Arch:          linux/arm64
+  Experimental:     false
+ containerd:
+  Version:          v2.2.3
+  GitCommit:        77c84241c7cbdd9b4eca2591793e3d4f4317c590
+ runc:
+  Version:          1.3.5
+  GitCommit:        v1.3.5-0-g488fc13e
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+--- docker info ---
+Client:
+ Version:    29.4.3
+ Context:    desktop-linux
+ Debug Mode: false
+ Plugins:
+  agent: Docker AI Agent Runner (Docker Inc.)
+    Version:  v1.54.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-agent
+  ai: Docker AI Agent - Ask Gordon (Docker Inc.)
+    Version:  v1.20.2
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-ai
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  v0.33.0-desktop.1
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  v5.1.3
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-compose
+  debug: Get a shell into any image or container (Docker Inc.)
+    Version:  0.0.47
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-debug
+  desktop: Docker Desktop commands (Docker Inc.)
+    Version:  v0.3.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-desktop
+  dhi: CLI for managing Docker Hardened Images (Docker Inc.)
+    Version:  v0.0.3
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-dhi
+  extension: Manages Docker extensions (Docker Inc.)
+    Version:  v0.2.31
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-extension
+  init: Creates Docker-related starter files for your project (Docker Inc.)
+    Version:  v1.4.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-init
+  mcp: Docker MCP Plugin (Docker Inc.)
+    Version:  v0.42.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-mcp
+  model: Docker Model Runner (Docker Inc.)
+    Version:  v1.1.37
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-model
+  offload: Docker Offload (Docker Inc.)
+    Version:  v0.5.85
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-offload
+  pass: Docker Pass Secrets Manager Plugin (beta) (Docker Inc.)
+    Version:  v0.0.25
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-pass
+  sandbox: Docker Sandbox (Docker Inc.)
+    Version:  v0.12.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-sandbox
+  sbom: View the packaged-based Software Bill Of Materials (SBOM) for an image (Anchore Inc.)
+    Version:  0.6.0
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-sbom
+  scout: Docker Scout (Docker Inc.)
+    Version:  v1.20.4
+    Path:     /Users/patrykattc/.docker/cli-plugins/docker-scout
+
+Server:
+ Containers: 2
+  Running: 1
+  Paused: 0
+  Stopped: 1
+ Images: 73
+ Server Version: 29.4.3
+ Storage Driver: overlay2
+  Backing Filesystem: extfs
+  Supports d_type: true
+  Using metacopy: false
+  Native Overlay Diff: true
+  userxattr: false
+ Logging Driver: json-file
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ CDI spec directories:
+  /etc/cdi
+  /var/run/cdi
+ Discovered Devices:
+  cdi: docker.com/gpu=webgpu
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: 77c84241c7cbdd9b4eca2591793e3d4f4317c590
+ runc version: v1.3.5-0-g488fc13e
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.12.76-linuxkit
+ Operating System: Docker Desktop
+ OSType: linux
+ Architecture: aarch64
+ CPUs: 24
+ Total Memory: 15.84GiB
+ Name: docker-desktop
+ ID: df9f4609-2e9e-4005-990e-15b9d6a7400f
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+ HTTP Proxy: http.docker.internal:3128
+ HTTPS Proxy: http.docker.internal:3128
+ No Proxy: hubproxy.docker.internal
+ Labels:
+  com.docker.desktop.address=unix:///Users/patrykattc/Library/Containers/com.docker.docker/Data/docker-cli.sock
+ Experimental: false
+ Insecure Registries:
+  hubproxy.docker.internal:5555
+  ::1/128
+  127.0.0.0/8
+ Live Restore Enabled: false
+ Firewall Backend: iptables
+
+--- macOS softwareupdate history (best-effort) ---
+Display Name                                       Version    Date                  
+------------                                       -------    ----                  
+macOS Sonoma 14.2.1                                14.2.1     2024-01-11, 21:43:56  
+Command Line Tools for Xcode                       15.1       2024-01-11, 21:54:52  
+Command Line Tools for Xcode                       15.3       2024-03-07, 11:23:04  
+macOS Sonoma 14.3.1                                14.3.1     2024-03-07, 11:25:55  
+macOS Sonoma 14.4.1                                14.4.1     2024-05-10, 15:00:03  
+macOS Sequoia 15.1.1                               15.1.1     2024-12-11, 15:07:49  
+Command Line Tools for Xcode                       16.2       2024-12-24, 06:33:42  
+macOS Sequoia 15.2                                 15.2       2024-12-24, 06:35:04  
+macOS Sequoia 15.3                                 15.3       2025-02-10, 08:31:00  
+macOS Sequoia 15.3.1                               15.3.1     2025-02-18, 12:44:32  
+Command Line Tools for Xcode                       16.3       2025-05-26, 18:52:12  
+macOS Sequoia 15.5                                 15.5       2025-05-26, 18:53:32  
+Command Line Tools for Xcode                       16.4       2025-05-31, 06:11:48  
+macOS Sequoia 15.6                                 15.6       2025-08-06, 06:06:20  
+macOS Sequoia 15.6.1                               15.6.1     2025-08-29, 06:24:22  
+macOS Sequoia 15.7.3                               15.7.3     2026-01-11, 05:52:22  
+macOS Tahoe 26.2                                   26.2       2026-01-20, 10:22:51  
+Command Line Tools for Xcode 26.2                  26.2       2026-01-20, 10:46:31  
+
+=== DIAG=4 repro across networks ===
+--- kinder-ipam-probe-diag-1779119666 — current template ---
+invalid IP
+--- kinder-ipam-probe-diag-1779119666 — index template ---
+invalid IP
+--- kinder-ipam-probe-diag-1779119666 — networks attached ---
+{"kinder-ipam-probe-diag-1779119666":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"722d2f88e4b88da34ca6f796cffc4f28cdb25c604eaa764209147033e0cc1f54","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":["ipam-repro-kinder-ipam-probe-diag-1779119666-diag-1779119666","c029c24134db"]}}
+--- bridge — current template ---
+invalid IP
+--- bridge — index template ---
+invalid IP
+--- bridge — networks attached ---
+{"bridge":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"2b47fcbacc925caad055dfdbeb969b5be67fefa757cb5c6038faacb7e3cb74f3","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":null}}
+--- kind — current template ---
+invalid IP
+--- kind — index template ---
+invalid IP
+--- kind — networks attached ---
+{"kind":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"1ab5dd03012efe4b78fd2ee93d7f7182cc2bd0845f314829abd9b97e279035fa","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":["ipam-repro-kind-diag-1779119666","853cc6c8f1b9"]}}
+
+=== DIAG=5 --network=none + network connect two-step ===
+1a9561da5334cca816c5c78599fbd1d4d528c8eed370569803530e553f59c04b
+64e5801c9bea2565325f99c07931c0512451d33cef001eef1c2cdd78e5dc1b28
+--- after --network=none run, before connect ---
+{"none":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"d0e326b2d3163b27d3b0dd1be10533c8644a913a61ef290401c5d9ae93de4551","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":null}}
+Error response from daemon: container cannot be connected to multiple networks with one of the networks in private (none) mode
+--- after network connect, current template ---
+invalid IP
+--- after network connect, index template ---
+
+template parsing error: template: :1:35: executing "" at <"kinder-twostep-diag-1779119666">: nil data; no entry for key "IPAddress"
+--- after network connect, full networks ---
+{"none":{"IPAMConfig":null,"Links":null,"Aliases":null,"DriverOpts":null,"GwPriority":0,"NetworkID":"d0e326b2d3163b27d3b0dd1be10533c8644a913a61ef290401c5d9ae93de4551","EndpointID":"","Gateway":"","IPAddress":"","MacAddress":"","IPPrefixLen":0,"IPv6Gateway":"","GlobalIPv6Address":"","GlobalIPv6PrefixLen":0,"DNSNames":null}}
+
+ESCALATE — Docker Desktop is returning a placeholder string for some network state. Task 3 spec changes; see TASK 1 ESCALATION.
