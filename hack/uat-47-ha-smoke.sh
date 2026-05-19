@@ -157,7 +157,11 @@ test_09_resume_wait_duration_string() {
 test_12_doctor_healthy_3of3() {
   echo "--- test_12: doctor reports a healthy HA cluster (3/3 etcd OR leader-rotated post-resume) ---"
   local out
-  out="$("${KINDER_BIN}" doctor 2>&1)"
+  # `|| true` is required: kinder doctor exits non-zero on any warn (offline-readiness
+  # is always warn on a fresh cluster), and the script runs with set -euo pipefail.
+  # test_13 already has this; test_12 was missing it (latent bug masked by always
+  # taking the [FAIL] return-1 path via the broken grep before reaching the exit code).
+  out="$("${KINDER_BIN}" doctor 2>&1 || true)"
   # The doctor's cluster-resume-readiness check signals "healthy" in two ways:
   #   (a) "3/3 etcd members healthy"  → fresh cluster, no pause/resume yet
   #   (b) "leader id rotated; previous=X, current=Y" → healthy post-resume warn
