@@ -1,0 +1,51 @@
+=== Phase 57.4 alt-runtime UAT — podman podman version 5.8.2 ===
+Host date: 2026-05-19T12:10:50Z
+
+--- network create ---
+uat574-podman-net-alt-1779192650
+--- run -d ---
+ERROR: (gcloud.auth.docker-helper) There was a problem refreshing your current auth tokens: Reauthentication failed. cannot prompt during non-interactive execution.
+Please run:
+
+  $ gcloud auth login
+
+to obtain new credentials.
+
+If you have already logged in with a different account, run:
+
+  $ gcloud config set account ACCOUNT
+
+to select an already authenticated account to use.
+Error: error getting credentials - err: exit status 1, out: ``
+--- inspect (original IP) ---
+Error: no such object: "uat574-podman-alt-1779192650"
+captured IP: 
+--- network disconnect ---
+Error: no container with name or ID "uat574-podman-alt-1779192650" found: no such container
+--- network connect --ip  (the actual IP-pin operation) ---
+Error: no container with name or ID "uat574-podman-alt-1779192650" found: no such container
+RESULT: podman network connect --ip FAILED (see error above)
+VERDICT: ip-pin path would be VerdictCertRegen or VerdictUnsupported
+--- cleanup ---
+uat574-podman-net-alt-1779192650
+
+INTERPRETATION: INCONCLUSIVE — NOT a Phase 57.4 finding.
+
+The container run failed because the host's podman is configured to use
+`gcloud auth docker-helper` as a credential helper for docker.io. In
+script (non-interactive) context, the helper cannot prompt for re-auth.
+This is a user-environment config issue, not a podman capability issue
+and not a kinder bug.
+
+The actual `podman network connect --ip` capability was NOT tested
+because the test container never started. From upstream podman docs
+(verified separately), `podman network connect --ip` is supported on
+podman 5.x. The kinder probe path against podman would likely return
+VerdictIPPinned, but this run does not prove that.
+
+REMEDIATION FOR FUTURE TESTING: either (a) remove the gcloud helper
+from ~/.config/containers/auth.json or ~/.docker/config.json, or (b) use
+a locally-cached image instead of docker.io/library/alpine:3.21.
+
+PHASE 57.4 IMPACT: none. The bug-of-record was specifically about macOS
+Docker Desktop. podman was never affected.
