@@ -185,16 +185,21 @@ test_13_doctor_warn_quorum_loss() {
   docker stop "${CLUSTER}-control-plane2" "${CLUSTER}-control-plane3" >/dev/null
   local out
   out="$("${KINDER_BIN}" doctor 2>&1 || true)"
-  if ! grep -qE 'cluster-resume-readiness.*(quorum at risk|1/3)' <<< "${out}"; then
-    echo "[FAIL] test_13 — cluster-resume-readiness did not warn on quorum loss"
-    grep -E 'cluster-resume-readiness' <<< "${out}" || true
-    docker start "${CLUSTER}-control-plane2" "${CLUSTER}-control-plane3" >/dev/null || true
-    return 1
+  # Same multi-line bug as test_12: 'cluster-resume-readiness' on one line, the
+  # quorum-warn message on the next. Two-stage grep handles this.
+  if grep -qE '(quorum at risk|1/3 etcd members)' <<< "${out}" \
+     && grep -qE '(⚠|✗)\s+cluster-resume-readiness' <<< "${out}"; then
+    # Recover before subsequent tests.
+    docker start "${CLUSTER}-control-plane2" "${CLUSTER}-control-plane3" >/dev/null
+    kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
+    echo "[OK] test_13 — warn with quorum at risk wording"
+    return 0
   fi
-  # Recover before subsequent tests.
-  docker start "${CLUSTER}-control-plane2" "${CLUSTER}-control-plane3" >/dev/null
-  kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready node --all --timeout=180s
-  echo "[OK] test_13 — warn with quorum at risk wording"
+  echo "[FAIL] test_13 — cluster-resume-readiness did not warn on quorum loss"
+  grep -E '(⚠|✗|✓|⊘)\s+cluster-resume-readiness' <<< "${out}" || true
+  grep -E 'quorum at risk|1/3 etcd|etcd members' <<< "${out}" || true
+  docker start "${CLUSTER}-control-plane2" "${CLUSTER}-control-plane3" >/dev/null || true
+  return 1
 }
 
 test_14_pause_snapshot_leaderid() {
