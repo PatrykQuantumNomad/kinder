@@ -11,6 +11,7 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 
 - [x] **LIFE-09**: HA pause/resume preserves etcd peer connectivity across container IP reassignment via IP pinning (`docker network connect --ip <stored-ip>`); cert regen is documented fallback if Docker IPAM is infeasible
   - **Phase 57.3 scope append**: cert-regen fallback path widened beyond `etcd-peer` to all four etcd-adjacent certs (`etcd-peer`, `etcd-server`, `etcd-healthcheck-client`, `apiserver-etcd-client`); 20s static sleep replaced by active `etcdctl` + `curl` health-gates (1s tick, 60s deadline); post-pass `kubeadm certs check-expiration` verify; `--strategy=<auto|ip-pin|cert-regen>` flag exposes path for direct operator invocation; IPv6/dual-stack loopback addressing derived from cluster ip-family label — RESEARCH §Q1 Option A
+  - **Phase 57.4 scope append**: `--privileged` added to IPAM probe container start (`docker run` at `ipamprobe.go:110`); closes the macOS Docker Desktop 4.73.0 regression where kindest/node exits in 96ms without elevated capabilities, leaving `NetworkSettings.Networks` empty and causing `net.ParseIP` to reject the empty string as `"invalid IP"`, routing every HA cluster to the cert-regen fallback instead of the preferred ip-pin path
 
 ### Addons
 
