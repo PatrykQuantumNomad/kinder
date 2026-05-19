@@ -155,15 +155,25 @@ test_09_resume_wait_duration_string() {
 }
 
 test_12_doctor_healthy_3of3() {
-  echo "--- test_12: doctor reports 3/3 etcd members healthy on healthy HA ---"
+  echo "--- test_12: doctor reports a healthy HA cluster (3/3 etcd OR leader-rotated post-resume) ---"
   local out
   out="$("${KINDER_BIN}" doctor 2>&1)"
-  if ! grep -qE 'cluster-resume-readiness.*3/3 etcd members healthy' <<< "${out}"; then
-    echo "[FAIL] test_12 — cluster-resume-readiness did not report 3/3 etcd members healthy"
-    grep -E 'cluster-(resume-readiness|node-skew)' <<< "${out}" || true
-    return 1
+  # The doctor's cluster-resume-readiness check signals "healthy" in two ways:
+  #   (a) "3/3 etcd members healthy"  → fresh cluster, no pause/resume yet
+  #   (b) "leader id rotated; previous=X, current=Y" → healthy post-resume warn
+  #       (Phase 47-05 intentional behavior — leader changes after etcd restart)
+  # Doctor output is multi-line ("cluster-resume-readiness" on one line, message
+  # on the next), so the grep must be order-insensitive across lines.
+  if grep -qE '3/3 etcd members healthy|leader id rotated' <<< "${out}"; then
+    if grep -qE '(✓|⚠)\s+cluster-resume-readiness' <<< "${out}"; then
+      echo "[OK] test_12 — cluster-resume-readiness reports healthy (etcd quorum OR leader-rotated post-resume)"
+      return 0
+    fi
   fi
-  echo "[OK] test_12 — cluster-resume-readiness: 3/3 etcd members healthy"
+  echo "[FAIL] test_12 — cluster-resume-readiness did not report a healthy state"
+  grep -E '(✓|⚠|⊘|✗)\s+cluster-(resume-readiness|node-skew)' <<< "${out}" || true
+  grep -E '3/3 etcd|leader id rotated' <<< "${out}" || true
+  return 1
 }
 
 test_13_doctor_warn_quorum_loss() {
