@@ -90,11 +90,10 @@ test_01_doctor_ipam_probe_verdict() {
     if ! echo "${out}" | grep -qF '"ipam-probe"'; then
         fail "test_01: ipam-probe check not found in doctor JSON output"
     fi
-    if ! echo "${out}" | grep -qF '"ip-pinned"'; then
-        fail "test_01: expected 'ip-pinned' in doctor JSON output; probe returned cert-regen or unsupported"
-    fi
-    # Also verify the ok status is present alongside ip-pinned.
-    # The JSON shape is: {"name":"ipam-probe","status":"ok","message":"...ip-pinned..."}
+    # The bash pre-grep '"ip-pinned"' was too strict — the verdict appears as a
+    # substring inside the "message" field, not as a standalone JSON value.
+    # The authoritative validation is the Python check below.
+    # JSON shape: {"name":"ipam-probe","status":"ok","message":"...ip-pinned..."}
     if ! echo "${out}" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
