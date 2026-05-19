@@ -1,0 +1,63 @@
+[06:20:19] === Phase 57.4 IPAM probe live UAT ===
+[06:20:19] HEAD: 6d62bd7e5280de0965aae9b824c47ee42cfda330
+[06:20:19] macOS: 26.3.1
+[06:20:19] Docker: 29.4.3
+[06:20:19] make build (rebuild against current HEAD)
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=6d62bd7e5280de0965aae9b824c47ee42cfda330 -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=152"
+[06:20:20] FAIL: STALE BINARY — required 57.4 marker absent: ⚠️ IPAM probe returned unparseable IP. Run 'make build' against post-57.4-01 HEAD.
+[06:20:20] cleanup: SKIPPED — cluster preserved for forensics
+[06:20:20]   inspect with: docker ps --filter label=io.x-k8s.kind.cluster
+[06:20:20]   manual delete: /Users/patrykattc/work/git/kinder/bin/kinder delete cluster --name uat-574-ipam
+[06:22:35] === Phase 57.4 IPAM probe live UAT ===
+[06:22:35] HEAD: 2e0fc678967d273197d102a85697ab470812fed7
+[06:22:35] macOS: 26.3.1
+[06:22:35] Docker: 29.4.3
+[06:22:35] make build (rebuild against current HEAD)
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=2e0fc678967d273197d102a85697ab470812fed7 -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=153"
+[06:22:36]   ok binary marker present: IPAM probe returned unparseable IP
+[06:22:36]   ok binary marker present: this is likely a regression; please file an issue
+[06:22:36]   ok binary marker present: HA cluster will use ip-pin resume strategy
+[06:22:36]   ok binary marker present: IPAM supports IP pinning (ip-pinned path available)
+kind v1.5.0 go1.25.7 darwin/arm64
+[06:22:36] --- test_01: kinder doctor ipam-probe verdict ---
+[06:22:38] doctor JSON output:
+{"checks":[{"name":"container-runtime","category":"Runtime","status":"ok","message":"Container runtime detected (docker)"},{"name":"disk-space","category":"Docker","status":"ok","message":"83.0 GB free on /"},{"name":"daemon-json-init","category":"Docker","status":"ok","message":"daemon.json checked (/Users/patrykattc/.docker/daemon.json)"},{"name":"docker-snap","category":"Docker","status":"skip","message":"(linux only)"},{"name":"docker-socket","category":"Docker","status":"skip","message":"(linux only)"},{"name":"kubectl","category":"Tools","status":"ok","message":"kubectl available"},{"name":"kubectl-version-skew","category":"Tools","status":"ok","message":"kubectl version compatible (v1.32.4-dispatcher)"},{"name":"nvidia-driver","category":"GPU","status":"skip","message":"(linux only)"},{"name":"nvidia-container-toolkit","category":"GPU","status":"skip","message":"(linux only)"},{"name":"nvidia-docker-runtime","category":"GPU","status":"skip","message":"(linux only)"},{"name":"inotify-limits","category":"Kernel","status":"skip","message":"(linux only)"},{"name":"kernel-version","category":"Kernel","status":"skip","message":"(linux only)"},{"name":"apparmor","category":"Security","status":"skip","message":"(linux only)"},{"name":"selinux","category":"Security","status":"skip","message":"(linux only)"},{"name":"firewalld-backend","category":"Platform","status":"skip","message":"(linux only)"},{"name":"wsl2-cgroup","category":"Platform","status":"skip","message":"(linux only)"},{"name":"rootfs-device","category":"Platform","status":"skip","message":"(linux only)"},{"name":"network-subnet","category":"Network","status":"ok","message":"no subnet clashes (2 Docker subnets, 6 host routes)"},{"name":"ipam-probe","category":"Network","status":"ok","message":"IPAM supports IP pinning (ip-pinned path available)"},{"name":"cluster-node-skew","category":"Cluster","status":"skip","message":"(no cluster found)"},{"name":"local-path-cve","category":"Cluster","status":"skip","message":"local-path-provisioner not detected in running cluster"},{"name":"cluster-resume-readiness","category":"Cluster","status":"skip","message":"no kind cluster detected"},{"name":"ha-resume-strategy","category":"Cluster","status":"skip","message":"no kinder cluster detected"},{"name":"offline-readiness","category":"Offline","status":"warn","message":"12 of 14 addon images missing:\nMISSING IMAGE                                         REQUIRED BY\n-------------                                         -----------\nquay.io/metallb/controller:v0.15.3                    MetalLB\nquay.io/metallb/speaker:v0.15.3                       MetalLB\nregistry.k8s.io/metrics-server/metrics-server:v0.8.1  Metrics Server\nquay.io/jetstack/cert-manager-cainjector:v1.20.2      Cert Manager\nquay.io/jetstack/cert-manager-controller:v1.20.2      Cert Manager\nquay.io/jetstack/cert-manager-webhook:v1.20.2         Cert Manager\ndocker.io/envoyproxy/ratelimit:05c08d03               Envoy Gateway\nenvoyproxy/gateway:v1.7.2                             Envoy Gateway\nghcr.io/headlamp-k8s/headlamp:v0.42.0                 Dashboard\nnvcr.io/nvidia/k8s-device-plugin:v0.17.1              NVIDIA GPU\ndocker.io/rancher/local-path-provisioner:v0.0.36      Local Path Provisioner\ndocker.io/library/busybox:1.37.0                      Local Path Provisioner\n","reason":"Air-gapped cluster creation (--air-gapped) will fail if these images are not pre-loaded","fix":"Pre-load missing images: docker pull \u003cimage\u003e (or podman/nerdctl). See: kinder create cluster --help"},{"name":"host-mount-path","category":"Mounts","status":"skip","message":"no host mount paths configured"},{"name":"docker-desktop-file-sharing","category":"Mounts","status":"skip","message":"no host mount paths configured"}],"summary":{"fail":0,"ok":7,"skip":18,"total":26,"warn":1}}
+[06:22:38] FAIL: test_01: expected 'ip-pinned' in doctor JSON output; probe returned cert-regen or unsupported
+[06:22:38] cleanup: SKIPPED — cluster preserved for forensics
+[06:22:38]   inspect with: docker ps --filter label=io.x-k8s.kind.cluster
+[06:22:38]   manual delete: /Users/patrykattc/work/git/kinder/bin/kinder delete cluster --name uat-574-ipam
+[06:25:16] === Phase 57.4 IPAM probe live UAT ===
+[06:25:16] HEAD: 9f202c2bb4a85f870fdb4027b33e065800d60ade
+[06:25:16] macOS: 26.3.1
+[06:25:16] Docker: 29.4.3
+[06:25:16] make build (rebuild against current HEAD)
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=9f202c2bb4a85f870fdb4027b33e065800d60ade -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=154"
+[06:25:17]   ok binary marker present: IPAM probe returned unparseable IP
+[06:25:17]   ok binary marker present: this is likely a regression; please file an issue
+[06:25:17]   ok binary marker present: HA cluster will use ip-pin resume strategy
+[06:25:18]   ok binary marker present: IPAM supports IP pinning (ip-pinned path available)
+kind v1.5.0 go1.25.7 darwin/arm64
+[06:25:18] --- test_01: kinder doctor ipam-probe verdict ---
+[06:25:20] doctor JSON output:
+{"checks":[{"name":"container-runtime","category":"Runtime","status":"ok","message":"Container runtime detected (docker)"},{"name":"disk-space","category":"Docker","status":"ok","message":"83.0 GB free on /"},{"name":"daemon-json-init","category":"Docker","status":"ok","message":"daemon.json checked (/Users/patrykattc/.docker/daemon.json)"},{"name":"docker-snap","category":"Docker","status":"skip","message":"(linux only)"},{"name":"docker-socket","category":"Docker","status":"skip","message":"(linux only)"},{"name":"kubectl","category":"Tools","status":"ok","message":"kubectl available"},{"name":"kubectl-version-skew","category":"Tools","status":"ok","message":"kubectl version compatible (v1.32.4-dispatcher)"},{"name":"nvidia-driver","category":"GPU","status":"skip","message":"(linux only)"},{"name":"nvidia-container-toolkit","category":"GPU","status":"skip","message":"(linux only)"},{"name":"nvidia-docker-runtime","category":"GPU","status":"skip","message":"(linux only)"},{"name":"inotify-limits","category":"Kernel","status":"skip","message":"(linux only)"},{"name":"kernel-version","category":"Kernel","status":"skip","message":"(linux only)"},{"name":"apparmor","category":"Security","status":"skip","message":"(linux only)"},{"name":"selinux","category":"Security","status":"skip","message":"(linux only)"},{"name":"firewalld-backend","category":"Platform","status":"skip","message":"(linux only)"},{"name":"wsl2-cgroup","category":"Platform","status":"skip","message":"(linux only)"},{"name":"rootfs-device","category":"Platform","status":"skip","message":"(linux only)"},{"name":"network-subnet","category":"Network","status":"ok","message":"no subnet clashes (2 Docker subnets, 6 host routes)"},{"name":"ipam-probe","category":"Network","status":"ok","message":"IPAM supports IP pinning (ip-pinned path available)"},{"name":"cluster-node-skew","category":"Cluster","status":"skip","message":"(no cluster found)"},{"name":"local-path-cve","category":"Cluster","status":"skip","message":"local-path-provisioner not detected in running cluster"},{"name":"cluster-resume-readiness","category":"Cluster","status":"skip","message":"no kind cluster detected"},{"name":"ha-resume-strategy","category":"Cluster","status":"skip","message":"no kinder cluster detected"},{"name":"offline-readiness","category":"Offline","status":"warn","message":"12 of 14 addon images missing:\nMISSING IMAGE                                         REQUIRED BY\n-------------                                         -----------\nquay.io/metallb/controller:v0.15.3                    MetalLB\nquay.io/metallb/speaker:v0.15.3                       MetalLB\nregistry.k8s.io/metrics-server/metrics-server:v0.8.1  Metrics Server\nquay.io/jetstack/cert-manager-cainjector:v1.20.2      Cert Manager\nquay.io/jetstack/cert-manager-controller:v1.20.2      Cert Manager\nquay.io/jetstack/cert-manager-webhook:v1.20.2         Cert Manager\ndocker.io/envoyproxy/ratelimit:05c08d03               Envoy Gateway\nenvoyproxy/gateway:v1.7.2                             Envoy Gateway\nghcr.io/headlamp-k8s/headlamp:v0.42.0                 Dashboard\nnvcr.io/nvidia/k8s-device-plugin:v0.17.1              NVIDIA GPU\ndocker.io/rancher/local-path-provisioner:v0.0.36      Local Path Provisioner\ndocker.io/library/busybox:1.37.0                      Local Path Provisioner\n","reason":"Air-gapped cluster creation (--air-gapped) will fail if these images are not pre-loaded","fix":"Pre-load missing images: docker pull \u003cimage\u003e (or podman/nerdctl). See: kinder create cluster --help"},{"name":"host-mount-path","category":"Mounts","status":"skip","message":"no host mount paths configured"},{"name":"docker-desktop-file-sharing","category":"Mounts","status":"skip","message":"no host mount paths configured"}],"summary":{"fail":0,"ok":7,"skip":18,"total":26,"warn":1}}
+[06:25:20] test_01: PASS — kinder doctor ipam-probe returned verdict=ip-pinned (status=ok)
+[06:25:20] --- test_02: create cluster emits ip-pin announcement ---
+[06:25:20] test_02: running kinder create cluster --name uat-574-ipam (HA, 3 CP)
+[06:35:02] test_02: PASS — ip-pin announcement found in create output
+[06:35:02] --- test_03: resume-strategy label on cp1 is ip-pinned ---
+[06:35:02]   resume-strategy label on uat-574-ipam-control-plane: 'ip-pinned'
+[06:35:02] test_03: PASS — resume-strategy=ip-pinned on uat-574-ipam-control-plane
+[06:35:02] 
+[06:35:02] === Phase 57.4 IPAM probe UAT: ALL TESTS PASSED ===
+[06:35:02] 
+[06:35:02] Bug-of-record close gate satisfied (macOS Docker Desktop):
+[06:35:02]   verdict=ip-pinned on kinder doctor
+[06:35:02]   ip-pin announcement on kinder create cluster
+[06:35:02]   resume-strategy=ip-pinned label on cp1
+[06:35:02] 
+[06:35:02] Next steps (Phase 58 unblock):
+[06:35:02]   1. Delete left-up uat-58-01 cluster (wrong strategy — cert-regen):
+[06:35:02]      ./bin/kinder delete cluster --name uat-58-01
+[06:35:02]   2. Re-run hack/uat-47-ha-smoke.sh on a FRESH HA cluster (ip-pin path).
+[06:35:02]      test_09 should now close Phase 58.
+[06:35:02] cleanup: deleting test cluster uat-574-ipam
