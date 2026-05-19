@@ -60,7 +60,7 @@ preamble() {
 
     # Binary markers that MUST be present in a Phase 57.4 binary.
     local positive=(
-        "⚠️ IPAM probe returned unparseable IP"
+        "IPAM probe returned unparseable IP"
         "this is likely a regression; please file an issue"
         "HA cluster will use ip-pin resume strategy"
         "IPAM supports IP pinning (ip-pinned path available)"
