@@ -227,8 +227,19 @@ test_14_pause_snapshot_leaderid() {
     echo "${pause_stderr}"
     return 1
   fi
+  # `docker exec` does not work on stopped containers, and `kinder pause` stops
+  # the CP container. Use `docker cp` (which DOES work on stopped containers)
+  # to extract the snapshot file from the paused container.
+  local snapshot_file
+  snapshot_file="$(mktemp -t pause-snapshot.XXXXXX.json)"
+  if ! docker cp "${CLUSTER}-control-plane:/kind/pause-snapshot.json" "${snapshot_file}" 2>&1; then
+    echo "[FAIL] test_14 — docker cp of /kind/pause-snapshot.json failed (file missing from container)"
+    rm -f "${snapshot_file}"
+    return 1
+  fi
   local leader
-  leader="$(docker exec "${CLUSTER}-control-plane" cat /kind/pause-snapshot.json | jq -r .leaderID)"
+  leader="$(jq -r .leaderID "${snapshot_file}")"
+  rm -f "${snapshot_file}"
   if [[ -z "${leader}" || "${leader}" == "null" ]]; then
     echo "[FAIL] test_14 — leaderID empty: ${leader}"
     return 1
