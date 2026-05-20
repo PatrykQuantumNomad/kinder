@@ -307,7 +307,13 @@ spec:
   selector: { app: uat }
   ports: [{ port: 80, targetPort: 80 }]
 EOF
-  kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready pod -l app=uat --timeout=180s
+  # `kubectl wait --for=condition=Ready pod -l <selector>` errors immediately
+  # if zero matching pods exist (kubectl wait does NOT wait for resources to
+  # appear). After `kubectl apply`, the Deployment exists but the ReplicaSet
+  # hasn't yet created the pod. Use `rollout status` which DOES wait for the
+  # deployment to materialize and become available.
+  kubectl --context "kind-${CLUSTER}" rollout status deployment/uat-deploy --timeout=180s
+  kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready pod -l app=uat --timeout=60s
 
   local SENTINEL POD_NAME POD_UID SVC_IP
   SENTINEL="UAT-58-01-SENTINEL-$(date +%s)"
@@ -319,7 +325,13 @@ EOF
   "${KINDER_BIN}" pause "${CLUSTER}"
   # Phase 57.3: bumped from 5m to 15m to accommodate 4-cert regen + active health gates.
   "${KINDER_BIN}" resume "${CLUSTER}" --wait 15m
-  kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready pod -l app=uat --timeout=180s
+  # `kubectl wait --for=condition=Ready pod -l <selector>` errors immediately
+  # if zero matching pods exist (kubectl wait does NOT wait for resources to
+  # appear). After `kubectl apply`, the Deployment exists but the ReplicaSet
+  # hasn't yet created the pod. Use `rollout status` which DOES wait for the
+  # deployment to materialize and become available.
+  kubectl --context "kind-${CLUSTER}" rollout status deployment/uat-deploy --timeout=180s
+  kubectl --context "kind-${CLUSTER}" wait --for=condition=Ready pod -l app=uat --timeout=60s
 
   local POD_NAME_AFTER POD_UID_AFTER SVC_IP_AFTER SENTINEL_AFTER
   POD_NAME_AFTER="$(kubectl --context "kind-${CLUSTER}" get pod -l app=uat -o jsonpath='{.items[0].metadata.name}')"
