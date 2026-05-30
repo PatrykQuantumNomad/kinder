@@ -1,0 +1,99 @@
+=== Phase 58 Plan 02 — Phase 51 Envoy LB + IPVS guard + 1.36 guide live UAT ===
+ETA ~7 min; cluster uat-58-02; log hack/uat-51-envoy-ipvs-guide.log
+HEAD:  6b8c4f74490c97f7dd162801adf0d84c802530ef
+Date:  2026-05-30T12:16:42Z
+--- make build ---
+go build -v -o "/Users/patrykattc/work/git/kinder/bin/kinder" -trimpath -ldflags="-buildid= -w -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommit=6b8c4f74490c97f7dd162801adf0d84c802530ef -X=sigs.k8s.io/kind/pkg/internal/kindversion.gitCommitCount=167"
+sigs.k8s.io/kind
+kind v1.5.0 go1.25.7 darwin/arm64
+Using: /Users/patrykattc/work/git/kinder/bin/kinder
+Build: May 30 08:16:42 2026
+PATH-resolved kinder: /opt/homebrew/bin/kinder
+--- docker info (RAM headroom) ---
+ CPUs: 24
+ Total Memory: 15.84GiB
+Existing cluster uat-58-02 detected; REUSE=no — deleting before recreate.
+Deleting cluster "uat-58-02" ...
+Deleted nodes: ["uat-58-02-control-plane" "uat-58-02-control-plane2" "uat-58-02-worker" "uat-58-02-external-load-balancer"]
+--- test_01: HA cluster LB is Envoy (no HAProxy) ---
+Creating cluster "uat-58-02" ...
+
+NOTE: The following addon images will be pulled during cluster creation.
+      Pre-load them and use --air-gapped to skip pulls:
+        docker.io/envoyproxy/envoy:v1.36.2
+        docker.io/envoyproxy/ratelimit:05c08d03
+        docker.io/library/busybox:1.37.0
+        docker.io/rancher/local-path-provisioner:v0.0.36
+        envoyproxy/gateway:v1.7.2
+        ghcr.io/headlamp-k8s/headlamp:v0.42.0
+        quay.io/jetstack/cert-manager-cainjector:v1.20.2
+        quay.io/jetstack/cert-manager-controller:v1.20.2
+        quay.io/jetstack/cert-manager-webhook:v1.20.2
+        quay.io/metallb/controller:v0.15.3
+        quay.io/metallb/speaker:v0.15.3
+        registry.k8s.io/metrics-server/metrics-server:v0.8.1
+        registry:2
+
+ • Ensuring node image (kindest/node:v1.35.1) 🖼  ...
+HA cluster will use ip-pin resume strategy
+ ✓ Ensuring node image (kindest/node:v1.35.1) 🖼
+ • Preparing nodes 📦 📦 📦   ...
+pinned 2 HA control-plane IPs (strategy=ip-pinned)
+ ✓ Preparing nodes 📦 📦 📦 
+ • Configuring the external load balancer ⚖️  ...
+ ✓ Configuring the external load balancer ⚖️
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Joining more control-plane nodes 🎮  ...
+ ✓ Joining more control-plane nodes 🎮
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+
+Local Registry:
+  Push:        docker push localhost:5001/myimage:latest
+  Pull in pods: image: localhost:5001/myimage:latest
+
+ * Skipping NVIDIA GPU (disabled in config)
+
+Dashboard:
+  Get token: kubectl -n kube-system get secret kinder-dashboard-token -o jsonpath='{.data.token}' | base64 -d
+  Port-forward: kubectl port-forward -n kube-system service/headlamp 8080:80
+  Then open: http://localhost:8080
+
+ • Installing Envoy Gateway  ...
+ ✓ Installing Envoy Gateway
+On darwin, MetalLB LoadBalancer IPs are not directly reachable from the host.
+   Use kubectl port-forward to access LoadBalancer services:
+   kubectl port-forward svc/<service-name> <local-port>:<service-port>
+
+Addons:
+ * Local Registry       installed (0.7s)
+ * MetalLB              installed (28.6s)
+ * Metrics Server       installed (42.4s)
+ * CoreDNS Tuning       installed (1.9s)
+ * Dashboard            installed (44.9s)
+ * Cert Manager         installed (11.9s)
+ * Local Path Provisioner installed (5.9s)
+ * NVIDIA GPU           skipped (disabled)
+ * Envoy Gateway        installed (21.3s)
+Set kubectl context to "kind-uat-58-02"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-uat-58-02
+
+Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂
+node/uat-58-02-control-plane condition met
+node/uat-58-02-control-plane2 condition met
+node/uat-58-02-worker condition met
+[OK] test_01 — Envoy LB (envoyproxy/envoy:v1.36.2) present; HAProxy absent
+--- test_02: kubeProxyMode:ipvs + 1.36 image rejected at validate ---
+[OK] test_02 — ipvs+1.36 rejected (exit 1); all 4 required substrings present; no container created
+--- test_03: kinder-site k8s-1-36-whats-new guide page renders ---
+[OK] test_03 — guide page renders; both GA-feature headings present; HTTP 200
+=== ALL TESTS PASSED ===
+Cluster uat-58-02 left up. Clean up with:
+  /Users/patrykattc/work/git/kinder/bin/kinder delete cluster --name uat-58-02
