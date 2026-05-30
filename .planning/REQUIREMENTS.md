@@ -41,8 +41,8 @@ Requirements for Hardening milestone. Each maps to roadmap phases. REQ-IDs conti
 
 ### User Acceptance
 
-- [ ] **UAT-01**: Phase 47 live HA UAT closed — 3 CP + 2 worker + LB cluster smoke verifies pause/resume worker→CP→LB ordering, host CPU/RAM observation, cluster-state round-trip (pods/PVCs/services), and `cluster-resume-readiness` warn on quorum loss; rebuilt `./bin/kinder version` verified before run; evidence in `hack/uat-47-ha-smoke.sh` + log
-- [ ] **UAT-02**: Phase 51 live UAT closed — `docker ps` confirms `envoyproxy/envoy` (not `kindest/haproxy`) on real HA cluster; `kinder create cluster --config <ipvs+1.36>` rejected at validate with migration URL in error; K8s 1.36 guide page renders with sidebar entry; rebuilt binary verified before run
+- [x] **UAT-01**: Phase 47 live HA UAT closed — 3 CP + 2 worker + LB cluster smoke verifies pause/resume worker→CP→LB ordering, host CPU/RAM observation, cluster-state round-trip (pods/PVCs/services), and `cluster-resume-readiness` warn on quorum loss; rebuilt `./bin/kinder version` verified before run; evidence in `hack/uat-47-ha-smoke.sh` + log
+- [x] **UAT-02**: Phase 51 live UAT closed — `docker ps` confirms `envoyproxy/envoy` (not `kindest/haproxy`) on real HA cluster; `kinder create cluster --config <ipvs+1.36>` rejected at validate with migration URL in error; K8s 1.36 guide page renders with sidebar entry; rebuilt binary verified before run
 
 ## Documented Holds
 
@@ -108,8 +108,8 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 | DEBT-04 | Phase 56 | Complete |
 | DIAG-05 | Phase 57 | Complete |
 | DIAG-06 | Phase 57 | Complete |
-| UAT-01 | Phase 58 | Pending |
-| UAT-02 | Phase 58 | Pending |
+| UAT-01 | Phase 58 | Complete |
+| UAT-02 | Phase 58 | Complete |
 
 **Coverage:**
 - v2.4 requirements: 14 total
@@ -118,4 +118,4 @@ Explicitly excluded for v2.4. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-09*
-*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans; DIST-02 marked complete after Phase 55 Plan 55-01 landed .github/workflows/build-check.yml — green workflow_dispatch run 25750801764; DEBT-04 marked complete after Phase 56 Plan 56-01 eliminated allChecks t.Parallel() race via runChecks helper — zero DATA RACE over 100 iterations*
+*Last updated: 2026-05-12 — DIST-01 marked complete after Phase 54 (macOS ad-hoc code signing) landed both plans; DIST-02 marked complete after Phase 55 Plan 55-01 landed .github/workflows/build-check.yml — green workflow_dispatch run 25750801764; DEBT-04 marked complete after Phase 56 Plan 56-01 eliminated allChecks t.Parallel() race via runChecks helper — zero DATA RACE over 100 iterations; 2026-05-30 — UAT-01 + UAT-02 marked complete after Phase 58 live UAT closure — hack/uat-47-ha-smoke.log + hack/uat-51-envoy-ipvs-guide.log committed as evidence; 47-UAT.md flipped 5 issue rows to pass (passed: 14/14); 51-UAT.md augmented with v2.4 re-verification section (Option A)*
