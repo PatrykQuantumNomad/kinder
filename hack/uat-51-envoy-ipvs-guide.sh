@@ -127,8 +127,13 @@ EOF
     --filter "label=io.x-k8s.kind.cluster=${CLUSTER}" \
     --filter "name=external-load-balancer" \
     --format '{{.Image}}')"
-  if [[ "${lb_image}" != "docker.io/envoyproxy/envoy:v1.36.2" ]]; then
-    echo "[FAIL] test_01 — LB image = '${lb_image}', want 'docker.io/envoyproxy/envoy:v1.36.2'"
+  # Docker's `--format {{.Image}}` strips the docker.io/ prefix for images from the
+  # default registry (documented display convention), so accept either
+  # `envoyproxy/envoy:v1.36.2` or `docker.io/envoyproxy/envoy:v1.36.2`.
+  # The source constant at pkg/cluster/internal/loadbalancer/const.go:20 is
+  # `docker.io/envoyproxy/envoy:v1.36.2`; both display forms reference the same image.
+  if [[ "${lb_image}" != *"envoyproxy/envoy:v1.36.2" ]]; then
+    echo "[FAIL] test_01 — LB image = '${lb_image}', want suffix 'envoyproxy/envoy:v1.36.2'"
     return 1
   fi
   if docker ps -a --format '{{.Image}}' | grep -q 'kindest/haproxy'; then
