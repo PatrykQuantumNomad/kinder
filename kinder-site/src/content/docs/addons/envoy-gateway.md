@@ -7,7 +7,7 @@ Envoy Gateway brings the Kubernetes [Gateway API](https://gateway-api.sigs.k8s.i
 
 kinder installs Envoy Gateway **v1.7.2**.
 
-:::caution[Major upgrade in v2.4 — Envoy Gateway v1.3 → v1.7]
+:::caution[Major upgrade in v1.6 — Envoy Gateway v1.3 → v1.7]
 This is a two-major-version jump. Bundled Gateway API CRDs jump from `v1.2.1` to `v1.4.1`.
 
 - **Existing kinder clusters:** unaffected — addon versions are pinned at cluster-create time. Recreate the cluster to pick up v1.7.2.

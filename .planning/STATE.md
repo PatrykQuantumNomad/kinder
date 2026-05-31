@@ -2,10 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Hardening
-status: completed
-stopped_at: "Phase 58 CLOSED — UAT-01 + UAT-02 closed via live UAT against rebuilt v2.4 binary; hack/uat-47-ha-smoke.sh (HEAD e0ec855e, 8/8 tests pass) + hack/uat-51-envoy-ipvs-guide.sh (HEAD 6b8c4f74, 3/3 tests pass) + matching .log files committed; 47-UAT.md tests 3/9/12/13/14 flipped from issue→pass (passed: 14/14); 51-UAT.md augmented with v2.4 re-verification section (Option A — preserves May 7 narrative); REQUIREMENTS.md UAT-01 + UAT-02 marked Complete in checkboxes and Traceability table; ROADMAP Phase 58 marked Complete (2/2); v2.4 Hardening milestone is feature-complete pending milestone audit + ship (/gsd:audit-milestone next)."
-last_updated: "2026-05-30T12:30:00Z"
-last_activity: 2026-05-30 — Phase 58 COMPLETE. Both plans landed (58-01 = HA pause/resume smoke; 58-02 = Envoy LB + IPVS-1.36 reject + 1.36 guide). 5 commits per plan (script + UAT log + UAT.md flip/augment + script fix iterations). REQUIREMENTS.md + ROADMAP.md + STATE.md rolled. Milestone v2.4 ready for audit.
+status: shipped
+released_as: v1.6
+stopped_at: "v2.4 Hardening SHIPPED 2026-05-31 — milestone archived (milestones/v2.4-ROADMAP.md + v2.4-REQUIREMENTS.md + v2.4-MILESTONE-AUDIT.md), ROADMAP.md collapsed, REQUIREMENTS.md reset for v2.5, PROJECT.md evolved (Current State + Next Milestone), MILESTONES.md entry added, kinder-site changelog finalized to v1.6. Git tag v1.6 created locally (NOT pushed — push triggers release.yml). Next: /gsd:new-milestone for v2.5."
+last_updated: "2026-05-31T00:00:00Z"
+last_activity: 2026-05-31 — v2.4 milestone completed; archived + evolved + committed; tagged v1.6 locally (no push). Awaiting v2.5 milestone planning.
 progress:
   total_phases: 11
   completed_phases: 11
@@ -18,19 +19,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-09 — v2.4 Hardening roadmap created)
+See: .planning/PROJECT.md (updated 2026-05-31 — v2.4 milestone completion: Current State + Next Milestone sections)
 
 **Core value:** A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
-**Current focus:** v2.4 Hardening — Phase 58 COMPLETE. All 11 phases done. Milestone is feature-complete pending audit + ship. Next: `/gsd:audit-milestone` then `/gsd:complete-milestone`.
+**Current focus:** v2.4 Hardening SHIPPED (released as v1.6). Planning next milestone (v2.5). Next: `/gsd:new-milestone`.
 
 ## Current Position
 
-Phase: 58 of 58 — CLOSED. Both plans landed (58-01 HA smoke + 58-02 Envoy/IPVS/guide); REQUIREMENTS + ROADMAP + STATE rolled.
-Plan: 58-02 COMPLETE. 3/3 tests pass against HEAD 6b8c4f74. Canonical log at hack/uat-51-envoy-ipvs-guide.log.
-Status: v2.4 Hardening milestone is feature-complete. SYNC-05 (default 1.36 image bump) remains DEFERRED (kindest/node:v1.36.x not on Docker Hub). All other 13 requirements Complete in REQUIREMENTS.md Traceability table.
-Last activity: 2026-05-30 — Phase 58 closed; UAT-01 + UAT-02 attested; v2.4 ready for milestone audit.
+Phase: — (between milestones). v2.4 archived; v2.5 not yet planned.
+Plan: Not started.
+Status: v2.4 Hardening SHIPPED 2026-05-31, released as public tag **v1.6** (created locally; push triggers release.yml). 13/14 requirements satisfied; SYNC-05 DEFERRED (external blocker — `kindest/node:v1.36.x` not on Docker Hub). Milestone archived to `.planning/milestones/v2.4-*`.
+Last activity: 2026-05-31 — milestone completed, archived, evolved, committed; tagged v1.6 (no push).
 
-Progress: [██████████] 100%
+Progress: v2.4 [██████████] 100% — SHIPPED. v2.5: not started.
 
 ## Performance Metrics
 
@@ -157,6 +158,6 @@ Four pre-existing issues from v2.3 — all addressed as requirements in v2.4:
 
 ## Session Continuity
 
-Last session: 2026-05-30T12:30:00Z
-Stopped at: Phase 58 CLOSED end-to-end. Both plans executed: 58-01 (HA pause/resume smoke, 8/8 tests) + 58-02 (Envoy LB + IPVS-1.36 reject + 1.36 guide, 3/3 tests). Canonical logs committed (hack/uat-47-ha-smoke.log + hack/uat-51-envoy-ipvs-guide.log). 47-UAT.md flipped to closed (passed: 14/14); 51-UAT.md augmented with v2.4 re-verification section (Option A). REQUIREMENTS.md UAT-01 + UAT-02 = Complete in checkboxes and Traceability. ROADMAP Phase 58 = Complete (2/2). STATE.md frontmatter rolled to 100%. Two clusters left up for inspection (uat-58-01 from Plan 01 + uat-58-02 from Plan 02); delete with `./bin/kinder delete cluster --name uat-58-01 && ./bin/kinder delete cluster --name uat-58-02`. v2.4 Hardening milestone is feature-complete. Next: `/gsd:audit-milestone v2.4` to surface any gaps (likely the ADDON-03/04/05 checkbox doc drift in REQUIREMENTS.md) → `/gsd:complete-milestone` to archive and prepare v2.5.
+Last session: 2026-05-31T00:00:00Z
+Stopped at: v2.4 Hardening SHIPPED + archived. `/gsd:audit-milestone` passed (milestones/v2.4-MILESTONE-AUDIT.md). `/gsd:complete-milestone` executed: archived milestones/v2.4-ROADMAP.md + v2.4-REQUIREMENTS.md, moved audit into milestones/, collapsed ROADMAP.md, deleted REQUIREMENTS.md (reset for v2.5), evolved PROJECT.md (Current State + Next Milestone), prepended MILESTONES.md entry, finalized kinder-site changelog to v1.6 (heading + addon/install refs + regenerated llms-full.txt). One milestone commit (`chore: complete v2.4 milestone — release v1.6`) folding planning archives + site + evidence artifacts. Annotated git tag **v1.6** created locally; NOT pushed (push fires release.yml goreleaser + the kinder-site push fires deploy-site.yml). Next: `git push origin v1.6` when ready to release, then `/gsd:new-milestone` for v2.5.
 Resume file: None

@@ -79,5 +79,5 @@ kinder version
 You should see output like:
 
 ```
-kind v1.5.0 go1.26.2 darwin/arm64
+kind v1.6.0 go1.26.2 darwin/arm64
 ```

@@ -153,6 +153,18 @@ chmod +x kinder
 sudo mv kinder /usr/local/bin/
 ```
 
+:::caution[macOS direct download]
+kinder macOS binaries are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+
+Ad-hoc signing satisfies Apple's AMFI kernel check on Apple Silicon (the binary no longer gets `Killed: 9` on first run), but it does **not** satisfy Gatekeeper for files downloaded via a web browser. After downloading from GitHub Releases, remove the quarantine attribute before running:
+
+```sh
+xattr -d com.apple.quarantine kinder
+```
+
+Users installing via `brew install patrykquantumnomad/kinder/kinder` are unaffected — Homebrew bypasses Gatekeeper quarantine for formula-installed binaries.
+:::
+
 ### Windows
 
 Download the `.zip` archive from [GitHub Releases](https://github.com/PatrykQuantumNomad/kinder/releases/latest) and extract `kinder.exe` to a directory in your `PATH`.
@@ -184,7 +196,7 @@ kinder version
 You should see output like:
 
 ```
-kind v1.5.0 go1.26.2 darwin/arm64
+kind v1.6.0 go1.26.2 darwin/arm64
 ```
 
 ---
@@ -815,7 +827,15 @@ URL: https://kinder.patrykgolabek.dev/addons/envoy-gateway/
 
 Envoy Gateway brings the Kubernetes [Gateway API](https://gateway-api.sigs.k8s.io/) to kinder clusters. It replaces Ingress with a more expressive routing model and supports HTTP, TLS, and TCP routes with a single controller.
 
-kinder installs Envoy Gateway **v1.3.1**.
+kinder installs Envoy Gateway **v1.7.2**.
+
+:::caution[Major upgrade in v1.6 — Envoy Gateway v1.3 → v1.7]
+This is a two-major-version jump. Bundled Gateway API CRDs jump from `v1.2.1` to `v1.4.1`.
+
+- **Existing kinder clusters:** unaffected — addon versions are pinned at cluster-create time. Recreate the cluster to pick up v1.7.2.
+- **HTTPRoute compatibility:** the v1.4.1 Gateway API CRD bundle is backwards compatible with v1.4.x and most v1.2.x HTTPRoute manifests. Custom resources using deprecated v1alpha2 fields may need updates — see [upstream Gateway API release notes](https://gateway-api.sigs.k8s.io/release-notes/).
+- **No Helm migration needed:** kinder uses upstream's `install.yaml` directly via `kubectl apply`; the change is fully manifest-driven.
+:::
 
 ## What gets installed
 
@@ -1365,7 +1385,7 @@ URL: https://kinder.patrykgolabek.dev/addons/headlamp/
 
 Headlamp is a lightweight, extensible Kubernetes web UI. kinder installs it automatically so you can browse resources, view logs, and inspect events without leaving the browser.
 
-kinder installs Headlamp **v0.40.1**.
+kinder installs Headlamp **v0.42.0**.
 
 ## What gets installed
 
@@ -1701,7 +1721,14 @@ URL: https://kinder.patrykgolabek.dev/addons/cert-manager/
 
 cert-manager gives kinder clusters automatic TLS certificate management. A self-signed `ClusterIssuer` is created during cluster setup so you can issue `Certificate` resources immediately — no manual cert-manager installation or issuer configuration required.
 
-kinder installs cert-manager **v1.16.3**.
+kinder installs cert-manager **v1.20.2**.
+
+:::caution[Breaking changes in v1.20]
+Two upstream-default changes affect users upgrading from earlier kinder versions:
+
+- **Container UID changed from 1000 to 65532.** cert-manager pods now run as the unprivileged UID `65532`. PVCs or mounted Secrets pre-populated with files owned by UID 1000 will be unreadable to the new pods. cert-manager itself does not use PVCs, but custom integrations that share volumes with cert-manager may break.
+- **`Certificate.spec.privateKey.rotationPolicy: Always` is now GA-mandatory.** v1.18.0 changed the default from `Never` to `Always`; v1.20 makes it required (cannot disable). Long-running Certificates without an explicit `rotationPolicy: Never` will see a NEW private key on next renewal. Set `rotationPolicy: Never` explicitly if you want the old behavior — kinder does not patch this for you.
+:::
 
 ## What gets installed
 
@@ -1935,7 +1962,11 @@ URL: https://kinder.patrykgolabek.dev/addons/local-path-provisioner/
 
 Local Path Provisioner gives kinder clusters automatic dynamic PVC provisioning out of the box. Create a `PersistentVolumeClaim` and a matching `PersistentVolume` is provisioned on the node's local disk immediately — no manual operator action required.
 
-kinder installs **local-path-provisioner v0.0.35** as a default addon. `local-path` is set as the only default StorageClass, replacing the legacy `standard` StorageClass that shipped with upstream kind.
+kinder installs **local-path-provisioner v0.0.36** as a default addon. `local-path` is set as the only default StorageClass, replacing the legacy `standard` StorageClass that shipped with upstream kind.
+
+:::note[Security fix in v0.0.36]
+v0.0.36 closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4), a HelperPod Template Injection vulnerability. Upgrade from v0.0.35 is strongly recommended.
+:::
 
 ## What gets installed
 
@@ -2109,7 +2140,7 @@ Two images are required:
 
 | Image | Purpose |
 |---|---|
-| `docker.io/rancher/local-path-provisioner:v0.0.35` | The provisioner Deployment |
+| `docker.io/rancher/local-path-provisioner:v0.0.36` | The provisioner Deployment |
 | `docker.io/library/busybox:1.37.0` | The `helperPod` that creates/deletes PV directories |
 
 See the [Working Offline](/guides/working-offline/) guide for the full pre-load workflow.
@@ -6503,6 +6534,54 @@ All notable changes to kinder since forking from [kind](https://kind.sigs.k8s.io
 :::note[Version scheme change]
 Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`, ...) independent of upstream kind's `v0.x` series. Earlier releases used `v0.x.y-alpha` tags inherited from the fork. The Go binary reports the tag version via `kinder version`.
 :::
+
+---
+
+## v1.6 — Hardening
+
+**Released:** May 31, 2026
+
+Phase 53 brought all kinder addons to current-stable releases (where available), closed a security advisory in local-path-provisioner, and re-verified the SYNC-05 default node image gate.
+
+### Addon Bumps
+
+- **`local-path-provisioner` v0.0.35 → v0.0.36** — closes [GHSA-7fxv-8wr2-mfc4](https://github.com/rancher/local-path-provisioner/security/advisories/GHSA-7fxv-8wr2-mfc4) HelperPod Template Injection security advisory. Embedded `busybox:1.37.0` pin and `is-default-class` StorageClass annotation preserved. (ADDON-01)
+- **`Headlamp` v0.40.1 → v0.42.0** — token-print authentication flow re-verified live (`kubectl auth can-i` + UI curl with the printed SA token both succeed). Existing kinder-specific Secret + `-in-cluster` deployment arg pattern preserved. (ADDON-02)
+- **`cert-manager` v1.16.3 → v1.20.2** — `--server-side` apply preserved (manifest is 989 KB, exceeds 256 KB annotation limit). Live UAT verified self-signed ClusterIssuer issues a Certificate and pods run as UID `65532` (via distroless image `USER nonroot` directive; kubelet enforces `runAsNonRoot: true`). (ADDON-03)
+- **`Envoy Gateway` v1.3.1 → v1.7.2** (single-jump). Bundled Gateway API CRDs upgrade from `v1.2.1` to `v1.4.1` in-band. Live HTTPRoute end-to-end UAT verified traffic returns 200 through the gateway. `eg-gateway-helm-certgen` Job name unchanged (verified in upstream install.yaml). Ratelimit image bumped from `ae4cee11` to `05c08d03`. (ADDON-04)
+
+### Documented Holds
+
+- **`MetalLB` held at v0.15.3** — verified upstream `metallb/metallb` latest release is still v0.15.3 (published 2025-12-04). No newer release exists.
+- **`Metrics Server` held at v0.8.1** — verified upstream `kubernetes-sigs/metrics-server` latest release is still v0.8.1 (published 2026-01-29). No newer release exists.
+
+### Breaking Changes for Upgraders
+
+#### cert-manager v1.20
+
+- **Container UID changed from `1000` to `65532`.** PVCs or mounted Secrets pre-populated with files owned by UID 1000 will be unreadable to the new pods. cert-manager itself does not use PersistentVolumes, but custom integrations sharing volumes may be affected.
+- **`Certificate.spec.privateKey.rotationPolicy: Always` is GA-mandatory.** The default changed from `Never` to `Always` in v1.18; v1.20 makes an explicit value required. Long-running Certificates relying on stable private keys across renewals must set `rotationPolicy: Never` explicitly. See the [cert-manager addon doc](/addons/cert-manager/) for details.
+
+#### Envoy Gateway v1.7
+
+- **Gateway API CRD bundle upgrades from `v1.2.1` to `v1.4.1`.** `v1alpha2`-deprecated fields may need updates in custom HTTPRoute manifests.
+- Existing kinder clusters are unaffected — addon versions are pinned at cluster-create time. Recreate the cluster to pick up v1.7.2.
+
+### SYNC-05 (Default Node Image)
+
+- **SYNC-05 deferred** — `kindest/node:v1.36.x` was not yet published on Docker Hub at execute time (Docker Hub probe returned `count: 0` for `?name=v1.36`). The default node image remains `kindest/node:v1.35.1`. Re-evaluable in v1.7 once kind publishes a v1.36 image.
+
+### Internal
+
+- `pkg/internal/doctor/offlinereadiness.go` `allAddonImages` updated to reflect all delivered addon tags. Count remains 14 (no addon added or removed an image; only tags shifted). `TestAllAddonImages_CountMatchesExpected` passes unchanged. (ADDON-05)
+
+### macOS Ad-Hoc Signing (Phase 54)
+
+macOS binaries shipped from v1.6 are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+
+Apple Silicon (Apple-Mx) macOS enforces AMFI kernel-level signature checks on every Mach-O binary; unsigned binaries are killed with `Killed: 9` on first run. v1.6 wires `codesign --force --sign -` (ad-hoc identity, hash-only signature) into the GoReleaser `builds[].hooks.post` pipeline so every darwin/amd64 and darwin/arm64 binary carries an embedded ad-hoc signature before it is archived. The signature satisfies AMFI but not Gatekeeper notarization — direct downloads from GitHub Releases still hit the macOS quarantine attribute. Use `xattr -d com.apple.quarantine kinder` after extracting the archive, or install via Homebrew (`brew install patrykquantumnomad/kinder/kinder`), which bypasses quarantine for formula-installed binaries.
+
+Full Developer ID signing + notarization is deferred to a future phase (DIST-03). (DIST-01)
 
 ---
 

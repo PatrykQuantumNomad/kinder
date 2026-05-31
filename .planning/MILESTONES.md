@@ -1,5 +1,32 @@
 # Project Milestones: Kinder
 
+## v2.4 Hardening (Shipped: 2026-05-31 — released as v1.6)
+
+**Delivered:** Closed v2.3 tech debt and hardened the HA pause/resume path, brought all addons to current stable (or documented holds), and unblocked distribution UX. The HA etcd-TLS fix grew from one phase into a five-phase chain (52 + 57.1/57.2/57.3/57.4) as live UAT on macOS Docker Desktop peeled back stacked upstream defects. Released on the public version line as `v1.6` (internal milestone number v2.4).
+
+**Phases completed:** 52-58 + inserted 57.1/57.2/57.3/57.4 (28 plans total)
+
+**Key accomplishments:**
+- **Phase 52 + 57.1/57.2/57.3/57.4 — HA pause/resume hardening (LIFE-09)**: IP-pinning via `docker network connect --ip` with a cert-regen fallback widened to 4 etcd-adjacent cert types and active health-gates; Envoy LB cds/lds reapply on resume; `discoverLBIPv6` replaced by a cluster-authoritative `io.x-k8s.kinder.ip-family` label; IPAM probe `--privileged` fix for Docker Desktop 4.73.0; `kinder resume --strategy=<auto|ip-pin|cert-regen>` flag; live-UAT'd across IPv4 + IPv6 + dual-stack with 24 emergent fixes
+- **Phase 53 — Addon audit & bumps (ADDON-01..05)**: local-path-provisioner v0.0.36 (GHSA-7fxv-8wr2-mfc4 fix), Headlamp v0.42.0, cert-manager v1.20.2 (`--server-side`), Envoy Gateway v1.7.2 (Gateway API CRDs v1.2.1→v1.4.1 in-band); MetalLB v0.15.3, Metrics Server v0.8.1, registry:2 held with rationale; `allAddonImages` consolidated to 14; SYNC-05 deferred (external blocker)
+- **Phase 54 + 55 — Distribution (DIST-01, DIST-02)**: macOS ad-hoc code-signing in GoReleaser (`codesign --force --sign -` on macos-latest; satisfies AMFI) + blocking Windows cross-compile PR-CI step
+- **Phase 56 + 57 — Doctor hardening (DEBT-04, DIAG-05, DIAG-06)**: `allChecks` race eliminated via `runChecks([]Check)` (lock-free production path); `cluster-node-skew` external-LB/etcd false-positive fixed; `cluster-resume-readiness` actionable member-count text
+- **Phase 58 — Live UAT closure (UAT-01, UAT-02)**: both carried-forward v2.3 UAT items closed with committed evidence against the final binary (`hack/uat-47-ha-smoke.sh` 8/8; `hack/uat-51-envoy-ipvs-guide.sh` 3/3)
+
+**Stats:**
+- 59 code files created/modified (+28,336 / -5,279 lines) across `pkg/`, `cmd/`, `.github/`, `.goreleaser.yaml`, `Makefile`
+- 171 commits in the `v1.5..HEAD` range (`feat(52-01)` → `docs(58)`)
+- 11 phases, 28 plans, 14 requirements (13 satisfied, 1 deferred on external blocker)
+- 21 calendar days (2026-05-09 → 2026-05-30); ~3-4 active days plus an extended live-UAT debugging tail across the inserted 57.x phases
+
+**Git range:** `feat(52-01)` → `docs(58)`
+
+**Audit:** `.planning/milestones/v2.4-MILESTONE-AUDIT.md` — status `passed`; 5/5 cross-phase wiring chains; 5/5 E2E flows; 0 blockers; 5 non-blocking tech-debt items filed for v2.5.
+
+**What's next:** v2.5 (TBD) — candidates: SYNC-05 re-execution once kind v0.32.0 ships v1.36, podman/nerdctl pause/resume parity (LIFE-10/11), `kinder dev` provider parity (LIFE-12), snapshot remote-storage backend (SNAP-01), full macOS notarization (DIST-03), DIAG-06 wording + `nerdctl.lima` IPAM basename fix + UAT CI wiring (v2.4 tech debt).
+
+---
+
 ## v2.3 Inner Loop (Shipped: 2026-05-07)
 
 **Delivered:** Made daily iteration on a kinder cluster as fast as creating one — pause/resume with quorum-safe HA ordering, snapshot/restore with hard-fail compatibility checks, hot-reload via `kinder dev` (fsnotify + polling fallback), and a runtime error decoder extending the v2.1 doctor framework with 16 cataloged patterns. Adopted kind upstream's HAProxy→Envoy LB transition across docker/podman/nerdctl providers and shipped a K8s 1.36 recipe page (default node image bump deferred pending Docker Hub publication).

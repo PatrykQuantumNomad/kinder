@@ -11,9 +11,9 @@ Starting with v1.2, kinder uses its own version sequence (`v1.0`, `v1.1`, `v1.2`
 
 ---
 
-## v2.4 — Hardening
+## v1.6 — Hardening
 
-**Released:** TBD (finalize when phase 58 ships v2.4)
+**Released:** May 31, 2026
 
 Phase 53 brought all kinder addons to current-stable releases (where available), closed a security advisory in local-path-provisioner, and re-verified the SYNC-05 default node image gate.
 
@@ -43,7 +43,7 @@ Phase 53 brought all kinder addons to current-stable releases (where available),
 
 ### SYNC-05 (Default Node Image)
 
-- **SYNC-05 deferred** — `kindest/node:v1.36.x` was not yet published on Docker Hub at execute time (Docker Hub probe returned `count: 0` for `?name=v1.36`). The default node image remains `kindest/node:v1.35.1`. Re-evaluable in v2.5 once kind publishes a v1.36 image.
+- **SYNC-05 deferred** — `kindest/node:v1.36.x` was not yet published on Docker Hub at execute time (Docker Hub probe returned `count: 0` for `?name=v1.36`). The default node image remains `kindest/node:v1.35.1`. Re-evaluable in v1.7 once kind publishes a v1.36 image.
 
 ### Internal
 
@@ -51,9 +51,9 @@ Phase 53 brought all kinder addons to current-stable releases (where available),
 
 ### macOS Ad-Hoc Signing (Phase 54)
 
-macOS binaries shipped from v2.4 are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
+macOS binaries shipped from v1.6 are **ad-hoc signed (not notarized); Homebrew install unaffected; direct download requires `xattr -d com.apple.quarantine`**.
 
-Apple Silicon (Apple-Mx) macOS enforces AMFI kernel-level signature checks on every Mach-O binary; unsigned binaries are killed with `Killed: 9` on first run. v2.4 wires `codesign --force --sign -` (ad-hoc identity, hash-only signature) into the GoReleaser `builds[].hooks.post` pipeline so every darwin/amd64 and darwin/arm64 binary carries an embedded ad-hoc signature before it is archived. The signature satisfies AMFI but not Gatekeeper notarization — direct downloads from GitHub Releases still hit the macOS quarantine attribute. Use `xattr -d com.apple.quarantine kinder` after extracting the archive, or install via Homebrew (`brew install patrykquantumnomad/kinder/kinder`), which bypasses quarantine for formula-installed binaries.
+Apple Silicon (Apple-Mx) macOS enforces AMFI kernel-level signature checks on every Mach-O binary; unsigned binaries are killed with `Killed: 9` on first run. v1.6 wires `codesign --force --sign -` (ad-hoc identity, hash-only signature) into the GoReleaser `builds[].hooks.post` pipeline so every darwin/amd64 and darwin/arm64 binary carries an embedded ad-hoc signature before it is archived. The signature satisfies AMFI but not Gatekeeper notarization — direct downloads from GitHub Releases still hit the macOS quarantine attribute. Use `xattr -d com.apple.quarantine kinder` after extracting the archive, or install via Homebrew (`brew install patrykquantumnomad/kinder/kinder`), which bypasses quarantine for formula-installed binaries.
 
 Full Developer ID signing + notarization is deferred to a future phase (DIST-03). (DIST-01)
 

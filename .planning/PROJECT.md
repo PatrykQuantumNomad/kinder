@@ -8,20 +8,21 @@ Kinder is a fork of kind (Kubernetes IN Docker) that provides a batteries-includ
 
 A single command gives developers a local Kubernetes cluster where LoadBalancer services, Gateway API routing, metrics, and dashboards all work without any manual setup.
 
-## Current Milestone: v2.4 Hardening
+## Current State
 
-**Goal:** Close v2.3 tech debt, bring all addons to current stable, fix the HA pause/resume etcd-TLS architectural gap, and unblock distribution UX via macOS ad-hoc signing and a Windows PR-CI build step.
+**Shipped:** v2.4 Hardening — released as public tag **`v1.6`** on 2026-05-31 (audit `passed`; 13/14 requirements satisfied, SYNC-05 deferred on external blocker). All addons brought to current stable or documented holds; HA pause/resume hardened across IPv4/IPv6/dual via IP-pinning + a 4-cert cert-regen fallback (five-phase chain 52 + 57.1/57.2/57.3/57.4); macOS ad-hoc code-signing + blocking Windows PR-CI gates live; `allChecks` test race and two doctor cosmetic-output bugs fixed; both carried-forward v2.3 live-UAT items closed with committed evidence.
 
-**Target features:**
-- SYNC-02 default `kindest/node` bump to K8s 1.36.x (conditional on kind v0.32.0 publishing the image)
-- Addon version audit + bump for all 7 addons (MetalLB, Metrics Server, Envoy Gateway, Headlamp, cert-manager, local-path-provisioner, local registry)
-- DEBT-04 race fix in `pkg/internal/doctor/{check,socket}_test.go` (`allChecks` global mutated under `t.Parallel()`)
-- HA pause/resume etcd peer-TLS regeneration (or container-IP pinning) so cross-pause IP reassignment cannot break peer connectivity
-- Phase 47 live HA UAT closure — pause/resume ordering, resource observation, cluster-state round-trip
-- Phase 51 live UAT closure — Envoy LB image probe, IPVS-config CLI rejection, K8s 1.36 guide spot-check
-- macOS ad-hoc code-signing in GoReleaser (`codesign --sign -` + Info.plist embed)
-- Cross-platform CI: `GOOS=windows go build ./...` step on PR CI
-- Cosmetic doctor improvements: `cluster-node-skew` LB version warn fix, `cluster-resume-readiness` reason text parsing
+**Versioning note:** Internal planning milestones use the `v2.x` sequence; public releases/git tags use the `v1.x` sequence (consistent −0.8 offset). v2.4 ships as **`v1.6`**. The `kinder-site` changelog heading is the public release version and drives the `release.yml` GitHub Action on `push: tags: v*`.
+
+## Next Milestone: v2.5 (TBD)
+
+**Candidate goals:**
+- SYNC-05 — default `kindest/node` bump to K8s 1.36.x once kind v0.32.0 publishes the image (external blocker; Plan 51-04 Task 2 ready to re-execute)
+- LIFE-10/11/12 — pause/resume + `kinder dev` parity for podman and nerdctl providers
+- SNAP-01 — snapshot remote-storage backend (S3/GCS/registry)
+- DIST-03 — full macOS notarization (Apple Developer cert + `notarytool submit` + stapled artifact)
+- DIAG-07 — etcd peer-TLS regen via `kubeadm certs renew etcd-peer` escape hatch
+- v2.4 tech debt: DIAG-06 `quorum at risk` wording, `nerdctl.lima` IPAM basename fix, UAT CI wiring, `kinder version` git-hash print, Windows build as a required status check
 
 ## Requirements
 
@@ -98,23 +99,18 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 - ✓ IPVS-on-1.36+ validation guard at config-time with migration URL — v2.3
 - ✓ K8s 1.36 "What's new" website recipe (User Namespaces GA + In-Place Pod Resize GA) — v2.3
 
-### Active
-
-<!-- v2.4 Hardening — milestone goals; REQ-IDs assigned in REQUIREMENTS.md -->
-
-- [ ] Default `kindest/node` bumped to K8s 1.36.x once kind v0.32.0 publishes the image
-- [ ] All 7 addons audited and bumped to current stable (or held on documented compatibility blocker)
-- [ ] `allChecks`-global race in `pkg/internal/doctor/{check,socket}_test.go` eliminated under `-race`
-- [ ] HA pause/resume etcd peer-TLS regeneration / IP-pinning so peer connectivity survives container-IP reassignment
-- [ ] Phase 47 live HA UAT closed (pause/resume ordering, resource observation, state round-trip)
-- [ ] Phase 51 live UAT closed (Envoy LB image probe, IPVS-config CLI rejection, 1.36 guide spot-check)
-- [ ] macOS GoReleaser artifacts ad-hoc-signed (`codesign --sign -` + Info.plist embed)
-- [ ] PR CI gains a `GOOS=windows go build ./...` step
-- [ ] `cluster-node-skew` doctor check no longer warns on LB containers; `cluster-resume-readiness` parses partial-failure JSON for actionable reason text
+- ✓ HA pause/resume preserves etcd peer connectivity via IP-pinning (`docker network connect --ip`) with cert-regen fallback covering 4 cert types — v2.4 (LIFE-09; Phases 52 + 57.1 + 57.2 + 57.3 + 57.4)
+- ✓ All 7 addons audited; local-path-provisioner v0.0.36, Headlamp v0.42.0, cert-manager v1.20.2, Envoy Gateway v1.7.2 bumped; MetalLB v0.15.3, Metrics Server v0.8.1, registry:2 held with documented rationale — v2.4 (ADDON-01..05; Phase 53)
+- ✓ `allChecks` t.Parallel() race eliminated via `runChecks(checks []Check)` helper (production path lock-free) — v2.4 (DEBT-04; Phase 56)
+- ✓ macOS GoReleaser artifacts ad-hoc signed via `codesign --force --sign -` post-hook on `macos-latest` — v2.4 (DIST-01; Phase 54)
+- ✓ PR CI runs blocking `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` cross-compile step — v2.4 (DIST-02; Phase 55)
+- ✓ `cluster-node-skew` skips `external-load-balancer` / `external-etcd` role containers; `cluster-resume-readiness` parses etcdctl JSON for actionable member-count text — v2.4 (DIAG-05, DIAG-06; Phase 57)
+- ✓ Phase 47 live HA UAT closed (pause/resume ordering + state round-trip; 14/14 47-UAT.md rows pass) — v2.4 (UAT-01; Phase 58-01)
+- ✓ Phase 51 live UAT closed (`envoyproxy/envoy` LB image probe; IPVS+1.36 CLI reject; K8s 1.36 guide spot-check) — v2.4 (UAT-02; Phase 58-02)
 
 ### Deferred / Carried Forward
 
-- **SYNC-02** (from v2.3): Default `kindest/node` image bump to K8s 1.36.x — external blocker (`kindest/node:v1.36.x` not on Docker Hub as of 2026-05-07). Plan 51-04 halted cleanly at gating probe; Task 2 fully authored and ready to re-execute once kind v0.32.0 publishes the image.
+- **SYNC-05** (v2.4 → future; supersedes v2.3 SYNC-02): Default `kindest/node` bump to K8s 1.36.x. External blocker — `kindest/node:v1.36.x` not on Docker Hub (probed Outcome B on 2026-05-07 via Plan 51-04 and again on 2026-05-10 via Plan 53-00). `pkg/apis/config/defaults/image.go` correctly remains at v1.35.1. Re-run when kind v0.32.0 publishes the v1.36 image; Plan 51-04 Task 2 is fully authored and ready to re-execute atomically.
 
 ### Out of Scope
 
@@ -225,4 +221,4 @@ A single command gives developers a local Kubernetes cluster where LoadBalancer 
 | Ad-hoc codesign on macos-latest, not notarization | AMFI on Apple Silicon kills unsigned arm64 binaries; ad-hoc = hash-only signature satisfies AMFI with zero certificate/cost overhead; full Developer ID + notarization deferred (DIST-03) | ✓ Good |
 
 ---
-*Last updated: 2026-05-12 — Phase 54 (macOS ad-hoc code signing) decision recorded*
+*Last updated: 2026-05-31 after v2.4 Hardening milestone completion (released as public tag v1.6). Milestone archived to `.planning/milestones/v2.4-ROADMAP.md` + `v2.4-REQUIREMENTS.md` + `v2.4-MILESTONE-AUDIT.md`; ROADMAP collapsed; REQUIREMENTS.md reset for v2.5. All 13 active v2.4 requirements Validated; SYNC-05 Deferred (external blocker).*
