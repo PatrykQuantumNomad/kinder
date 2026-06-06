@@ -1,8 +1,0 @@
-failed to capture etcd leader id for HA pause snapshot (continuing): etcdctl endpoint status via crictl exec failed: command "docker exec --privileged uat-573-ipv6-control-plane crictl exec 41402b309b76293e723f71330c78c1e2892790d5593b85d1e3884d664c12f1d2 etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/peer.crt --key=/etc/kubernetes/pki/etcd/peer.key --endpoints=https://127.0.0.1:2379 endpoint status --cluster --write-out=json" failed with error: exit status 1
- - uat-573-ipv6-worker2 stopped (role: worker, 1.3s)
- - uat-573-ipv6-worker stopped (role: worker, 5.3s)
- - uat-573-ipv6-control-plane stopped (role: control-plane, 30.3s)
- - uat-573-ipv6-control-plane2 stopped (role: control-plane, 30.3s)
- - uat-573-ipv6-control-plane3 stopped (role: control-plane, 30.3s)
- - uat-573-ipv6-external-load-balancer stopped (role: external-load-balancer, 30.2s)
-Cluster paused. Total time: 133.5s

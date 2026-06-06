@@ -1,4 +1,0 @@
-/etc/kubernetes/pki/etcd/peer.crt: serial=28FE53579D63B3DD
-/etc/kubernetes/pki/etcd/server.crt: serial=243FEBF51E963CA5
-/etc/kubernetes/pki/etcd/healthcheck-client.crt: serial=65D02F16F45876AC
-/etc/kubernetes/pki/apiserver-etcd-client.crt: serial=2933BE10BAE0F411

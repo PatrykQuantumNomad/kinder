@@ -1,7 +1,0 @@
- - uat-573-dual-worker stopped (role: worker, 5.3s)
- - uat-573-dual-worker2 stopped (role: worker, 0.4s)
- - uat-573-dual-control-plane stopped (role: control-plane, 30.3s)
- - uat-573-dual-control-plane2 stopped (role: control-plane, 30.3s)
- - uat-573-dual-control-plane3 stopped (role: control-plane, 30.3s)
- - uat-573-dual-external-load-balancer stopped (role: external-load-balancer, 30.2s)
-Cluster paused. Total time: 127.6s
