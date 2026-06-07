@@ -90,7 +90,11 @@ release:
     owner: PatrykQuantumNomad
     name: kinder
   draft: false
-  mode: replace  # Allow re-running on same tag if workflow fails mid-flight (avoids 422 errors)
+  mode: replace  # How to handle release NOTES if the release already exists (does not affect assets)
+  # Overwrite assets that already exist instead of failing with HTTP 422 'already_exists'.
+  # This is what actually lets us re-run `release --clean` on the same tag after a mid-flight
+  # failure (e.g. the v1.6 run that uploaded all binaries, then failed at the Homebrew step).
+  replace_existing_artifacts: true
   footer: |
     ## Install
 
